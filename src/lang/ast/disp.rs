@@ -1,5 +1,4 @@
-use super::ast::{Type, AST};
-use super::expr::Op;
+use super::ast::{Op, Type, AST};
 
 use std::fmt;
 
@@ -8,8 +7,8 @@ impl fmt::Display for Type {
         // write!(f, "({}, {})", self.x, self.y)
         match self {
             Type::Bool => write!(f, "bool"),
-            Type::Int => write!(f, "int"),
-            Type::Double => write!(f, "double"),
+            Type::I32 => write!(f, "i32"),
+            Type::F64 => write!(f, "f64"),
             Type::Tuple(v) => {
                 let mut iter = v.iter();
                 let mut s = String::from("(");
@@ -69,46 +68,50 @@ impl fmt::Display for AST {
             ),
             Self::Func(id, ty, ps, body) => write!(
                 f,
-                "{{\"name\":\"(func){}\",\"type\":{},\"ps\":{},\"body\":{}}}",
+                "{{\"name\":\"(func){}\",\"type\":\"{}\",\"ps\":{},\"body\":{}}}",
                 id,
                 ty,
                 ASTChildrenWrapper(ps),
                 body.as_ref()
             ),
-            Self::Var(id, ty, flag, init) => write!(
+            Self::Field(id, ty, flag) => write!(
                 f,
-                "{{\"name\":\"(var){}\",\"flag\": \"{}\", \"type\":{},\"init\":{}}}",
-                id, flag, ty, *init
+                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":\"{}\"}}",
+                id, flag, ty
             ),
-            Self::Block(children) => write!(
+            Self::Param(id, ty, flag) => write!(
                 f,
-                "{{\"name\":\"(block)\",\"children\":{}}}",
+                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":\"{}\"}}",
+                id, flag, ty
+            ),
+            Self::Var(pattern, ty, flag, init) => write!(
+                f,
+                "{{\"name\":\"(var)\", \"id\":{},\"flag\": \"{}\", \"type\":\"{}\",\"init\":{}}}",
+                pattern, flag, ty, *init
+            ),
+            Self::Block(is_expr, children) => write!(
+                f,
+                "{{\"name\":\"(block)\", \"is_expr\": \"{}\",\"children\":{}}}",
+                is_expr,
                 ASTChildrenWrapper(children)
             ),
-            Self::If(cond, then, els) => write!(
+            Self::If(is_expr, cond, then, els) => write!(
                 f,
-                "{{\"name\":\"(if)\",\"cond\":{},\"then\":{},\"els\":{}}}",
+                "{{\"name\":\"(if)\", \"is_expr\": \"{}\",\"cond\":{},\"then\":{},\"els\":{}}}",
+                is_expr,
                 cond.as_ref(),
                 then.as_ref(),
                 els.as_ref()
             ),
             Self::Continue => write!(f, "{{\"name\":\"continue\"}}"),
-            Self::Break => write!(f, "{{\"name\":\"break\"}}"),
+            Self::Break(val) => write!(f, "{{\"name\":\"break\", \"val\": {}}}", *val),
             Self::Return(val) => write!(f, "{{\"name\":\"return\",\"val\":{}}}", *val),
-            Self::For(pattern, iter, body) => write!(
+            Self::Loop(is_expr, body) => write!(
                 f,
-                "{{\"name\":\"(for)\",\"var\":{},\"iter\":{},\"body\":{}}}",
-                pattern.as_ref(),
-                iter.as_ref(),
+                "{{\"name\":\"(loop)\", \"is_expr\": \"{}\",\"body\":{}}}",
+                is_expr,
                 body.as_ref()
             ),
-            Self::While(cond, body) => write!(
-                f,
-                "{{\"name\":\"(while)\",\"cond\":{},\"body\":{}}}",
-                cond.as_ref(),
-                body.as_ref()
-            ),
-            Self::Loop(body) => write!(f, "{{\"name\":\"(loop)\",\"body\":{}}}", body.as_ref()),
             Self::ExprStmt(expr) => write!(f, "{}", expr.as_ref()),
             Self::Unary(op, expr1) => {
                 write!(f, "{{\"name\":\"{}\",\"operands\":[{}]}}", op, *expr1)
@@ -120,20 +123,17 @@ impl fmt::Display for AST {
                 expr1.as_ref(),
                 expr2.as_ref()
             ),
+            Self::Cast(ty, expr) => write!(
+                f, "{{\"name\": \"(cast)\", \"ty\": \"{}\", \"val\": {}}}",
+                ty, expr
+            ),
             Self::Call(func, ps) => write!(
                 f,
                 "{{\"name\":\"(call)\",\"func\":{},\"args\":{}}}",
                 func.as_ref(),
                 ASTChildrenWrapper(ps)
             ),
-            Self::New(ty) => write!(f, "{{\"name\":\"(new)\",\"type\":{}}}", *ty),
-            Self::Cast(ty, val) => write!(
-                f,
-                "{{\"name\":\"(cast)\",\"type\":{},\"val\":{}}}",
-                ty.as_ref(),
-                val.as_ref()
-            ),
-            Self::Type(ty) => write!(f, "{{\"name\":\"(type)\",\"type\":\"{}\"}}", *ty),
+            Self::New(ty) => write!(f, "{{\"name\":\"(new)\",\"type\":\"{}\"}}", *ty),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
             Self::Null => write!(f, "{{\"name\":\"null\" }}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
@@ -147,7 +147,7 @@ impl fmt::Display for AST {
     }
 }
 
-struct ASTChildrenWrapper<'a>(&'a Vec<AST>);
+struct ASTChildrenWrapper<'a>(&'a Vec<Box<AST>>);
 
 impl fmt::Display for ASTChildrenWrapper<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -183,13 +183,8 @@ impl fmt::Display for Op {
             Op::Le => write!(f, "<="),
             Op::Lt => write!(f, "<"),
             Op::Assign => write!(f, "="),
-            Op::AddAssign => write!(f, "+="),
-            Op::SubAssign => write!(f, "-="),
-            Op::MulAssign => write!(f, "*="),
-            Op::DivAssign => write!(f, "/="),
-            Op::ModAssign => write!(f, "%="),
             Op::StaticAccess => write!(f, "::"),
-            Op::ClassAccess => write!(f, "."),
+            Op::ObjAccess => write!(f, "."),
             Op::ArrayAccess => write!(f, "[]"),
         }
     }

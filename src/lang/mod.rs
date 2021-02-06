@@ -1,7 +1,7 @@
-pub mod crate_mgr;
+pub mod module_mgr;
 pub mod parser;
 
+mod class;
 mod module;
 
 mod ast;
-mod err;

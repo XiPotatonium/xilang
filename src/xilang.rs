@@ -1,15 +1,17 @@
 extern crate clap;
+extern crate lalrpop_util;
 extern crate lazy_static;
 extern crate regex;
 
 mod ir;
 mod lang;
 
-use lang::crate_mgr;
+use lang::module_mgr;
 
 use clap::{App, Arg};
 
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 struct Config {
     class_path: Vec<String>,
@@ -66,18 +68,46 @@ fn main() {
             out_dir: PathBuf::from(matches.value_of("cp").unwrap_or(input_dir)),
             verbose: matches.occurrences_of("v") as usize,
         };
-        println!("Additional class-path: {}", cfg.class_path.join(";"));
-        println!("Crate root directory: {:?}", cfg.dir);
-        println!("Output directory: {:?}", cfg.out_dir);
-        println!("Verbose level: {}", cfg.verbose);
     }
 
-    let crate_mgr = crate_mgr::CrateMgr::new(&cfg.dir, cfg.verbose >= 2);
+    let start_time = SystemTime::now();
+    let mut module_mgr = module_mgr::ModuleMgr::new(&cfg.dir, &cfg.class_path, cfg.verbose >= 2);
+    if cfg.verbose >= 1 {
+        println!(
+            "Parsing finished in {} seconds",
+            SystemTime::now()
+                .duration_since(start_time)
+                .unwrap()
+                .as_secs_f32()
+        );
+    }
 
     if cfg.verbose >= 1 {
-        crate_mgr.tree();
+        println!("Project structure:");
+        module_mgr.tree();
     }
 
-    crate_mgr.build();
-    crate_mgr.dump(&cfg.out_dir);
+    let start_time = SystemTime::now();
+    module_mgr.build();
+    if cfg.verbose >= 1 {
+        println!(
+            "Build finished in {} seconds",
+            SystemTime::now()
+                .duration_since(start_time)
+                .unwrap()
+                .as_secs_f32()
+        );
+    }
+
+    let start_time = SystemTime::now();
+    module_mgr.dump(&cfg.out_dir);
+    if cfg.verbose >= 1 {
+        println!(
+            "Dump finished in {} seconds",
+            SystemTime::now()
+                .duration_since(start_time)
+                .unwrap()
+                .as_secs_f32()
+        );
+    }
 }

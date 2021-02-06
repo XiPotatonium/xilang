@@ -1,13 +1,12 @@
-use super::expr::Op;
 use crate::ir::flag::*;
 
 #[derive(Debug)]
 pub enum Type {
     Bool,
-    Int,
-    Double,
-    Tuple(Vec<Type>),
-    Arr(Box<Type>, usize),
+    I32,
+    F64,
+    Tuple(Vec<Box<Type>>),
+    Arr(Box<Type>, Box<AST>),
     // class names
     Class(Vec<String>),
     Unk, // Type determined at compile time
@@ -19,12 +18,13 @@ impl Type {
     }
 }
 
+/*
 impl Clone for Type {
     fn clone(&self) -> Type {
         match self {
             Self::Bool => Self::Bool,
-            Self::Int => Self::Int,
-            Self::Double => Self::Double,
+            Self::I32 => Self::I32,
+            Self::F64 => Self::F64,
             Self::Tuple(v) => Self::Tuple(v.to_vec()),
             Self::Arr(dtype, dim) => Self::Arr(Box::new(dtype.as_ref().clone()), *dim),
             Self::Class(names) => Self::Class({
@@ -38,31 +38,56 @@ impl Clone for Type {
         }
     }
 }
+*/
+
+#[derive(Debug)]
+pub enum Op {
+    Neg,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    LogNot,
+    LogAnd,
+    LogOr,
+    Eq,
+    Ne,
+    Ge,
+    Gt,
+    Le,
+    Lt,
+    Assign,
+    StaticAccess,
+    ObjAccess,
+    ArrayAccess,
+}
 
 #[derive(Debug)]
 pub enum AST {
     // classes: Vec<AST>
-    File(Vec<AST>),
+    File(Vec<Box<AST>>),
 
-    // id, funcs: Vec<Func>, fields: Vec<Var>
-    Class(String, Vec<AST>, Vec<AST>),
+    // id, methods: Vec<Func>, fields: Vec<Var>
+    Class(String, Vec<Box<AST>>, Vec<Box<AST>>),
     // id, ty, ps: Vec<Var>, body: Box<Block>
-    Func(String, Box<AST>, Vec<AST>, Box<AST>),
-    // id, ty, flag, init: Box<AST>
-    Var(String, Box<AST>, Flag, Box<AST>),
+    Func(String, Box<Type>, Vec<Box<AST>>, Box<AST>),
+
+    Field(String, Box<Type>, Flag),
+    Param(String, Box<Type>, Flag),
+    // pattern, ty, flag, init: Box<AST>
+    Var(Box<AST>, Box<Type>, Flag, Box<AST>),
+
     // children: Vec<Stmt>
-    Block(Vec<AST>),
+    Block(bool, Vec<Box<AST>>),
     // cond: Box<Expr>, then: Box<Block>, els: Box<Stmt>
-    If(Box<AST>, Box<AST>, Box<AST>),
+    If(bool, Box<AST>, Box<AST>, Box<AST>),
+    Loop(bool, Box<AST>),
     // ret_val: Box<Expr>
     Return(Box<AST>),
-    // pattern: Box<AST>, iter: Box<Expr>, body: Box<Block>
-    For(Box<AST>, Box<AST>, Box<AST>),
-    // cond: Box<Expr>, body: Box<Block>
-    While(Box<AST>, Box<AST>),
-    Loop(Box<AST>),
     Continue,
-    Break,
+    // break_val: Box<Expr>
+    Break(Box<AST>),
 
     // expr: Box<Expr>
     ExprStmt(Box<AST>),
@@ -70,15 +95,12 @@ pub enum AST {
     // op, op1: Box<Expr>
     Unary(Op, Box<AST>),
     Binary(Op, Box<AST>, Box<AST>),
+    Cast(Box<Type>, Box<AST>),
     // f: Box<Expr>, ps: Vec<Expr>
-    Call(Box<AST>, Vec<AST>),
+    Call(Box<AST>, Vec<Box<AST>>),
     // type: Box<Type>
-    New(Box<AST>),
-    // type: Box<Expr>, val: Box<AST>
-    Cast(Box<AST>, Box<AST>),
+    New(Box<Type>),
 
-    // type: Type
-    Type(Type),
     Id(String),
 
     // Literal
@@ -91,4 +113,44 @@ pub enum AST {
 
     // Option<AST>::None
     None,
+}
+
+impl AST {
+    pub fn is_expr(&self) -> bool {
+        match self {
+            Self::File(_) => false,
+            Self::Class(_, _, _) => false,
+            Self::Func(_, _, _, _) => false,
+            Self::Field(_, _, _) => false,
+            Self::Param(_, _, _) => false,
+            Self::Var(_, _, _, _) => false,
+
+            Self::Block(is_expr, _) => *is_expr,
+            Self::If(is_expr, _, _, _) => *is_expr,
+            Self::Loop(is_expr, _) => *is_expr,
+
+            Self::Continue => false,
+            Self::Return(_) => false,
+            Self::Break(_) => false,
+
+            Self::ExprStmt(_) => false,
+
+            Self::Unary(_, _) => true,
+            Self::Binary(_, _, _) => true,
+            Self::Cast(_, _) => true,
+            Self::Call(_, _) => true,
+            Self::New(_) => true,
+
+            Self::Id(_) => true,
+            Self::Null => true,
+            Self::Bool(_) => true,
+            Self::Int(_) => true,
+            Self::Float(_) => true,
+            Self::String(_) => true,
+            Self::Char(_) => true,
+
+            // 注意None也是表达式，代表()
+            Self::None => true,
+        }
+    }
 }

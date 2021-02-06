@@ -1,13 +1,12 @@
-// Compound Test
 
 class Program {
-	fn main() {
+	fn Main() {
 		System::IO::Write("Hello world!\n");
 		let d1 = new Demo(2, 12);
 		let d: Demo = new Demo(1, 12);
-		let x: i32 = Gcd(27, d.Foo(5));		// GCD(27, 18)
+		let x: i32 = Gcd(27, d.Foo(5));
 		System::IO::Write(x);
-		System::IO::PutChar(10);	// \n
+		System::IO::PutChar(10);
 	}
 
 	fn Gcd(a: i32, b: i32) -> i32 {
