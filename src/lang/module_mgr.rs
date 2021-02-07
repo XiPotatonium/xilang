@@ -8,7 +8,7 @@ pub struct ModuleMgr {
 }
 
 impl ModuleMgr {
-    pub fn new(root_path: &PathBuf, libs: &Vec<String>, save_json: bool) -> ModuleMgr {
+    pub fn new(root_path: &PathBuf, libs: &Vec<String>, show_ast: bool) -> ModuleMgr {
         let root_path =
             fs::canonicalize(root_path).expect(&format!("Fail to canonicalize {:?}", root_path));
         let crate_name = root_path.file_name().unwrap().to_str().unwrap().to_owned();
@@ -16,7 +16,7 @@ impl ModuleMgr {
         // TODO additional class path
 
         ModuleMgr {
-            root: module::Module::new_dir(&root_path, vec![crate_name], save_json).unwrap(),
+            root: module::Module::new_dir(&root_path, vec![crate_name], show_ast).unwrap(),
         }
     }
 

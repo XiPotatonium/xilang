@@ -1,1 +1,1 @@
-pub mod lalr_parser;
+pub mod peg_parser;

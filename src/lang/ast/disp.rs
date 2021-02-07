@@ -1,40 +1,6 @@
-use super::ast::{Op, Type, AST};
+use super::ast::{Op, AST};
 
 use std::fmt;
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // write!(f, "({}, {})", self.x, self.y)
-        match self {
-            Type::Bool => write!(f, "bool"),
-            Type::I32 => write!(f, "i32"),
-            Type::F64 => write!(f, "f64"),
-            Type::Tuple(v) => {
-                let mut iter = v.iter();
-                let mut s = String::from("(");
-                if v.len() != 0 {
-                    s.push_str(&format!("{}", iter.next().unwrap()));
-                    for ty in iter {
-                        s.push_str(&format!(",{}", ty));
-                    }
-                }
-                s.push(')');
-                write!(f, "{}", s)
-            }
-            Type::Arr(dtype, dim) => write!(f, "[{};{}]", dtype, dim),
-            Type::Class(names) => {
-                let mut iter = names.iter();
-                let mut s = iter.next().unwrap().clone();
-                for name in iter {
-                    s.push('.');
-                    s.push_str(name);
-                }
-                write!(f, "{}", s)
-            }
-            Type::Unk => write!(f, "unk"),
-        }
-    }
-}
 
 // Restore escape chars
 fn restore_escape(s: &str) -> String {
@@ -68,7 +34,7 @@ impl fmt::Display for AST {
             ),
             Self::Func(id, ty, ps, body) => write!(
                 f,
-                "{{\"name\":\"(func){}\",\"type\":\"{}\",\"ps\":{},\"body\":{}}}",
+                "{{\"name\":\"(func){}\",\"type\":{},\"ps\":{},\"body\":{}}}",
                 id,
                 ty,
                 ASTChildrenWrapper(ps),
@@ -76,29 +42,27 @@ impl fmt::Display for AST {
             ),
             Self::Field(id, ty, flag) => write!(
                 f,
-                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":\"{}\"}}",
+                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":{}}}",
                 id, flag, ty
             ),
             Self::Param(id, ty, flag) => write!(
                 f,
-                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":\"{}\"}}",
+                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":{}}}",
                 id, flag, ty
             ),
-            Self::Var(pattern, ty, flag, init) => write!(
+            Self::Let(pattern, ty, flag, init) => write!(
                 f,
-                "{{\"name\":\"(var)\", \"id\":{},\"flag\": \"{}\", \"type\":\"{}\",\"init\":{}}}",
+                "{{\"name\":\"(let)\", \"id\":{},\"flag\": \"{}\", \"type\":{},\"init\":{}}}",
                 pattern, flag, ty, *init
             ),
-            Self::Block(is_expr, children) => write!(
+            Self::Block(children) => write!(
                 f,
-                "{{\"name\":\"(block)\", \"is_expr\": \"{}\",\"children\":{}}}",
-                is_expr,
+                "{{\"name\":\"(block)\",\"children\":{}}}",
                 ASTChildrenWrapper(children)
             ),
-            Self::If(is_expr, cond, then, els) => write!(
+            Self::If(cond, then, els) => write!(
                 f,
-                "{{\"name\":\"(if)\", \"is_expr\": \"{}\",\"cond\":{},\"then\":{},\"els\":{}}}",
-                is_expr,
+                "{{\"name\":\"(if)\",\"cond\":{},\"then\":{},\"els\":{}}}",
                 cond.as_ref(),
                 then.as_ref(),
                 els.as_ref()
@@ -106,13 +70,7 @@ impl fmt::Display for AST {
             Self::Continue => write!(f, "{{\"name\":\"continue\"}}"),
             Self::Break(val) => write!(f, "{{\"name\":\"break\", \"val\": {}}}", *val),
             Self::Return(val) => write!(f, "{{\"name\":\"return\",\"val\":{}}}", *val),
-            Self::Loop(is_expr, body) => write!(
-                f,
-                "{{\"name\":\"(loop)\", \"is_expr\": \"{}\",\"body\":{}}}",
-                is_expr,
-                body.as_ref()
-            ),
-            Self::ExprStmt(expr) => write!(f, "{}", expr.as_ref()),
+            Self::Loop(body) => write!(f, "{{\"name\":\"(loop)\",\"body\":{}}}", body.as_ref()),
             Self::Unary(op, expr1) => {
                 write!(f, "{{\"name\":\"{}\",\"operands\":[{}]}}", op, *expr1)
             }
@@ -124,7 +82,8 @@ impl fmt::Display for AST {
                 expr2.as_ref()
             ),
             Self::Cast(ty, expr) => write!(
-                f, "{{\"name\": \"(cast)\", \"ty\": \"{}\", \"val\": {}}}",
+                f,
+                "{{\"name\": \"(cast)\", \"ty\":{}, \"val\": {}}}",
                 ty, expr
             ),
             Self::Call(func, ps) => write!(
@@ -133,8 +92,34 @@ impl fmt::Display for AST {
                 func.as_ref(),
                 ASTChildrenWrapper(ps)
             ),
-            Self::New(ty) => write!(f, "{{\"name\":\"(new)\",\"type\":\"{}\"}}", *ty),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
+            Self::TuplePattern(p) => write!(
+                f,
+                "{{\"name\":\"(TuplePattern)\", \"children\": {}}}",
+                ASTChildrenWrapper(p)
+            ),
+            Self::BoolType => write!(f, "{{\"name\":\"(bool)\"}}"),
+            Self::I32Type => write!(f, "{{\"name\":\"(i32)\"}}"),
+            Self::F64Type => write!(f, "{{\"name\":\"(f64)\"}}"),
+            Self::TupleType(v) => write!(
+                f,
+                "{{\"name\":\"(TupleType)\",\"children\":{}}}",
+                ASTChildrenWrapper(v)
+            ),
+            Self::ArrType(dtype, dim) => write!(
+                f,
+                "{{\"name\":\"(ArrType)\",\"dtype\":{},\"dim\":{}}}",
+                dtype, dim
+            ),
+            Self::ClassType(names) => {
+                let mut iter = names.iter();
+                let mut s = iter.next().unwrap().clone();
+                for name in iter {
+                    s.push('.');
+                    s.push_str(name);
+                }
+                write!(f, "{{\"name\":\"(ClassType){}\"}}", s)
+            }
             Self::Null => write!(f, "{{\"name\":\"null\" }}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
             Self::Int(val) => write!(f, "{{\"name\":\"(int){}\"}}", val),
@@ -183,6 +168,7 @@ impl fmt::Display for Op {
             Op::Le => write!(f, "<="),
             Op::Lt => write!(f, "<"),
             Op::Assign => write!(f, "="),
+            Op::New => write!(f, "new"),
             Op::StaticAccess => write!(f, "::"),
             Op::ObjAccess => write!(f, "."),
             Op::ArrayAccess => write!(f, "[]"),

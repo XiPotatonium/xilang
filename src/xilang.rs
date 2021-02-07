@@ -1,5 +1,7 @@
+extern crate pest;
+#[macro_use]
+extern crate pest_derive;
 extern crate clap;
-extern crate lalrpop_util;
 extern crate lazy_static;
 extern crate regex;
 

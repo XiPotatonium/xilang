@@ -1,0 +1,104 @@
+File = { SOI ~ Class* ~ EOI }
+Class = { "class" ~ Id ~ "{" ~ (Func | StaticField | NonStaticField)* ~ "}" }
+
+StaticField = { "static" ~ Id ~ ":" ~ Type ~ ";" }
+NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ ";" }
+
+Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ BlockExpr }
+SelfParam = { "self" }
+Params = { (SelfParam | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
+
+Pattern = { Id | TuplePattern }
+TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
+
+Type = { 
+    BoolType | I32Type | F64Type
+    | PathExpr
+    | TupleType
+    | ArrType
+}
+BoolType = { "bool" }
+I32Type = { "i32" }
+F64Type = { "f64" }
+TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
+ArrType = { "[" ~ Type ~ ";" ~ Expr ~ "]" }
+
+Stmt = _{ LetStmt | ExprWithoutBlock ~ ";" | ExprWithBlock ~ ";"? }
+LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ ("=" ~ Expr)? ~ ";" }
+Expr = _{ ExprWithBlock | ExprWithoutBlock }
+ExprWithBlock = _{ BlockExpr | LoopExpr | IfExpr }
+ExprWithoutBlock = _{
+    ContinueExpr
+    | BreakExpr
+    | ReturnExpr
+    | AssignExpr
+    | OpExpr
+}
+
+LoopExpr = { "loop" ~ BlockExpr }
+IfExpr = { "if" ~ Expr ~ BlockExpr ~ ("else" ~ (BlockExpr | IfExpr))? }
+BlockExpr = { "{" ~ Stmt* ~ ExprWithoutBlock? ~ "}" }
+
+ContinueExpr = { "continue" }
+BreakExpr = { "break" ~ Expr? }
+ReturnExpr = { "return" ~ Expr? }
+
+GroupedExpr = { "(" ~ Expr ~ ")" }
+PrimaryExpr = { LiteralExpr | Id | GroupedExpr | ExprWithBlock | Type }
+ArgsExpr = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
+ObjAccessExpr = { "." ~ Id }
+PathAccessExpr = { "::" ~ Id }
+ArrAccessExpr = { "[" ~ Expr ~ "]" }
+CallExpr = { PrimaryExpr ~ (ArgsExpr | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
+UnaryExpr = { (LogNegOp | SubOp | NewOp)* ~ CallExpr }
+CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
+MulExpr = { CastExpr ~ ((MulOp | DivOp | ModOp) ~ CastExpr)* }
+AddExpr = { MulExpr ~ ((AddOp | SubOp) ~ MulExpr)* }
+CompExpr = { AddExpr ~ ((LeOp | LtOp | GeOp | GtOp) ~ AddExpr)* }
+EqExpr = { CompExpr ~ ((EqOp | NeOp) ~ CompExpr)* }
+LogAndExpr = { EqExpr ~ ("&&" ~ EqExpr)* }
+LogOrExpr = { LogAndExpr ~ ("||" ~ LogAndExpr)* }
+OpExpr = { LogOrExpr }
+AssignExpr = { LogOrExpr ~ AssignOp ~ LogOrExpr }
+
+AssignOp = { "=" }
+EqOp = { "==" }
+NeOp = { "!=" }
+GeOp = { ">=" }
+GtOp = { ">" }
+LeOp = { "<=" }
+LtOp = { "<" }
+AddOp = { "+" }
+SubOp = { "-" }
+MulOp = { "*" }
+DivOp = { "/" }
+ModOp = { "%" }
+LogNegOp = { "!" }
+NewOp = { "new" }
+
+LiteralExpr = {
+    TrueLiteral
+    | FalseLiteral
+    | NullLiteral
+    | EmptyLiteral
+    | IntLiteral
+    | FloatLiteral
+    | StringLiteral
+    | CharLiteral
+}
+
+TrueLiteral = { "true" }
+FalseLiteral = { "false" }
+NullLiteral = { "null" }
+EmptyLiteral = { "(" ~ ")" }
+IntLiteral = { ASCII_DIGIT+ }
+FloatLiteral = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
+StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
+CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
+
+PathExpr = ${ Id ~ ("::" ~ Id)* }
+Id = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }
+

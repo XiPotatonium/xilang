@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use super::class::Class;
-use super::parser::lalr_parser;
+use super::parser::peg_parser;
 
 pub struct Module {
     pub sub_modules: HashMap<String, Box<Module>>,
@@ -26,24 +26,23 @@ fn check_module_name_validity(name: &str) -> bool {
     NAME_RULE.is_match(name)
 }
 
-fn parse(paths: &Vec<PathBuf>, save_json: bool) -> Vec<Box<AST>> {
-    let mut ret: Vec<Box<AST>> = Vec::new();
+fn parse(paths: &Vec<PathBuf>, show_ast: bool) -> Vec<Box<AST>> {
+    paths
+        .iter()
+        .map(|path| {
+            let ast = peg_parser::parse(path).unwrap();
 
-    for path in paths.iter() {
-        let ast = lalr_parser::lalr_parse(fs::File::open(path).unwrap()).unwrap();
+            if show_ast {
+                // save ast to .json file
+                let mut f = PathBuf::from(path);
+                f.set_extension("ast");
+                let mut f = fs::File::create(f).unwrap();
+                write!(f, "{}", ast);
+            }
 
-        if save_json {
-            // save ast to .json file
-            let mut f = PathBuf::from(path);
-            f.set_extension(".ast.json");
-            let mut f = fs::File::create(f).unwrap();
-            write!(f, "{}", ast).unwrap();
-        }
-
-        ret.push(ast);
-    }
-
-    ret
+            ast
+        })
+        .collect()
 }
 
 impl Module {
@@ -58,7 +57,7 @@ impl Module {
     }
 
     /// Create a module from directory
-    pub fn new_dir(dir: &Path, path: Vec<String>, save_json: bool) -> Option<Box<Module>> {
+    pub fn new_dir(dir: &Path, path: Vec<String>, show_ast: bool) -> Option<Box<Module>> {
         let mut files: Vec<PathBuf> = Vec::new();
         let mut leaf_sub_modules: HashMap<String, Vec<PathBuf>> = HashMap::new();
         let mut ret: Box<Module> = Box::new(Module {
@@ -79,7 +78,7 @@ impl Module {
                 // might be a non-leaf sub-module
                 let mut sub_path = path.to_vec();
                 sub_path.push(file_name.clone());
-                let sub = Module::new_dir(&entry_path, sub_path, save_json);
+                let sub = Module::new_dir(&entry_path, sub_path, show_ast);
                 if let Some(sub) = sub {
                     // TODO: use expect_none once it is stable
                     if let Some(_) = ret.sub_modules.insert(file_name.clone(), sub) {
@@ -130,13 +129,13 @@ impl Module {
             } else {
                 let mut sub_path = path.to_vec();
                 sub_path.push(String::from(leaf_sub_module_name));
-                let sub = Module::new(leaf_sub_module_paths, sub_path, save_json);
+                let sub = Module::new(leaf_sub_module_paths, sub_path, show_ast);
                 ret.sub_modules
                     .insert(String::from(leaf_sub_module_name), sub);
             }
         }
 
-        ret.ast = parse(&files, save_json);
+        ret.ast = parse(&files, show_ast);
 
         if ret.ast.len() == 0 && ret.sub_modules.len() == 0 {
             return None;
