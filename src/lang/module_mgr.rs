@@ -1,9 +1,15 @@
-use super::module;
+use super::class::Class;
+use super::module::Module;
+
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::rc::{Rc, Weak};
 
 pub struct ModuleMgr {
-    root: Box<module::Module>,
+    root: Rc<Module>,
+
+    pub class_table: HashMap<String, Weak<Class>>,
     // TODO Dependencies
 }
 
@@ -14,9 +20,12 @@ impl ModuleMgr {
         let crate_name = root_path.file_name().unwrap().to_str().unwrap().to_owned();
 
         // TODO additional class path
+        println!("Additional class path: {}", libs.join(";"));
+        let mut class_tbl: HashMap<String, Weak<Class>> = HashMap::new();
 
         ModuleMgr {
-            root: module::Module::new_dir(&root_path, vec![crate_name], show_ast).unwrap(),
+            root: Module::new_dir(vec![crate_name], &root_path, &mut class_tbl, show_ast).unwrap(),
+            class_table: class_tbl,
         }
     }
 
@@ -26,17 +35,25 @@ impl ModuleMgr {
     }
 
     pub fn build(&mut self) {
-        // 1. class pass
-        self.root.class_pass();
+        // 1. member pass
+        self.root.member_pass(self);
 
-        // 2. member pass
-        self.root.member_pass();
-
-        // 3. code gen
-        self.root.code_gen();
+        // 2. code gen
+        self.root.code_gen(self);
     }
 
     pub fn dump(&self, out_dir: &PathBuf) {
-        unimplemented!();
+        if out_dir.exists() {
+            if !out_dir.is_dir() {
+                panic!(
+                    "{} already exists but it is not a directory",
+                    out_dir.to_str().unwrap()
+                );
+            }
+        } else {
+            fs::create_dir_all(out_dir).unwrap();
+        }
+
+        self.root.dump(out_dir.clone());
     }
 }
