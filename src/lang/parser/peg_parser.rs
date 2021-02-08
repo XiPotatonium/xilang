@@ -115,7 +115,11 @@ fn build_type(tree: Pair<Rule>) -> Box<AST> {
         Rule::ArrType => {
             let mut iter = tree.into_inner();
             let sub_ty = build_type(iter.next().unwrap());
-            AST::ArrType(sub_ty, build_expr(iter.next().unwrap()))
+            if let Some(expr) = iter.next() {
+                AST::ArrType(sub_ty, build_expr(expr))
+            } else {
+                AST::ArrType(sub_ty, Box::new(AST::None))
+            }
         }
         _ => unreachable!(format!("Found {:?}", tree.as_rule())),
     });

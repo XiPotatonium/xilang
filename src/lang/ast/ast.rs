@@ -54,6 +54,7 @@ pub enum AST {
     // op, op1: Box<Expr>
     Unary(Op, Box<AST>),
     Binary(Op, Box<AST>, Box<AST>),
+    // ty, val
     Cast(Box<AST>, Box<AST>),
     // f: Box<Expr>, ps: Vec<Expr>
     Call(Box<AST>, Vec<Box<AST>>),

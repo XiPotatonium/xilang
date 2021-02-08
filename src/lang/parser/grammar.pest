@@ -21,7 +21,7 @@ BoolType = { "bool" }
 I32Type = { "i32" }
 F64Type = { "f64" }
 TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
-ArrType = { "[" ~ Type ~ ";" ~ Expr ~ "]" }
+ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
 
 Stmt = _{ LetStmt | ExprWithoutBlock ~ ";" | ExprWithBlock ~ ";"? }
 LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ ("=" ~ Expr)? ~ ";" }

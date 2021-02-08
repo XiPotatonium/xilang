@@ -5,7 +5,7 @@
 
 class Program {
 	fn main() {
-		let arrs : [i32;10];
+		let arrs : [i32;] = new [i32;10]();
 		System::IO::Write("Hello world!\n");
 		let d1 = new Demo(2, 12);
 		let d: Demo = new Demo(1, 12);
