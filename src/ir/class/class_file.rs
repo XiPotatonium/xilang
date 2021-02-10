@@ -31,7 +31,12 @@ pub enum Constant {
 pub struct Interface;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Field;
+pub struct Field {
+    pub access_flags: u16,
+    pub name_index: u16,
+    pub descriptor_index: u16,
+    pub attributes: Vec<Attribute>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Method {
@@ -99,12 +104,13 @@ pub enum Instruction {
     Iconst4,            // 0x07
     Iconst5,            // 0x08
     Bipush(u8),         // 0x10
-    LoadConstant(u8),   // 0x12
+    LdC(u8),            // 0x12
     Aload0,             // 0x2A
     Aload1,             // 0x2B
     Aload2,             // 0x2C
     Aload3,             // 0x2D
     Aaload,             // 0x32
+    IStore(u8),         // 0x36
     Iadd,               // 0x60
     IfEq(u16),          // 0x99
     IfNe(u16),          // 0x9A
@@ -128,53 +134,19 @@ pub enum Instruction {
 }
 
 impl Classfile {
-    pub fn new(
-        constants: Vec<Constant>,
-        access_flags: u16,
-        this_class: u16,
-        super_class: u16,
-        methods: Vec<Method>,
-    ) -> Classfile {
+    pub fn new(access_flags: u16) -> Classfile {
         Classfile {
             magic: CAFEBABE,
             minor_version: MINOR_VERSION,
             major_version: MAJOR_VERSION,
-            constant_pool: constants,
+            constant_pool: vec![],
             access_flags: access_flags,
-            this_class: this_class,
-            super_class: super_class,
+            this_class: 0,
+            super_class: 0,
             interfaces: vec![],
             fields: vec![],
-            methods: methods,
+            methods: vec![],
             attributes: vec![],
-        }
-    }
-
-    pub fn lookup_constant(&self, index: u16) -> &Constant {
-        &self.constant_pool[index as usize - 1]
-    }
-
-    pub fn lookup_string(&self, index: u16) -> &str {
-        let val = self.lookup_constant(index);
-        match *val {
-            Constant::Utf8(ref str) => str,
-            _ => panic!("Wanted string, found {:?}", val),
-        }
-    }
-}
-
-impl Method {
-    pub fn new(
-        access_flags: u16,
-        name_index: u16,
-        descriptor_index: u16,
-        attributes: Vec<Attribute>,
-    ) -> Method {
-        Method {
-            access_flags: access_flags,
-            name_index: name_index,
-            descriptor_index: descriptor_index,
-            attributes: attributes,
         }
     }
 }
@@ -190,12 +162,13 @@ impl Instruction {
             Instruction::Iconst4 => 1,
             Instruction::Iconst5 => 1,
             Instruction::Bipush(_) => 2,
-            Instruction::LoadConstant(_) => 2,
+            Instruction::LdC(_) => 2,
             Instruction::Aload0 => 1,
             Instruction::Aload1 => 1,
             Instruction::Aload2 => 1,
             Instruction::Aload3 => 1,
             Instruction::Aaload => 1,
+            Instruction::IStore(_) => 2,
             Instruction::Iadd => 1,
             Instruction::IfEq(_) => 3,
             Instruction::IfNe(_) => 3,

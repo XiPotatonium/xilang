@@ -1,9 +1,10 @@
 File = { SOI ~ Class* ~ EOI }
-Class = { "class" ~ Id ~ "{" ~ (Func | StaticField | NonStaticField)* ~ "}" }
+Class = { "class" ~ Id ~ "{" ~ (StaticInit | Func | StaticField | NonStaticField)* ~ "}" }
 
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ ";" }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ ";" }
 
+StaticInit = { "static" ~ BlockExpr }
 Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ BlockExpr }
 SelfParam = { "self" }
 Params = { (SelfParam | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
@@ -12,12 +13,13 @@ Pattern = { Id | TuplePattern }
 TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
 
 Type = { 
-    BoolType | I32Type | F64Type
+    BoolType | CharType | I32Type | F64Type
     | PathExpr
     | TupleType
     | ArrType
 }
 BoolType = { "bool" }
+CharType = { "char" }
 I32Type = { "i32" }
 F64Type = { "f64" }
 TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
@@ -44,13 +46,15 @@ BreakExpr = { "break" ~ Expr? }
 ReturnExpr = { "return" ~ Expr? }
 
 GroupedExpr = { "(" ~ Expr ~ ")" }
-PrimaryExpr = { LiteralExpr | Id | GroupedExpr | ExprWithBlock | Type }
+PrimaryExpr = { LiteralExpr | Id | GroupedExpr | ExprWithBlock }
 ArgsExpr = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
 ObjAccessExpr = { "." ~ Id }
 PathAccessExpr = { "::" ~ Id }
 ArrAccessExpr = { "[" ~ Expr ~ "]" }
 CallExpr = { PrimaryExpr ~ (ArgsExpr | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
-UnaryExpr = { (LogNegOp | SubOp | NewOp)* ~ CallExpr }
+StructExprField = { Id ~ (":" ~ Expr)? }
+NewExpr = { "new" ~ Type ~ ("{" ~ (StructExprField ~ ",")* ~ StructExprField? ~ "}")? }
+UnaryExpr = { (LogNegOp | AddOp | SubOp)* ~ (NewExpr | CallExpr) }
 CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
 MulExpr = { CastExpr ~ ((MulOp | DivOp | ModOp) ~ CastExpr)* }
 AddExpr = { MulExpr ~ ((AddOp | SubOp) ~ MulExpr)* }
@@ -74,7 +78,6 @@ MulOp = { "*" }
 DivOp = { "/" }
 ModOp = { "%" }
 LogNegOp = { "!" }
-NewOp = { "new" }
 
 LiteralExpr = {
     TrueLiteral

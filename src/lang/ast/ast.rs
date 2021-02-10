@@ -1,43 +1,22 @@
 use crate::ir::flag::*;
 
 #[derive(Debug)]
-pub enum Op {
-    Neg,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    LogNot,
-    LogAnd,
-    LogOr,
-    Eq,
-    Ne,
-    Ge,
-    Gt,
-    Le,
-    Lt,
-    Assign,
-    New,
-    StaticAccess,
-    ObjAccess,
-    ArrayAccess,
-}
+pub enum Op {}
 
 #[derive(Debug)]
 pub enum AST {
     // classes: Vec<AST>
     File(Vec<Box<AST>>),
 
-    // id, methods: Vec<Func>, fields: Vec<Var>
-    Class(String, Vec<Box<AST>>, Vec<Box<AST>>),
+    // id, methods: Vec<Func>, fields: Vec<Var>, static-init
+    Class(String, Flag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
     // id, ty, ps: Vec<Var>, body: Box<Block>
-    Func(String, Box<AST>, Vec<Box<AST>>, Box<AST>),
+    Func(String, Flag, Box<AST>, Vec<Box<AST>>, Box<AST>),
 
-    Field(String, Box<AST>, Flag),
-    Param(String, Box<AST>, Flag),
+    Field(String, Flag, Box<AST>),
+    Param(String, Flag, Box<AST>),
     // pattern, ty, flag, init: Box<AST>
-    Let(Box<AST>, Box<AST>, Flag, Box<AST>),
+    Let(Box<AST>, Flag, Box<AST>, Box<AST>),
 
     // children: Vec<Stmt>
     Block(Vec<Box<AST>>),
@@ -51,26 +30,48 @@ pub enum AST {
     // break_val: Box<Expr>
     Break(Box<AST>),
 
-    // op, op1: Box<Expr>
-    Unary(Op, Box<AST>),
-    Binary(Op, Box<AST>, Box<AST>),
+    OpPos(Box<AST>),
+    OpNeg(Box<AST>),
+    OpAdd(Box<AST>, Box<AST>),
+    OpSub(Box<AST>, Box<AST>),
+    OpMul(Box<AST>, Box<AST>),
+    OpDiv(Box<AST>, Box<AST>),
+    OpMod(Box<AST>, Box<AST>),
+    OpLogNot(Box<AST>),
+    OpLogAnd(Box<AST>, Box<AST>),
+    OpLogOr(Box<AST>, Box<AST>),
+    OpEq(Box<AST>, Box<AST>),
+    OpNe(Box<AST>, Box<AST>),
+    OpGe(Box<AST>, Box<AST>),
+    OpGt(Box<AST>, Box<AST>),
+    OpLe(Box<AST>, Box<AST>),
+    OpLt(Box<AST>, Box<AST>),
+    OpAssign(Box<AST>, Box<AST>),
+    OpStaticAccess(Box<AST>, Box<AST>),
+    OpObjAccess(Box<AST>, Box<AST>),
+    OpArrayAccess(Box<AST>, Box<AST>),
     // ty, val
-    Cast(Box<AST>, Box<AST>),
+    OpCast(Box<AST>, Box<AST>),
     // f: Box<Expr>, ps: Vec<Expr>
-    Call(Box<AST>, Vec<Box<AST>>),
+    OpCall(Box<AST>, Vec<Box<AST>>),
+    // {id: expr}
+    StructExprField(String, Box<AST>),
+    // ty, struct-inits
+    OpNew(Box<AST>, Vec<Box<AST>>),
 
     Id(String),
     TuplePattern(Vec<Box<AST>>),
 
     // Type
-    BoolType,
-    I32Type,
-    F64Type,
-    TupleType(Vec<Box<AST>>),
+    TypeBool,
+    TypeChar,
+    TypeI32,
+    TypeF64,
+    TypeTuple(Vec<Box<AST>>),
     // type, dim
-    ArrType(Box<AST>, Box<AST>),
+    TypeArr(Box<AST>, Box<AST>),
     // class names
-    ClassType(Vec<String>),
+    TypeClass(Vec<String>),
 
     // Literal
     Null,

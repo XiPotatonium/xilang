@@ -1,3 +1,3 @@
 pub mod class;
 pub mod flag;
-pub mod var;
+pub mod ty;

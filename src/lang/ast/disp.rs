@@ -1,4 +1,4 @@
-use super::ast::{Op, AST};
+use super::ast::AST;
 
 use std::fmt;
 
@@ -25,35 +25,41 @@ impl fmt::Display for AST {
         // write!(f, "({}, {})", self.x, self.y)
         match self {
             Self::File(children) => write!(f, "{}", ASTChildrenWrapper(children)),
-            Self::Class(id, funcs, fields) => write!(
+            Self::Class(id, flag, funcs, fields, init) => write!(
                 f,
-                "{{\"name\":\"(class){}\",\"fields\":{},\"funcs\":{}}}",
+                "{{\"name\":\"(class){}\",\"flag\":\"{}\",\"fields\":{},\"init\":{},\"funcs\":{}}}",
                 id,
+                flag,
                 ASTChildrenWrapper(fields),
+                init,
                 ASTChildrenWrapper(funcs)
             ),
-            Self::Func(id, ty, ps, body) => write!(
+            Self::Func(id, flag, ty, ps, body) => write!(
                 f,
-                "{{\"name\":\"(func){}\",\"type\":{},\"ps\":{},\"body\":{}}}",
+                "{{\"name\":\"(func){}\",\"flag\":\"{}\",\"type\":{},\"ps\":{},\"body\":{}}}",
                 id,
+                flag,
                 ty,
                 ASTChildrenWrapper(ps),
                 body.as_ref()
             ),
-            Self::Field(id, ty, flag) => write!(
+            Self::Field(id, flag, ty) => write!(
                 f,
-                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":{}}}",
+                "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"type\":{}}}",
                 id, flag, ty
             ),
-            Self::Param(id, ty, flag) => write!(
+            Self::Param(id, flag, ty) => write!(
                 f,
-                "{{\"name\":\"(field){}\",\"flag\": \"{}\", \"type\":{}}}",
+                "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"type\":{}}}",
                 id, flag, ty
             ),
-            Self::Let(pattern, ty, flag, init) => write!(
+            Self::Let(pattern, flag, ty, init) => write!(
                 f,
                 "{{\"name\":\"(let)\", \"id\":{},\"flag\": \"{}\", \"type\":{},\"init\":{}}}",
-                pattern, flag, ty, *init
+                pattern,
+                flag,
+                ty,
+                init.as_ref()
             ),
             Self::Block(children) => write!(
                 f,
@@ -68,50 +74,156 @@ impl fmt::Display for AST {
                 els.as_ref()
             ),
             Self::Continue => write!(f, "{{\"name\":\"continue\"}}"),
-            Self::Break(val) => write!(f, "{{\"name\":\"break\", \"val\": {}}}", *val),
-            Self::Return(val) => write!(f, "{{\"name\":\"return\",\"val\":{}}}", *val),
+            Self::Break(val) => write!(f, "{{\"name\":\"break\", \"val\": {}}}", val.as_ref()),
+            Self::Return(val) => write!(f, "{{\"name\":\"return\",\"val\":{}}}", val.as_ref()),
             Self::Loop(body) => write!(f, "{{\"name\":\"(loop)\",\"body\":{}}}", body.as_ref()),
-            Self::Unary(op, expr1) => {
-                write!(f, "{{\"name\":\"{}\",\"operands\":[{}]}}", op, *expr1)
+            Self::OpPos(o) => write!(f, "{{\"name\":\"+\",\"lhs\":{}}}", o.as_ref()),
+            Self::OpNeg(o) => write!(f, "{{\"name\":\"-\",\"lhs\":{}}}", o.as_ref()),
+            Self::OpAdd(o1, o2) => write!(
+                f,
+                "{{\"name\":\"+\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpSub(o1, o2) => write!(
+                f,
+                "{{\"name\":\"-\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpMul(o1, o2) => write!(
+                f,
+                "{{\"name\":\"*\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpDiv(o1, o2) => write!(
+                f,
+                "{{\"name\":\"/\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpMod(o1, o2) => write!(
+                f,
+                "{{\"name\":\"%\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpLogNot(o1) => write!(f, "{{\"name\":\"!\",\"lhs\":{}}}", o1.as_ref()),
+            Self::OpLogAnd(o1, o2) => write!(
+                f,
+                "{{\"name\":\"&&\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpLogOr(o1, o2) => write!(
+                f,
+                "{{\"name\":\"||\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpEq(o1, o2) => write!(
+                f,
+                "{{\"name\":\"==\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpNe(o1, o2) => write!(
+                f,
+                "{{\"name\":\"!=\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpGe(o1, o2) => write!(
+                f,
+                "{{\"name\":\">=\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpGt(o1, o2) => write!(
+                f,
+                "{{\"name\":\">\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpLe(o1, o2) => write!(
+                f,
+                "{{\"name\":\"<=\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpLt(o1, o2) => write!(
+                f,
+                "{{\"name\":\"<\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpAssign(o1, o2) => write!(
+                f,
+                "{{\"name\":\"=\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpStaticAccess(o1, o2) => write!(
+                f,
+                "{{\"name\":\"::\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpObjAccess(o1, o2) => write!(
+                f,
+                "{{\"name\":\".\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpArrayAccess(o1, o2) => write!(
+                f,
+                "{{\"name\":\"[]\",\"lhs\":{},\"rhs\":{}}}",
+                o1.as_ref(),
+                o2.as_ref()
+            ),
+            Self::OpCast(ty, expr) => {
+                write!(f, "{{\"name\":\"(cast)\",\"ty\":{},\"val\":{}}}", ty, expr)
             }
-            Self::Binary(op, expr1, expr2) => write!(
-                f,
-                "{{\"name\":\"{}\",\"operands\":[{},{}]}}",
-                op,
-                expr1.as_ref(),
-                expr2.as_ref()
-            ),
-            Self::Cast(ty, expr) => write!(
-                f,
-                "{{\"name\": \"(cast)\", \"ty\":{}, \"val\": {}}}",
-                ty, expr
-            ),
-            Self::Call(func, ps) => write!(
+            Self::OpCall(func, ps) => write!(
                 f,
                 "{{\"name\":\"(call)\",\"func\":{},\"args\":{}}}",
                 func.as_ref(),
                 ASTChildrenWrapper(ps)
             ),
+            Self::StructExprField(id, expr) => write!(
+                f,
+                "{{\"name\":\"(field){}\",\"val\":{}}}",
+                id,
+                expr.as_ref()
+            ),
+            Self::OpNew(ty, struct_init) => write!(
+                f,
+                "{{\"name\":\"new\",\"type\":{},\"fields\":{}}}",
+                ty.as_ref(),
+                ASTChildrenWrapper(struct_init)
+            ),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
             Self::TuplePattern(p) => write!(
                 f,
-                "{{\"name\":\"(TuplePattern)\", \"children\": {}}}",
+                "{{\"name\":\"(TuplePattern)\",\"children\":{}}}",
                 ASTChildrenWrapper(p)
             ),
-            Self::BoolType => write!(f, "{{\"name\":\"(bool)\"}}"),
-            Self::I32Type => write!(f, "{{\"name\":\"(i32)\"}}"),
-            Self::F64Type => write!(f, "{{\"name\":\"(f64)\"}}"),
-            Self::TupleType(v) => write!(
+            Self::TypeBool => write!(f, "{{\"name\":\"(bool)\"}}"),
+            Self::TypeChar => write!(f, "{{\"name\":\"(char)\"}}"),
+            Self::TypeI32 => write!(f, "{{\"name\":\"(i32)\"}}"),
+            Self::TypeF64 => write!(f, "{{\"name\":\"(f64)\"}}"),
+            Self::TypeTuple(v) => write!(
                 f,
                 "{{\"name\":\"(TupleType)\",\"children\":{}}}",
                 ASTChildrenWrapper(v)
             ),
-            Self::ArrType(dtype, dim) => write!(
+            Self::TypeArr(dtype, dim) => write!(
                 f,
                 "{{\"name\":\"(ArrType)\",\"dtype\":{},\"dim\":{}}}",
                 dtype, dim
             ),
-            Self::ClassType(names) => {
+            Self::TypeClass(names) => {
                 let mut iter = names.iter();
                 let mut s = iter.next().unwrap().clone();
                 for name in iter {
@@ -146,32 +258,5 @@ impl fmt::Display for ASTChildrenWrapper<'_> {
             i += 1;
         }
         write!(f, "]")
-    }
-}
-
-impl fmt::Display for Op {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Op::Neg => write!(f, "-"),
-            Op::Add => write!(f, "+"),
-            Op::Sub => write!(f, "-"),
-            Op::Mul => write!(f, "*"),
-            Op::Div => write!(f, "/"),
-            Op::Mod => write!(f, "%"),
-            Op::LogNot => write!(f, "!"),
-            Op::LogAnd => write!(f, "&&"),
-            Op::LogOr => write!(f, "||"),
-            Op::Eq => write!(f, "=="),
-            Op::Ne => write!(f, "!="),
-            Op::Ge => write!(f, ">="),
-            Op::Gt => write!(f, ">"),
-            Op::Le => write!(f, "<="),
-            Op::Lt => write!(f, "<"),
-            Op::Assign => write!(f, "="),
-            Op::New => write!(f, "new"),
-            Op::StaticAccess => write!(f, "::"),
-            Op::ObjAccess => write!(f, "."),
-            Op::ArrayAccess => write!(f, "[]"),
-        }
     }
 }

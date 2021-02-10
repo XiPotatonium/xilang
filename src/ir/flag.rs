@@ -1,24 +1,21 @@
-use std::convert::TryFrom;
-
 use std::fmt;
 
 pub enum FlagTag {
-    Static = 1,
-}
-
-impl TryFrom<u32> for FlagTag {
-    type Error = &'static str;
-    fn try_from(value: u32) -> Result<FlagTag, Self::Error> {
-        match value {
-            1 => Ok(FlagTag::Static),
-            _ => Err("Invalid flag"),
-        }
-    }
+    // Public = 0x0001,
+    // Private = 0x0002,
+    // Protected = 0x0004,
+    Static = 0x0008,
+    // Final = 0x0010,
+    // Interface = 0x0200,
+    // Abstract = 0x0400,
+    // Synthetic = 0x1000,
+    // Annotation = 0x2000,
+    // Enum = 0x4000,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Flag {
-    flag: u32,
+    pub flag: u16,
 }
 
 impl Default for Flag {
@@ -29,11 +26,11 @@ impl Default for Flag {
 
 impl Flag {
     pub fn set(&mut self, tag: FlagTag) {
-        self.flag |= tag as u32;
+        self.flag |= tag as u16;
     }
 
     pub fn is(&self, tag: FlagTag) -> bool {
-        self.flag & (tag as u32) != 0
+        self.flag & (tag as u16) != 0
     }
 }
 

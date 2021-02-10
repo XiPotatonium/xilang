@@ -1,4 +1,4 @@
-use super::super::ast::ast::{Op, AST};
+use super::super::ast::ast::AST;
 use crate::ir::flag::{Flag, FlagTag};
 
 use std::fs;
@@ -34,8 +34,16 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
     let id = build_id(iter.next().unwrap());
     let mut fields: Vec<Box<AST>> = Vec::new();
     let mut methods: Vec<Box<AST>> = Vec::new();
+    let mut init: Option<Box<AST>> = None;
     for sub in iter {
         match sub.as_rule() {
+            Rule::StaticInit => {
+                if let Some(_) = init {
+                    panic!("Duplicated static init found in class {}", id);
+                } else {
+                    init = Some(build_block(sub.into_inner().next().unwrap()));
+                }
+            }
             Rule::StaticField => fields.push(build_field(sub, true)),
             Rule::NonStaticField => fields.push(build_field(sub, false)),
             Rule::Func => methods.push(build_func(sub)),
@@ -43,7 +51,17 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
         }
     }
 
-    Box::new(AST::Class(id, methods, fields))
+    Box::new(AST::Class(
+        id,
+        Flag::default(),
+        methods,
+        fields,
+        if let Some(v) = init {
+            v
+        } else {
+            Box::new(AST::None)
+        },
+    ))
 }
 
 fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
@@ -54,7 +72,7 @@ fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
         flag.set(FlagTag::Static);
     }
 
-    Box::new(AST::Field(id, build_type(iter.next().unwrap()), flag))
+    Box::new(AST::Field(id, flag, build_type(iter.next().unwrap())))
 }
 
 fn build_func(tree: Pair<Rule>) -> Box<AST> {
@@ -69,12 +87,12 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
         let p0 = p_iter.next().unwrap();
         ps.push(Box::new(match p0.as_rule() {
             Rule::SelfParam => {
-                AST::Param(String::from("self"), Box::new(AST::None), Flag::default())
+                AST::Param(String::from("self"), Flag::default(), Box::new(AST::None))
             }
             Rule::Id => AST::Param(
                 build_id(p0),
-                build_type(p_iter.next().unwrap()),
                 Flag::default(),
+                build_type(p_iter.next().unwrap()),
             ),
             _ => unreachable!(),
         }));
@@ -83,8 +101,8 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
             if let Some(p_id) = p_iter.next() {
                 ps.push(Box::new(AST::Param(
                     build_id(p_id),
-                    build_type(p_iter.next().unwrap()),
                     Flag::default(),
+                    build_type(p_iter.next().unwrap()),
                 )));
             } else {
                 break;
@@ -101,24 +119,31 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
         ret_type
     };
 
-    Box::new(AST::Func(id, ret_type, ps, build_block(sub)))
+    Box::new(AST::Func(
+        id,
+        Flag::default(),
+        ret_type,
+        ps,
+        build_block(sub),
+    ))
 }
 
 fn build_type(tree: Pair<Rule>) -> Box<AST> {
     let tree = tree.into_inner().next().unwrap();
     let ret = Box::new(match tree.as_rule() {
-        Rule::BoolType => AST::BoolType,
-        Rule::I32Type => AST::I32Type,
-        Rule::F64Type => AST::F64Type,
-        Rule::PathExpr => AST::ClassType(tree.into_inner().map(|id| build_id(id)).collect()),
-        Rule::TupleType => AST::TupleType(tree.into_inner().map(|ty| build_type(ty)).collect()),
+        Rule::BoolType => AST::TypeBool,
+        Rule::CharType => AST::TypeChar,
+        Rule::I32Type => AST::TypeI32,
+        Rule::F64Type => AST::TypeF64,
+        Rule::PathExpr => AST::TypeClass(tree.into_inner().map(|id| build_id(id)).collect()),
+        Rule::TupleType => AST::TypeTuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {
             let mut iter = tree.into_inner();
             let sub_ty = build_type(iter.next().unwrap());
             if let Some(expr) = iter.next() {
-                AST::ArrType(sub_ty, build_expr(expr))
+                AST::TypeArr(sub_ty, build_expr(expr))
             } else {
-                AST::ArrType(sub_ty, Box::new(AST::None))
+                AST::TypeArr(sub_ty, Box::new(AST::None))
             }
         }
         _ => unreachable!(format!("Found {:?}", tree.as_rule())),
@@ -182,18 +207,18 @@ fn build_block(tree: Pair<Rule>) -> Box<AST> {
                                     // has type
                                     let ty = build_type(sub);
                                     if let Some(sub) = iter.next() {
-                                        AST::Let(pattern, ty, Flag::default(), build_expr(sub))
+                                        AST::Let(pattern, Flag::default(), ty, build_expr(sub))
                                     } else {
                                         // no init
-                                        AST::Let(pattern, ty, Flag::default(), Box::new(AST::None))
+                                        AST::Let(pattern, Flag::default(), ty, Box::new(AST::None))
                                     }
                                 }
                                 _ => {
                                     // no type but has init
                                     AST::Let(
                                         pattern,
-                                        Box::new(AST::None),
                                         Flag::default(),
+                                        Box::new(AST::None),
                                         build_expr(sub),
                                     )
                                 }
@@ -202,8 +227,8 @@ fn build_block(tree: Pair<Rule>) -> Box<AST> {
                             // no type and no init
                             AST::Let(
                                 pattern,
-                                Box::new(AST::None),
                                 Flag::default(),
+                                Box::new(AST::None),
                                 Box::new(AST::None),
                             )
                         })
@@ -219,11 +244,7 @@ fn build_assign(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let lhs = build_log_or_expr(iter.next().unwrap());
     iter.next();
-    Box::new(AST::Binary(
-        Op::Assign,
-        lhs,
-        build_log_or_expr(iter.next().unwrap()),
-    ))
+    Box::new(AST::OpAssign(lhs, build_log_or_expr(iter.next().unwrap())))
 }
 
 fn build_log_or_expr(tree: Pair<Rule>) -> Box<AST> {
@@ -232,7 +253,7 @@ fn build_log_or_expr(tree: Pair<Rule>) -> Box<AST> {
 
     for rhs in iter {
         // log or is left associative
-        ret = Box::new(AST::Binary(Op::LogOr, ret, build_log_and_expr(rhs)));
+        ret = Box::new(AST::OpLogOr(ret, build_log_and_expr(rhs)));
     }
     ret
 }
@@ -242,7 +263,7 @@ fn build_log_and_expr(tree: Pair<Rule>) -> Box<AST> {
     let mut ret = build_eq_expr(iter.next().unwrap());
 
     for rhs in iter {
-        ret = Box::new(AST::Binary(Op::LogAnd, ret, build_eq_expr(rhs)));
+        ret = Box::new(AST::OpLogAnd(ret, build_eq_expr(rhs)));
     }
     ret
 }
@@ -253,15 +274,11 @@ fn build_eq_expr(tree: Pair<Rule>) -> Box<AST> {
 
     loop {
         if let Some(op) = iter.next() {
-            ret = Box::new(AST::Binary(
-                match op.as_rule() {
-                    Rule::EqOp => Op::Eq,
-                    Rule::NeOp => Op::Ne,
-                    _ => unreachable!(),
-                },
-                ret,
-                build_comp_expr(iter.next().unwrap()),
-            ));
+            ret = Box::new(match op.as_rule() {
+                Rule::EqOp => AST::OpEq(ret, build_comp_expr(iter.next().unwrap())),
+                Rule::NeOp => AST::OpNe(ret, build_comp_expr(iter.next().unwrap())),
+                _ => unreachable!(),
+            });
         } else {
             break;
         }
@@ -275,17 +292,13 @@ fn build_comp_expr(tree: Pair<Rule>) -> Box<AST> {
 
     loop {
         if let Some(op) = iter.next() {
-            ret = Box::new(AST::Binary(
-                match op.as_rule() {
-                    Rule::LeOp => Op::Le,
-                    Rule::LtOp => Op::Lt,
-                    Rule::GeOp => Op::Ge,
-                    Rule::GtOp => Op::Gt,
-                    _ => unreachable!(),
-                },
-                ret,
-                build_add_expr(iter.next().unwrap()),
-            ));
+            ret = Box::new(match op.as_rule() {
+                Rule::LeOp => AST::OpLe(ret, build_add_expr(iter.next().unwrap())),
+                Rule::LtOp => AST::OpLt(ret, build_add_expr(iter.next().unwrap())),
+                Rule::GeOp => AST::OpGe(ret, build_add_expr(iter.next().unwrap())),
+                Rule::GtOp => AST::OpGt(ret, build_add_expr(iter.next().unwrap())),
+                _ => unreachable!(),
+            });
         } else {
             break;
         }
@@ -299,15 +312,11 @@ fn build_add_expr(tree: Pair<Rule>) -> Box<AST> {
 
     loop {
         if let Some(op) = iter.next() {
-            ret = Box::new(AST::Binary(
-                match op.as_rule() {
-                    Rule::AddOp => Op::Add,
-                    Rule::SubOp => Op::Sub,
-                    _ => unreachable!(),
-                },
-                ret,
-                build_mul_expr(iter.next().unwrap()),
-            ));
+            ret = Box::new(match op.as_rule() {
+                Rule::AddOp => AST::OpAdd(ret, build_mul_expr(iter.next().unwrap())),
+                Rule::SubOp => AST::OpSub(ret, build_mul_expr(iter.next().unwrap())),
+                _ => unreachable!(),
+            });
         } else {
             break;
         }
@@ -321,16 +330,12 @@ fn build_mul_expr(tree: Pair<Rule>) -> Box<AST> {
 
     loop {
         if let Some(op) = iter.next() {
-            ret = Box::new(AST::Binary(
-                match op.as_rule() {
-                    Rule::MulOp => Op::Mul,
-                    Rule::DivOp => Op::Div,
-                    Rule::ModOp => Op::Mod,
-                    _ => unreachable!(),
-                },
-                ret,
-                build_cast_expr(iter.next().unwrap()),
-            ));
+            ret = Box::new(match op.as_rule() {
+                Rule::MulOp => AST::OpMul(ret, build_cast_expr(iter.next().unwrap())),
+                Rule::DivOp => AST::OpDiv(ret, build_cast_expr(iter.next().unwrap())),
+                Rule::ModOp => AST::OpMod(ret, build_cast_expr(iter.next().unwrap())),
+                _ => unreachable!(),
+            });
         } else {
             break;
         }
@@ -344,7 +349,7 @@ fn build_cast_expr(tree: Pair<Rule>) -> Box<AST> {
 
     loop {
         if let Some(rhs) = iter.next() {
-            ret = Box::new(AST::Cast(build_type(rhs), ret));
+            ret = Box::new(AST::OpCast(build_type(rhs), ret));
         } else {
             break;
         }
@@ -355,20 +360,43 @@ fn build_cast_expr(tree: Pair<Rule>) -> Box<AST> {
 fn build_unary_expr(tree: Pair<Rule>) -> Box<AST> {
     // unary is right associative, iterate reversely
     let mut iter = tree.into_inner().rev();
-    let mut ret = build_call_expr(iter.next().unwrap());
+    let ret = iter.next().unwrap();
+    let mut ret = match ret.as_rule() {
+        Rule::NewExpr => build_new_expr(ret),
+        Rule::CallExpr => build_call_expr(ret),
+        _ => unreachable!(),
+    };
 
     for op in iter {
-        ret = Box::new(AST::Unary(
-            match op.as_rule() {
-                Rule::LogNegOp => Op::LogNot,
-                Rule::SubOp => Op::Neg,
-                Rule::NewOp => Op::New,
-                _ => unreachable!(),
-            },
-            ret,
-        ))
+        ret = Box::new(match op.as_rule() {
+            Rule::AddOp => AST::OpPos(ret),
+            Rule::LogNegOp => AST::OpLogNot(ret),
+            Rule::SubOp => AST::OpNeg(ret),
+            _ => unreachable!(),
+        });
     }
     ret
+}
+
+fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
+    let mut iter = tree.into_inner();
+    let ty = build_type(iter.next().unwrap());
+    let fields: Vec<Box<AST>> = iter
+        .map(|sub| {
+            let mut sub_iter = sub.into_inner();
+            let id = build_id(sub_iter.next().unwrap());
+            Box::new(AST::StructExprField(
+                id,
+                if let Some(val) = sub_iter.next() {
+                    build_expr(val)
+                } else {
+                    Box::new(AST::None)
+                },
+            ))
+        })
+        .collect();
+
+    Box::new(AST::OpNew(ty, fields))
 }
 
 fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
@@ -377,22 +405,20 @@ fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
 
     for rhs in iter {
         ret = Box::new(match rhs.as_rule() {
-            Rule::ArgsExpr => AST::Call(ret, rhs.into_inner().map(|sub| build_expr(sub)).collect()),
-            Rule::ObjAccessExpr => AST::Binary(
-                Op::ObjAccess,
+            Rule::ArgsExpr => {
+                AST::OpCall(ret, rhs.into_inner().map(|sub| build_expr(sub)).collect())
+            }
+            Rule::ObjAccessExpr => AST::OpObjAccess(
                 ret,
                 Box::new(AST::Id(build_id(rhs.into_inner().next().unwrap()))),
             ),
-            Rule::PathAccessExpr => AST::Binary(
-                Op::StaticAccess,
+            Rule::PathAccessExpr => AST::OpStaticAccess(
                 ret,
                 Box::new(AST::Id(build_id(rhs.into_inner().next().unwrap()))),
             ),
-            Rule::ArrAccessExpr => AST::Binary(
-                Op::ArrayAccess,
-                ret,
-                build_expr(rhs.into_inner().next().unwrap()),
-            ),
+            Rule::ArrAccessExpr => {
+                AST::OpArrayAccess(ret, build_expr(rhs.into_inner().next().unwrap()))
+            }
             _ => unreachable!(),
         });
     }

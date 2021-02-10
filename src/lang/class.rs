@@ -9,7 +9,7 @@ use super::ast::gen::gen;
 use super::class_builder::ClassBuilder;
 use super::module_mgr::ModuleMgr;
 use crate::ir::flag::{Flag, FlagTag};
-use crate::ir::var::VarType;
+use crate::ir::ty::{fn_descriptor, VarType};
 
 pub struct Var {
     pub id: String,
@@ -46,31 +46,35 @@ impl Locals {
         }
     }
 
-    fn push(&mut self) {
+    pub fn push(&mut self) {
         self.sym_tbl.push(HashMap::new());
     }
 
-    fn pop(&mut self) {
+    pub fn pop(&mut self) {
         self.sym_tbl.pop().expect("Cannot pop empty stack");
     }
 
-    fn add(&mut self, id: &str, ty: VarType, flag: Flag, initialized: bool) {
+    pub fn add(&mut self, id: &str, ty: VarType, flag: Flag, initialized: bool) -> usize {
         let var_size = ty.slot();
         let var = Var::new(id, flag, ty, self.size, initialized);
+        let offset = self.size;
         self.sym_tbl
             .last_mut()
             .unwrap()
             .insert(id.to_owned(), self.locals.len());
         self.locals.push(var);
         self.size += var_size;
+        offset
     }
 }
 
-pub struct Func {
+pub struct Method {
     pub is_static: bool,
     pub ret_ty: VarType,
     pub ps_ty: Vec<VarType>,
     pub locals: RefCell<Locals>,
+    // method idx in class file
+    pub method_idx: usize,
 }
 
 pub struct Class {
@@ -78,52 +82,58 @@ pub struct Class {
     pub descriptor: String,
     ast_fields: Vec<Box<AST>>,
     ast_methods: Vec<Box<AST>>,
+    ast_init: Box<AST>,
     pub fields: RefCell<HashMap<String, Box<Var>>>,
     // overload is not allowed
-    pub methods: RefCell<HashMap<String, Box<Func>>>,
-    builder: RefCell<ClassBuilder>,
+    pub methods: RefCell<HashMap<String, Box<Method>>>,
+    pub builder: RefCell<ClassBuilder>,
 }
 
 pub struct CodeGenCtx<'mgr> {
     pub mgr: &'mgr ModuleMgr,
     pub class: &'mgr Class,
-    pub method: &'mgr Func,
+    pub method: &'mgr Method,
 }
 
 impl Class {
     pub fn new(module_path: &Vec<String>, ast: Box<AST>) -> Class {
         let mut class_path = module_path.to_owned();
 
-        if let AST::Class(id, methods, fields) = *ast {
+        if let AST::Class(id, flag, methods, fields, init) = *ast {
             class_path.push(id);
             Class {
                 descriptor: format!("L{};", class_path.join("/")),
-                path: class_path,
                 ast_fields: fields,
                 ast_methods: methods,
+                ast_init: init,
                 fields: RefCell::new(HashMap::new()),
                 methods: RefCell::new(HashMap::new()),
-                builder: RefCell::new(ClassBuilder::new()),
+                builder: RefCell::new(ClassBuilder::new(&class_path.join("/"), &flag)),
+                path: class_path,
             }
         } else {
             panic!("Parser error");
         }
     }
 
+    pub fn get_fullname(&self) -> String {
+        self.path.join("/")
+    }
+
     pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> VarType {
         match ast.as_ref() {
-            AST::I32Type => VarType::I32,
-            AST::F64Type => VarType::F64,
-            AST::BoolType => VarType::Bool,
+            AST::TypeI32 => VarType::Int,
+            AST::TypeF64 => VarType::Double,
+            AST::TypeBool => VarType::Boolean,
             AST::None => VarType::Void,
-            AST::TupleType(types) => {
+            AST::TypeTuple(types) => {
                 let mut ret: Vec<VarType> = Vec::new();
                 for ty in types.iter() {
                     ret.push(self.get_type(ty, mgr));
                 }
                 VarType::Tuple(ret)
             }
-            AST::ClassType(class_name) => {
+            AST::TypeClass(class_name) => {
                 // TODO: use
                 // Search in this module and global
                 if class_name.len() == 0 {
@@ -136,49 +146,56 @@ impl Class {
                         class_name[0]
                     );
                     if mgr.class_table.contains_key(&class_des) {
-                        return VarType::Obj(class_des);
+                        return VarType::Class(class_des);
                     }
                 }
 
                 // Search in global
                 let class_des = format!("L{};", class_name.join("/"));
                 if mgr.class_table.contains_key(&class_des) {
-                    VarType::Obj(class_des)
+                    VarType::Class(class_des)
                 } else {
                     panic!("Class {} not found", class_des);
                 }
             }
-            AST::ArrType(dtype, _) => VarType::Arr(Box::new(self.get_type(dtype, mgr))),
+            AST::TypeArr(dtype, _) => VarType::Array(Box::new(self.get_type(dtype, mgr))),
             _ => unreachable!(),
         }
     }
 
     pub fn member_pass(&self, mgr: &ModuleMgr) {
         let mut methods_mut = self.methods.borrow_mut();
+        let mut builder = self.builder.borrow_mut();
         for method in self.ast_methods.iter() {
-            if let AST::Func(id, ty, ps, _) = method.as_ref() {
+            if let AST::Func(id, flag, ty, ps, _) = method.as_ref() {
                 let mut ps_: Vec<VarType> = Vec::new();
                 let mut has_self = false;
                 if ps.len() > 0 {
-                    if let AST::Field(_, ty, _) = ps[0].as_ref() {
+                    if let AST::Field(_, _, ty) = ps[0].as_ref() {
                         if let AST::None = ty.as_ref() {
                             // first param is "self"
                             has_self = true;
                         }
                     }
                 }
+
                 for p in ps.iter().skip(if has_self { 1 } else { 0 }) {
-                    if let AST::Field(_, ty, _) = p.as_ref() {
+                    if let AST::Field(_, _, ty) = p.as_ref() {
                         ps_.push(self.get_type(ty, mgr));
                     }
                 }
+
+                let ret_ty = self.get_type(ty, mgr);
+                let method_idx = builder.add_method(id, &fn_descriptor(&ret_ty, &ps_), flag);
+
                 if let Some(_) = methods_mut.insert(
                     id.clone(),
-                    Box::new(Func {
-                        ret_ty: self.get_type(ty, mgr),
+                    Box::new(Method {
+                        ret_ty,
                         ps_ty: ps_,
                         locals: RefCell::new(Locals::new()),
                         is_static: !has_self,
+                        method_idx,
                     }),
                 ) {
                     // TODO: use expect_none once it becomes stable
@@ -188,11 +205,11 @@ impl Class {
         }
 
         // FIXME: specify misc data size
-        let mut obj_offset: usize = 0;
-        let mut static_offset: usize = 0;
+        let mut obj_offset = 0;
+        let mut static_offset = 0;
         let mut fields_mut = self.fields.borrow_mut();
         for field in self.ast_fields.iter() {
-            if let AST::Field(id, ty, flag) = field.as_ref() {
+            if let AST::Field(id, flag, ty) = field.as_ref() {
                 let is_static = flag.is(FlagTag::Static);
                 // Field will have default initialization
                 let field = Box::new(Var::new(
@@ -210,6 +227,9 @@ impl Class {
                     obj_offset += field.ty.size();
                 }
 
+                // Build Field in class file
+                builder.add_field(id, &field.ty.descriptor(), flag);
+
                 if let Some(_) = fields_mut.insert(id.clone(), field) {
                     // TODO: use expect_none once it becomes stable
                     panic!("Dulicated field {} in class {}", id, self.path.join("::"));
@@ -224,14 +244,14 @@ impl Class {
     pub fn code_gen(&self, mgr: &ModuleMgr) {
         let ms = self.methods.borrow();
         for method_ast in self.ast_methods.iter() {
-            if let AST::Func(id, _, ps, block) = method_ast.as_ref() {
+            if let AST::Func(id, _, _, ps, block) = method_ast.as_ref() {
                 let m = ms.get(id).unwrap();
                 // Create symbol table, put args into locals
                 {
                     let mut local_mut = m.locals.borrow_mut();
                     local_mut.push();
                     for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
-                        if let AST::Field(id, _, flag) = p.as_ref() {
+                        if let AST::Field(id, flag, _) = p.as_ref() {
                             // args will be initialized by caller
                             local_mut.add(id, ty.clone(), *flag, true);
                         } else {
