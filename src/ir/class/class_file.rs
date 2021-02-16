@@ -1,37 +1,41 @@
+use super::super::inst::Inst;
+
+use std::ops::Index;
+
 const CAFEBABE: u32 = 0xCAFEBABE;
 const MAJOR_VERSION: u16 = 52;
 const MINOR_VERSION: u16 = 0;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Classfile {
+pub struct ClassFile {
     pub magic: u32,
     pub minor_version: u16,
     pub major_version: u16,
     pub constant_pool: Vec<Constant>,
     pub access_flags: u16,
     pub this_class: u16,
-    pub super_class: u16,
-    pub interfaces: Vec<Interface>,
-    pub fields: Vec<Field>,
-    pub methods: Vec<Method>,
+    pub interfaces: Vec<IrInterface>,
+    pub fields: Vec<IrField>,
+    pub methods: Vec<IrMethod>,
     pub attributes: Vec<Attribute>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
-    Utf8(String),          //  1
-    Class(u16),            //  7
-    String(u16),           //  8
-    Fieldref(u16, u16),    //  9
+    Utf8(String),          // 1
+    Integer(i32),          // 3
+    Class(u16),            // 7
+    String(u16),           // 8
+    Fieldref(u16, u16),    // 9
     Methodref(u16, u16),   // 10
     NameAndType(u16, u16), // 12
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Interface;
+pub struct IrInterface;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Field {
+pub struct IrField {
     pub access_flags: u16,
     pub name_index: u16,
     pub descriptor_index: u16,
@@ -39,7 +43,7 @@ pub struct Field {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Method {
+pub struct IrMethod {
     pub access_flags: u16,
     pub name_index: u16,
     pub descriptor_index: u16,
@@ -49,10 +53,9 @@ pub struct Method {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attribute {
     Code(
+        // max stacks
         u16,
-        u16,
-        u16,
-        Vec<Instruction>,
+        Vec<Inst>,
         Vec<ExceptionTableEntry>,
         Vec<Attribute>,
     ),
@@ -94,55 +97,15 @@ pub enum VerificationType {
     Uninitialized(u16), // 8
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Instruction {
-    IconstM1,           // 0x02
-    Iconst0,            // 0x03
-    Iconst1,            // 0x04
-    Iconst2,            // 0x05
-    Iconst3,            // 0x06
-    Iconst4,            // 0x07
-    Iconst5,            // 0x08
-    Bipush(u8),         // 0x10
-    LdC(u8),            // 0x12
-    Aload0,             // 0x2A
-    Aload1,             // 0x2B
-    Aload2,             // 0x2C
-    Aload3,             // 0x2D
-    Aaload,             // 0x32
-    IStore(u8),         // 0x36
-    Iadd,               // 0x60
-    IfEq(u16),          // 0x99
-    IfNe(u16),          // 0x9A
-    IfLt(u16),          // 0x9B
-    IfGe(u16),          // 0x9C
-    IfGt(u16),          // 0x9D
-    IfLe(u16),          // 0x9E
-    IfIcmpEq(u16),      // 0x9F
-    IfIcmpNe(u16),      // 0xA0
-    IfIcmpLt(u16),      // 0xA1
-    IfIcmpGe(u16),      // 0xA2
-    IfIcmpGt(u16),      // 0xA3
-    IfIcmpLe(u16),      // 0xA4
-    Goto(u16),          // 0xA7
-    Return,             // 0xB1
-    GetStatic(u16),     // 0xB2
-    InvokeVirtual(u16), // 0xB6
-    InvokeSpecial(u16), // 0xB7
-    InvokeStatic(u16),  // 0xB8
-    ArrayLength,        // 0xBE
-}
-
-impl Classfile {
-    pub fn new(access_flags: u16) -> Classfile {
-        Classfile {
+impl ClassFile {
+    pub fn new(access_flags: u16) -> ClassFile {
+        ClassFile {
             magic: CAFEBABE,
             minor_version: MINOR_VERSION,
             major_version: MAJOR_VERSION,
             constant_pool: vec![],
             access_flags: access_flags,
             this_class: 0,
-            super_class: 0,
             interfaces: vec![],
             fields: vec![],
             methods: vec![],
@@ -151,44 +114,10 @@ impl Classfile {
     }
 }
 
-impl Instruction {
-    pub fn size(&self) -> u8 {
-        match *self {
-            Instruction::IconstM1 => 1,
-            Instruction::Iconst0 => 1,
-            Instruction::Iconst1 => 1,
-            Instruction::Iconst2 => 1,
-            Instruction::Iconst3 => 1,
-            Instruction::Iconst4 => 1,
-            Instruction::Iconst5 => 1,
-            Instruction::Bipush(_) => 2,
-            Instruction::LdC(_) => 2,
-            Instruction::Aload0 => 1,
-            Instruction::Aload1 => 1,
-            Instruction::Aload2 => 1,
-            Instruction::Aload3 => 1,
-            Instruction::Aaload => 1,
-            Instruction::IStore(_) => 2,
-            Instruction::Iadd => 1,
-            Instruction::IfEq(_) => 3,
-            Instruction::IfNe(_) => 3,
-            Instruction::IfLt(_) => 3,
-            Instruction::IfGe(_) => 3,
-            Instruction::IfGt(_) => 3,
-            Instruction::IfLe(_) => 3,
-            Instruction::IfIcmpEq(_) => 3,
-            Instruction::IfIcmpNe(_) => 3,
-            Instruction::IfIcmpLt(_) => 3,
-            Instruction::IfIcmpGe(_) => 3,
-            Instruction::IfIcmpGt(_) => 3,
-            Instruction::IfIcmpLe(_) => 3,
-            Instruction::Goto(_) => 3,
-            Instruction::Return => 1,
-            Instruction::GetStatic(_) => 3,
-            Instruction::InvokeVirtual(_) => 3,
-            Instruction::InvokeSpecial(_) => 3,
-            Instruction::InvokeStatic(_) => 3,
-            Instruction::ArrayLength => 1,
-        }
+impl Index<u16> for ClassFile {
+    type Output = Constant;
+
+    fn index(&self, idx: u16) -> &Self::Output {
+        &self.constant_pool[idx as usize]
     }
 }

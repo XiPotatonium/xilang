@@ -78,6 +78,7 @@ fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
 fn build_func(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
+    let mut flag = Flag::default();
 
     let mut ps: Vec<Box<AST>> = Vec::new();
     let mut sub = iter.next().unwrap();
@@ -85,17 +86,19 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
         // Build parameters
         let mut p_iter = sub.into_inner();
         let p0 = p_iter.next().unwrap();
-        ps.push(Box::new(match p0.as_rule() {
+        match p0.as_rule() {
             Rule::SelfParam => {
-                AST::Param(String::from("self"), Flag::default(), Box::new(AST::None))
+                flag.set(FlagTag::Static);
             }
-            Rule::Id => AST::Param(
-                build_id(p0),
-                Flag::default(),
-                build_type(p_iter.next().unwrap()),
-            ),
+            Rule::Id => {
+                ps.push(Box::new(AST::Param(
+                    build_id(p0),
+                    Flag::default(),
+                    build_type(p_iter.next().unwrap()),
+                )));
+            }
             _ => unreachable!(),
-        }));
+        }
 
         loop {
             if let Some(p_id) = p_iter.next() {
@@ -119,13 +122,7 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
         ret_type
     };
 
-    Box::new(AST::Func(
-        id,
-        Flag::default(),
-        ret_type,
-        ps,
-        build_block(sub),
-    ))
+    Box::new(AST::Func(id, flag, ret_type, ps, build_block(sub)))
 }
 
 fn build_type(tree: Pair<Rule>) -> Box<AST> {
@@ -408,14 +405,12 @@ fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
             Rule::ArgsExpr => {
                 AST::OpCall(ret, rhs.into_inner().map(|sub| build_expr(sub)).collect())
             }
-            Rule::ObjAccessExpr => AST::OpObjAccess(
-                ret,
-                Box::new(AST::Id(build_id(rhs.into_inner().next().unwrap()))),
-            ),
-            Rule::PathAccessExpr => AST::OpStaticAccess(
-                ret,
-                Box::new(AST::Id(build_id(rhs.into_inner().next().unwrap()))),
-            ),
+            Rule::ObjAccessExpr => {
+                AST::OpObjAccess(ret, build_id(rhs.into_inner().next().unwrap()))
+            }
+            Rule::PathAccessExpr => {
+                AST::OpStaticAccess(ret, build_id(rhs.into_inner().next().unwrap()))
+            }
             Rule::ArrAccessExpr => {
                 AST::OpArrayAccess(ret, build_expr(rhs.into_inner().next().unwrap()))
             }

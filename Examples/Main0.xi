@@ -3,6 +3,7 @@
  */
 // Compound Test
 
+/*
 class Program {
 	fn main() {
 		let arrs : [i32;] = new [i32;10];
@@ -48,3 +49,4 @@ class Demo {
  		self.value + TAG + a + self.id
  	}
 }
+*/

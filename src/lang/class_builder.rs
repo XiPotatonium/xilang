@@ -1,9 +1,44 @@
-use crate::ir::class::class_file::{Classfile, Constant, Field, Instruction, Method};
+use crate::ir::class::class_file::{Attribute, ClassFile, Constant, IrField, IrMethod};
 use crate::ir::flag::Flag;
+use crate::ir::inst::Inst;
 use crate::ir::ty::VarType;
+use crate::ir::util::linkedlist::LinkedList;
+
+use super::class::Method;
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
+
+struct BasicBlock {
+    insts: Vec<Inst>,
+}
+
+struct MethodBuilder {
+    codes: LinkedList<BasicBlock>,
+    size: u16,
+}
+
+impl MethodBuilder {
+    fn new() -> MethodBuilder {
+        let mut ret = MethodBuilder {
+            codes: LinkedList::new(),
+            size: 0,
+        };
+
+        // there is a default bb
+        ret.push_bb();
+
+        ret
+    }
+
+    fn push_bb(&mut self) {
+        self.codes.push_back(BasicBlock { insts: Vec::new() });
+    }
+
+    fn push(&mut self, inst: Inst) {
+        self.size += inst.size();
+        self.codes.back_mut().unwrap().insts.push(inst);
+    }
+}
 
 pub struct ClassBuilder {
     // use const map to avoid redeclaration
@@ -19,9 +54,11 @@ pub struct ClassBuilder {
     method_map: HashMap<(u16, u16), u16>,
     // (utf8 name idx, utf8 ty idx) -> NameAndType idx
     name_and_type_map: HashMap<(u16, u16), u16>,
-    class_file: Classfile,
+    // value -> idx
+    int_map: HashMap<i32, u16>,
+    pub class_file: ClassFile,
 
-    codes: Vec<Vec<Instruction>>,
+    codes: Vec<MethodBuilder>,
 }
 
 impl ClassBuilder {
@@ -33,7 +70,8 @@ impl ClassBuilder {
             field_map: HashMap::new(),
             method_map: HashMap::new(),
             name_and_type_map: HashMap::new(),
-            class_file: Classfile::new(flag.flag),
+            int_map: HashMap::new(),
+            class_file: ClassFile::new(flag.flag),
             codes: Vec::new(),
         };
 
@@ -46,7 +84,7 @@ impl ClassBuilder {
     pub fn add_field(&mut self, name: &str, ty: &str, flag: &Flag) -> usize {
         let name_index = self.add_const_utf8(name);
         let descriptor_index = self.add_const_utf8(ty);
-        self.class_file.fields.push(Field {
+        self.class_file.fields.push(IrField {
             access_flags: flag.flag,
             name_index,
             descriptor_index,
@@ -59,13 +97,33 @@ impl ClassBuilder {
     pub fn add_method(&mut self, name: &str, ty: &str, flag: &Flag) -> usize {
         let name_index = self.add_const_utf8(name);
         let descriptor_index = self.add_const_utf8(ty);
-        self.class_file.methods.push(Method {
+        self.class_file.methods.push(IrMethod {
             access_flags: flag.flag,
             name_index,
             descriptor_index,
             attributes: vec![],
         });
+        self.codes.push(MethodBuilder::new());
         self.class_file.methods.len() - 1
+    }
+
+    /// Post-Process
+    ///
+    /// Fill all jump instructions, concat all basic blocks
+    ///
+    pub fn done(&mut self, method_idx: usize, max_stack: u16) {
+        let ir_method = &mut self.class_file.methods[method_idx];
+        let method_builder = &mut self.codes[method_idx];
+        // fill jump instructions
+
+        // concat basic blocks
+        let mut codes: Vec<Inst> = Vec::new();
+        for bb in method_builder.codes.iter_mut() {
+            codes.append(&mut bb.insts);
+        }
+        ir_method
+            .attributes
+            .push(Attribute::Code(max_stack, codes, vec![], vec![]));
     }
 }
 
@@ -157,22 +215,153 @@ impl ClassBuilder {
             ret
         }
     }
-}
 
-// instructions
-impl ClassBuilder {
-    pub fn add_inst_store(&mut self, method_idx: usize, local_ty: &VarType, local_offset: usize) {
-        let local_offset = u8::try_from(local_offset).expect("Too large offset");
-        self.codes[method_idx].push(match local_ty {
-            VarType::Int => Instruction::IStore(local_offset),
-            _ => unimplemented!(),
-        });
+    fn add_const_i(&mut self, val: i32) -> u16 {
+        if let Some(ret) = self.int_map.get(&val) {
+            *ret
+        } else {
+            self.class_file.constant_pool.push(Constant::Integer(val));
+            let ret = self.class_file.constant_pool.len() as u16;
+            self.int_map.insert(val, ret);
+            ret
+        }
     }
 }
 
-// Serde
+/// Wrap load/store/iinc
+///
+/// TODO: use concat_idents! once it becomes stable
+/*
+macro_rules! wrap_wide {
+    ($inst: path, $arg: expr) => {
+        {
+            let val = $arg as u16;
+            match val {
+                0 => inst0(val as u8),
+                1 => inst1(val as u8),
+                2 => inst2(val as u8),
+                3 => inst3(val as u8),
+                _ => {
+                    if val >= u8::MIN as u16 && val <= u8::MAX as u16 {
+                        $inst(val as u8)
+                    } else {
+                        Inst::Wide(Box::new($inst((val >> 8) as u8)), (val % (1u16 << 8)) as u8)
+                    }
+                }
+            }
+        }
+    };
+}
+*/
+
+// instructions
 impl ClassBuilder {
-    pub fn serialize(&self, buf: &mut Vec<u8>) {
-        unimplemented!();
+    pub fn add_inst(&mut self, method_idx: usize, inst: Inst) {
+        self.codes[method_idx].push(inst);
+    }
+
+    pub fn add_inst_store(&mut self, method_idx: usize, local_ty: &VarType, local_offset: u16) {
+        self.codes[method_idx].push(match local_ty {
+            VarType::Int => match local_offset {
+                0 => Inst::IStore0,
+                1 => Inst::IStore1,
+                2 => Inst::IStore2,
+                3 => Inst::IStore3,
+                _ => {
+                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
+                        Inst::IStore(local_offset as u8)
+                    } else {
+                        Inst::Wide(
+                            Box::new(Inst::IStore((local_offset >> 8) as u8)),
+                            (local_offset % (1u16 << 8)) as u8,
+                        )
+                    }
+                }
+            },
+            VarType::Class(_) => match local_offset {
+                0 => Inst::AStore0,
+                1 => Inst::AStore1,
+                2 => Inst::AStore2,
+                3 => Inst::AStore3,
+                _ => {
+                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
+                        Inst::AStore(local_offset as u8)
+                    } else {
+                        Inst::Wide(
+                            Box::new(Inst::AStore((local_offset >> 8) as u8)),
+                            (local_offset % (1u16 << 8)) as u8,
+                        )
+                    }
+                }
+            },
+            _ => unimplemented!(),
+        });
+    }
+
+    pub fn add_inst_load(&mut self, method_idx: usize, local_ty: &VarType, local_offset: u16) {
+        self.codes[method_idx].push(match local_ty {
+            VarType::Int => match local_offset {
+                0 => Inst::ILoad0,
+                1 => Inst::ILoad1,
+                2 => Inst::ILoad2,
+                3 => Inst::ILoad3,
+                _ => {
+                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
+                        Inst::ILoad(local_offset as u8)
+                    } else {
+                        Inst::Wide(
+                            Box::new(Inst::ILoad((local_offset >> 8) as u8)),
+                            (local_offset % (1u16 << 8)) as u8,
+                        )
+                    }
+                }
+            },
+            VarType::Class(_) => match local_offset {
+                0 => Inst::ALoad0,
+                1 => Inst::ALoad1,
+                2 => Inst::ALoad2,
+                3 => Inst::ALoad3,
+                _ => {
+                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
+                        Inst::ALoad(local_offset as u8)
+                    } else {
+                        Inst::Wide(
+                            Box::new(Inst::ALoad((local_offset >> 8) as u8)),
+                            (local_offset % (1u16 << 8)) as u8,
+                        )
+                    }
+                }
+            },
+            _ => unimplemented!(),
+        });
+    }
+
+    /// Push an int value to the stack
+    pub fn add_inst_pushi(&mut self, method_idx: usize, value: i32) {
+        let inst = match value {
+            -1 => Inst::IConstM1,
+            0 => Inst::IConst0,
+            1 => Inst::IConst1,
+            2 => Inst::IConst2,
+            3 => Inst::IConst3,
+            4 => Inst::IConst4,
+            5 => Inst::IConst5,
+            _ => {
+                if value >= i8::MIN as i32 && value <= i8::MAX as i32 {
+                    Inst::BIPush(value as i8)
+                } else if value >= i16::MIN as i32 && value >= i16::MAX as i32 {
+                    unimplemented!("SIPush is not implemented")
+                } else {
+                    let i_const_idx = self.add_const_i(value);
+
+                    if i_const_idx >= u8::MIN as u16 && i_const_idx <= u8::MAX as u16 {
+                        Inst::LdC(i_const_idx as u8)
+                    } else {
+                        Inst::LdCW(i_const_idx)
+                    }
+                }
+            }
+        };
+        self.codes[method_idx].push(inst);
     }
 }

@@ -1,7 +1,7 @@
 use super::ast::AST;
 
 impl AST {
-    pub fn is_const(&self) -> bool {
+    pub fn is_constant(&self) -> bool {
         match self {
             Self::File(_)
             | Self::Class(_, _, _, _, _)
@@ -23,25 +23,27 @@ impl AST {
             | Self::TypeTuple(_)
             | Self::TypeClass(_)
             | Self::TypeArr(_, _) => false,
-            Self::Block(stmts) => stmts.len() == 0 || (stmts.len() == 1 && stmts[0].is_const()),
-            Self::If(cond, then, els) => cond.is_const() && then.is_const() && els.is_const(),
-            Self::OpPos(o) => o.is_const(),
-            Self::OpNeg(o) => o.is_const(),
-            Self::OpAdd(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpSub(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpMul(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpDiv(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpMod(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpLogNot(o1) => o1.is_const(),
-            Self::OpLogAnd(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpLogOr(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpEq(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpNe(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpGe(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpGt(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpLe(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpLt(o1, o2) => o1.is_const() && o2.is_const(),
-            Self::OpCast(_, v) => v.is_const(),
+            Self::Block(stmts) => stmts.len() == 0 || (stmts.len() == 1 && stmts[0].is_constant()),
+            Self::If(cond, then, els) => {
+                cond.is_constant() && then.is_constant() && els.is_constant()
+            }
+            Self::OpPos(o) => o.is_constant(),
+            Self::OpNeg(o) => o.is_constant(),
+            Self::OpAdd(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpSub(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpMul(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpDiv(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpMod(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpLogNot(o1) => o1.is_constant(),
+            Self::OpLogAnd(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpLogOr(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpEq(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpNe(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpGe(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpGt(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpLe(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpLt(o1, o2) => o1.is_constant() && o2.is_constant(),
+            Self::OpCast(_, v) => v.is_constant(),
             Self::StructExprField(_, _) => false,
             Self::OpAssign(_, _)
             | Self::OpNew(_, _)
@@ -72,26 +74,26 @@ pub fn literal_type(ast: &Box<AST>) -> AST {
     }
 }
 
-pub fn const_collapse(ast: &Box<AST>) -> AST {
+pub fn constant_folding(ast: &Box<AST>) -> AST {
     match ast.as_ref() {
         AST::Block(stmts) => {
             if stmts.len() == 0 {
                 AST::None
             } else if stmts.len() == 1 {
-                const_collapse(&stmts[0])
+                constant_folding(&stmts[0])
             } else {
                 unreachable!();
             }
         }
         AST::If(cond, then, els) => {
-            let cond = const_collapse(cond);
+            let cond = constant_folding(cond);
             match cond {
-                AST::Bool(true) => const_collapse(then),
-                AST::Bool(false) => const_collapse(els),
+                AST::Bool(true) => constant_folding(then),
+                AST::Bool(false) => constant_folding(els),
                 _ => panic!("Invalid condition in if statement, neither true nor false"),
             }
         }
-        AST::OpCast(ty, val) => match const_collapse(val) {
+        AST::OpCast(ty, val) => match constant_folding(val) {
             AST::Bool(v) => match ty.as_ref() {
                 AST::TypeBool => AST::Bool(v),
                 _ => panic!("Invalid cast. Bool value cannot be cast to other type"),

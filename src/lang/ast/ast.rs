@@ -47,8 +47,8 @@ pub enum AST {
     OpLe(Box<AST>, Box<AST>),
     OpLt(Box<AST>, Box<AST>),
     OpAssign(Box<AST>, Box<AST>),
-    OpStaticAccess(Box<AST>, Box<AST>),
-    OpObjAccess(Box<AST>, Box<AST>),
+    OpStaticAccess(Box<AST>, String),
+    OpObjAccess(Box<AST>, String),
     OpArrayAccess(Box<AST>, Box<AST>),
     // ty, val
     OpCast(Box<AST>, Box<AST>),

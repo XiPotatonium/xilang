@@ -25,6 +25,10 @@ impl Default for Flag {
 }
 
 impl Flag {
+    pub fn new(flag: u16) -> Flag {
+        Flag { flag }
+    }
+
     pub fn set(&mut self, tag: FlagTag) {
         self.flag |= tag as u16;
     }

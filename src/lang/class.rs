@@ -10,17 +10,18 @@ use super::class_builder::ClassBuilder;
 use super::module_mgr::ModuleMgr;
 use crate::ir::flag::{Flag, FlagTag};
 use crate::ir::ty::{fn_descriptor, VarType};
+use crate::ir::CLINIT_METHOD_NAME;
 
 pub struct Var {
     pub id: String,
     pub flag: Flag,
     pub ty: VarType,
-    pub offset: usize,
+    pub offset: u16,
     pub initialized: bool,
 }
 
 impl Var {
-    pub fn new(id: &str, flag: Flag, ty: VarType, offset: usize, initialized: bool) -> Var {
+    pub fn new(id: &str, flag: Flag, ty: VarType, offset: u16, initialized: bool) -> Var {
         Var {
             id: id.to_owned(),
             flag,
@@ -31,9 +32,25 @@ impl Var {
     }
 }
 
+pub struct Field {
+    pub id: String,
+    pub flag: Flag,
+    pub ty: VarType,
+}
+
+impl Field {
+    pub fn new(id: &str, flag: Flag, ty: VarType) -> Field {
+        Field {
+            id: id.to_owned(),
+            flag,
+            ty,
+        }
+    }
+}
+
 pub struct Locals {
     pub locals: Vec<Var>,
-    pub size: usize,
+    pub size: u16,
     pub sym_tbl: Vec<HashMap<String, usize>>,
 }
 
@@ -54,7 +71,7 @@ impl Locals {
         self.sym_tbl.pop().expect("Cannot pop empty stack");
     }
 
-    pub fn add(&mut self, id: &str, ty: VarType, flag: Flag, initialized: bool) -> usize {
+    pub fn add(&mut self, id: &str, ty: VarType, flag: Flag, initialized: bool) -> u16 {
         let var_size = ty.slot();
         let var = Var::new(id, flag, ty, self.size, initialized);
         let offset = self.size;
@@ -69,10 +86,9 @@ impl Locals {
 }
 
 pub struct Method {
-    pub is_static: bool,
+    pub flag: Flag,
     pub ret_ty: VarType,
     pub ps_ty: Vec<VarType>,
-    pub locals: RefCell<Locals>,
     // method idx in class file
     pub method_idx: usize,
 }
@@ -82,8 +98,9 @@ pub struct Class {
     pub descriptor: String,
     ast_fields: Vec<Box<AST>>,
     ast_methods: Vec<Box<AST>>,
+    // static init
     ast_init: Box<AST>,
-    pub fields: RefCell<HashMap<String, Box<Var>>>,
+    pub fields: RefCell<HashMap<String, Box<Field>>>,
     // overload is not allowed
     pub methods: RefCell<HashMap<String, Box<Method>>>,
     pub builder: RefCell<ClassBuilder>,
@@ -93,6 +110,7 @@ pub struct CodeGenCtx<'mgr> {
     pub mgr: &'mgr ModuleMgr,
     pub class: &'mgr Class,
     pub method: &'mgr Method,
+    pub locals: RefCell<Locals>,
 }
 
 impl Class {
@@ -116,10 +134,6 @@ impl Class {
         }
     }
 
-    pub fn get_fullname(&self) -> String {
-        self.path.join("/")
-    }
-
     pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> VarType {
         match ast.as_ref() {
             AST::TypeI32 => VarType::Int,
@@ -127,11 +141,7 @@ impl Class {
             AST::TypeBool => VarType::Boolean,
             AST::None => VarType::Void,
             AST::TypeTuple(types) => {
-                let mut ret: Vec<VarType> = Vec::new();
-                for ty in types.iter() {
-                    ret.push(self.get_type(ty, mgr));
-                }
-                VarType::Tuple(ret)
+                unimplemented!();
             }
             AST::TypeClass(class_name) => {
                 // TODO: use
@@ -163,78 +173,122 @@ impl Class {
         }
     }
 
+    fn declare_method(&self, id: &str, flag: &Flag, ret_ty: VarType, ps: Vec<VarType>) {
+        let method_idx =
+            self.builder
+                .borrow_mut()
+                .add_method(id, &fn_descriptor(&ret_ty, &ps), flag);
+
+        if let Some(_) = self.methods.borrow_mut().insert(
+            id.to_owned(),
+            Box::new(Method {
+                ret_ty,
+                ps_ty: ps,
+                flag: flag.clone(),
+                method_idx,
+            }),
+        ) {
+            // TODO: use expect_none once it becomes stable
+            panic!("Duplicated method {} in class {}", id, self.path.join("::"));
+        }
+    }
+
     pub fn member_pass(&self, mgr: &ModuleMgr) {
-        let mut methods_mut = self.methods.borrow_mut();
-        let mut builder = self.builder.borrow_mut();
+        // Add static init
+        match self.ast_init.as_ref() {
+            AST::Block(_) => {
+                let ret_ty = VarType::Void;
+                let ps: Vec<VarType> = vec![];
+                let mut flag = Flag::default();
+                flag.set(FlagTag::Static);
+
+                self.declare_method(CLINIT_METHOD_NAME, &flag, ret_ty, ps);
+            }
+            AST::None => (),
+            _ => unreachable!("Parser error"),
+        };
+
         for method in self.ast_methods.iter() {
             if let AST::Func(id, flag, ty, ps, _) = method.as_ref() {
-                let mut ps_: Vec<VarType> = Vec::new();
-                let mut has_self = false;
-                if ps.len() > 0 {
-                    if let AST::Field(_, _, ty) = ps[0].as_ref() {
-                        if let AST::None = ty.as_ref() {
-                            // first param is "self"
-                            has_self = true;
+                let ps = ps
+                    .iter()
+                    .map(|p| {
+                        if let AST::Param(_, _, ty) = p.as_ref() {
+                            self.get_type(ty, mgr)
+                        } else {
+                            unreachable!();
                         }
-                    }
-                }
-
-                for p in ps.iter().skip(if has_self { 1 } else { 0 }) {
-                    if let AST::Field(_, _, ty) = p.as_ref() {
-                        ps_.push(self.get_type(ty, mgr));
-                    }
-                }
-
+                    })
+                    .collect();
                 let ret_ty = self.get_type(ty, mgr);
-                let method_idx = builder.add_method(id, &fn_descriptor(&ret_ty, &ps_), flag);
-
-                if let Some(_) = methods_mut.insert(
-                    id.clone(),
-                    Box::new(Method {
-                        ret_ty,
-                        ps_ty: ps_,
-                        locals: RefCell::new(Locals::new()),
-                        is_static: !has_self,
-                        method_idx,
-                    }),
-                ) {
-                    // TODO: use expect_none once it becomes stable
-                    panic!("Dulicated method {} in class {}", id, self.path.join("::"));
-                }
+                self.declare_method(id, flag, ret_ty, ps);
             }
         }
 
-        // FIXME: specify misc data size
-        let mut obj_offset = 0;
-        let mut static_offset = 0;
-        let mut fields_mut = self.fields.borrow_mut();
         for field in self.ast_fields.iter() {
             if let AST::Field(id, flag, ty) = field.as_ref() {
-                let is_static = flag.is(FlagTag::Static);
                 // Field will have default initialization
-                let field = Box::new(Var::new(
-                    id,
-                    *flag,
-                    self.get_type(ty, mgr),
-                    if is_static { static_offset } else { obj_offset },
-                    true,
-                ));
-
-                // currently no padding nor alignment
-                if is_static {
-                    static_offset += field.ty.size();
-                } else {
-                    obj_offset += field.ty.size();
-                }
+                let field = Box::new(Field::new(id, *flag, self.get_type(ty, mgr)));
 
                 // Build Field in class file
-                builder.add_field(id, &field.ty.descriptor(), flag);
+                self.builder
+                    .borrow_mut()
+                    .add_field(id, &field.ty.descriptor(), flag);
 
-                if let Some(_) = fields_mut.insert(id.clone(), field) {
+                if let Some(_) = self.fields.borrow_mut().insert(id.clone(), field) {
                     // TODO: use expect_none once it becomes stable
                     panic!("Dulicated field {} in class {}", id, self.path.join("::"));
                 }
             }
+        }
+    }
+
+    fn code_gen_method(&self, mgr: &ModuleMgr, m: &Method, ps: &Vec<Box<AST>>, block: &Box<AST>) {
+        // Create symbol table, put args into locals
+        let mut locals = Locals::new();
+        {
+            locals.push();
+            for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
+                if let AST::Field(id, flag, _) = p.as_ref() {
+                    // args will be initialized by caller
+                    locals.add(id, ty.clone(), *flag, true);
+                } else {
+                    panic!("Parser error");
+                }
+            }
+        }
+
+        let ctx = CodeGenCtx {
+            mgr,
+            class: self,
+            locals: RefCell::new(locals),
+            method: m,
+        };
+        let mut ret = VarType::Void;
+        if let AST::Block(stmts) = block.as_ref() {
+            for stmt in stmts.iter() {
+                ret = gen(&ctx, stmt);
+            }
+        } else {
+            panic!("Parser error")
+        }
+        // Check type equivalent
+        if ret != m.ret_ty {
+            panic!();
+        }
+
+        {
+            let mut local_mut = ctx.locals.borrow_mut();
+            local_mut.pop();
+            assert_eq!(
+                local_mut.sym_tbl.len(),
+                0,
+                "Symbol table is not empty after generation"
+            );
+
+            self.builder
+                .borrow_mut()
+                .done(ctx.method.method_idx, local_mut.size);
         }
     }
 
@@ -243,64 +297,39 @@ impl Class {
     /// There is no default value for fields
     pub fn code_gen(&self, mgr: &ModuleMgr) {
         let ms = self.methods.borrow();
+        // gen static init
+        match self.ast_init.as_ref() {
+            AST::Block(_) => {
+                let m = ms.get(CLINIT_METHOD_NAME).unwrap();
+                let ps: Vec<Box<AST>> = vec![];
+                self.code_gen_method(mgr, m, &ps, &self.ast_init);
+            }
+            AST::None => (),
+            _ => unreachable!("Parser error"),
+        };
+
         for method_ast in self.ast_methods.iter() {
             if let AST::Func(id, _, _, ps, block) = method_ast.as_ref() {
                 let m = ms.get(id).unwrap();
-                // Create symbol table, put args into locals
-                {
-                    let mut local_mut = m.locals.borrow_mut();
-                    local_mut.push();
-                    for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
-                        if let AST::Field(id, flag, _) = p.as_ref() {
-                            // args will be initialized by caller
-                            local_mut.add(id, ty.clone(), *flag, true);
-                        } else {
-                            panic!("Parser error");
-                        }
-                    }
-                }
-
-                let ctx = CodeGenCtx {
-                    mgr,
-                    class: self,
-                    method: m.as_ref(),
-                };
-                let mut ret = VarType::Void;
-                if let AST::Block(stmts) = block.as_ref() {
-                    for stmt in stmts.iter() {
-                        ret = gen(&ctx, stmt);
-                    }
-                } else {
-                    panic!("Parser error")
-                }
-                // Check type match
-
-                {
-                    let mut local_mut = m.locals.borrow_mut();
-                    local_mut.pop();
-                    assert_eq!(
-                        local_mut.sym_tbl.len(),
-                        0,
-                        "Symbol table is not empty after generation"
-                    );
-                }
-                unimplemented!("Return type check is not implemented");
+                self.code_gen_method(mgr, m, ps, block);
             } else {
-                panic!("Parser error");
+                unreachable!("Parser error");
             }
         }
     }
 
     pub fn dump(&self, dir: &Path) {
-        let mut buf: Vec<u8> = Vec::new();
-        self.builder.borrow().serialize(&mut buf);
-
         let module_name = &self.path[self.path.len() - 2];
         let class_name = &self.path[self.path.len() - 1];
 
-        let path = dir.join(format!("{}.{}.xibc", module_name, class_name));
+        let ir = self.builder.borrow().class_file.to_text();
+        let mut f =
+            fs::File::create(dir.join(format!("{}.{}.xir", module_name, class_name))).unwrap();
+        f.write_all(ir.as_bytes()).unwrap();
 
-        let mut f = fs::File::create(path).unwrap();
+        let buf = self.builder.borrow().class_file.to_binary();
+        let mut f =
+            fs::File::create(dir.join(format!("{}.{}.xibc", module_name, class_name))).unwrap();
         f.write_all(&buf).unwrap();
     }
 }

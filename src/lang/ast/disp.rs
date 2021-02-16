@@ -166,15 +166,15 @@ impl fmt::Display for AST {
             ),
             Self::OpStaticAccess(o1, o2) => write!(
                 f,
-                "{{\"name\":\"::\",\"lhs\":{},\"rhs\":{}}}",
+                "{{\"name\":\"::\",\"lhs\":{},\"rhs\":\"{}\"}}",
                 o1.as_ref(),
-                o2.as_ref()
+                o2
             ),
             Self::OpObjAccess(o1, o2) => write!(
                 f,
-                "{{\"name\":\".\",\"lhs\":{},\"rhs\":{}}}",
+                "{{\"name\":\".\",\"lhs\":{},\"rhs\":\"{}\"}}",
                 o1.as_ref(),
-                o2.as_ref()
+                o2
             ),
             Self::OpArrayAccess(o1, o2) => write!(
                 f,

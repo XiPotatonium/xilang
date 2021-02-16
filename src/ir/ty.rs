@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Eq)]
 pub enum VarType {
     Boolean,
     Byte,
@@ -18,7 +18,7 @@ pub enum VarType {
 }
 
 impl VarType {
-    pub fn slot(&self) -> usize {
+    pub fn slot(&self) -> u16 {
         match self {
             Self::Boolean
             | Self::Byte
@@ -40,14 +40,14 @@ impl VarType {
         }
     }
 
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u16 {
         match self {
             Self::Byte => 1,
             Self::Short | Self::Char => 2,
             Self::Int | Self::Boolean | Self::Float | Self::Class(_) | Self::Array(_) => 4,
             Self::Double | Self::Long => 8,
             Self::Tuple(types) => {
-                let mut size = 0usize;
+                let mut size = 0u16;
                 for ty in types.iter() {
                     size += ty.size();
                 }
@@ -59,6 +59,24 @@ impl VarType {
 
     pub fn descriptor(&self) -> String {
         format!("{}", self)
+    }
+}
+
+impl PartialEq for VarType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Boolean, Self::Boolean)
+            | (Self::Byte, Self::Byte)
+            | (Self::Char, Self::Char)
+            | (Self::Short, Self::Short)
+            | (Self::Int, Self::Int)
+            | (Self::Long, Self::Long)
+            | (Self::Float, Self::Float)
+            | (Self::Double, Self::Double)
+            | (Self::Void, Self::Void) => true,
+            (Self::Class(class0), Self::Class(class1)) => class0 == class1,
+            _ => false,
+        }
     }
 }
 
@@ -81,6 +99,34 @@ impl fmt::Display for VarType {
                 "({}",
                 vs.iter().map(|t| format!("{}", t)).collect::<String>()
             ),
+        }
+    }
+}
+
+pub struct MethodType {
+    pub class_name: String,
+    pub method_name: String,
+}
+
+pub enum XirType {
+    RVal(VarType),
+    // class full name, method name
+    Method(String, String),
+    // class full name, field name
+    Field(String, String),
+    // class full name
+    Class(String),
+    // module full name
+    Module(String),
+    // offset
+    Local(u16),
+}
+
+impl XirType {
+    pub fn expect_rval(self) -> VarType {
+        match self {
+            Self::RVal(ret) => ret,
+            _ => panic!("Expect XirType::VarType"),
         }
     }
 }
