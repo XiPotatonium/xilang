@@ -29,6 +29,8 @@ pub enum Inst {
     AStore1,            // 0X4C
     AStore2,            // 0X4D
     AStore3,            // 0X4E
+    Pop,                // 0X57
+    Pop2,               // 0X58
     IAdd,               // 0X60
     Return,             // 0XB1
     GetStatic(u16),     // 0XB2
@@ -74,6 +76,8 @@ impl Inst {
             Self::AStore1 => 1,
             Self::AStore2 => 1,
             Self::AStore3 => 1,
+            Self::Pop => 1,
+            Self::Pop2 => 1,
             Self::IAdd => 1,
             Self::Return => 1,
             Self::GetStatic(_) => 3,

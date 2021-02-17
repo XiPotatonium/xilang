@@ -25,7 +25,7 @@ F64Type = { "f64" }
 TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
 ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
 
-Stmt = _{ LetStmt | ExprWithoutBlock ~ ";" | ExprWithBlock ~ ";"? }
+Stmt = { LetStmt | ExprWithoutBlock ~ ";" | ExprWithBlock ~ ";"? }
 LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ ("=" ~ Expr)? ~ ";" }
 Expr = _{ ExprWithBlock | ExprWithoutBlock }
 ExprWithBlock = _{ BlockExpr | LoopExpr | IfExpr }
@@ -100,8 +100,9 @@ StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
 PathExpr = ${ Id ~ ("::" ~ Id)* }
-Id = @{ !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+Id = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
+/*
 KeyWord = { 
     "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "use" | "where"
     | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
@@ -110,6 +111,7 @@ KeyWord = {
     | "false" | "true" | "null"
     | "yield" | "typeof"
 }
+*/
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }

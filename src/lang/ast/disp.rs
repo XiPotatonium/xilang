@@ -34,9 +34,9 @@ impl fmt::Display for AST {
                 init,
                 ASTChildrenWrapper(funcs)
             ),
-            Self::Func(id, flag, ty, ps, body) => write!(
+            Self::Method(id, flag, ty, ps, body) => write!(
                 f,
-                "{{\"name\":\"(func){}\",\"flag\":\"{}\",\"type\":{},\"ps\":{},\"body\":{}}}",
+                "{{\"name\":\"(method){}\",\"flag\":\"{}\",\"type\":{},\"ps\":{},\"body\":{}}}",
                 id,
                 flag,
                 ty,
@@ -61,6 +61,7 @@ impl fmt::Display for AST {
                 ty,
                 init.as_ref()
             ),
+            Self::Stmt(stmt) => write!(f, "{{\"name\":\"(stmt)\",\"stmt\":{}}}", stmt),
             Self::Block(children) => write!(
                 f,
                 "{{\"name\":\"(block)\",\"children\":{}}}",

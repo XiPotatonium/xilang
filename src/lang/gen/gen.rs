@@ -2,9 +2,48 @@ use super::super::ast::ast::AST;
 use super::ctx::CodeGenCtx;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
-use crate::ir::ty::{fn_descriptor, VarType, XirType};
+use crate::ir::ty::RValType;
 
-pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> VarType {
+pub enum ValType {
+    LVal(LValType),
+    RVal(RValType),
+    Ret(RValType),
+}
+
+impl std::fmt::Display for ValType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LVal(lval) => unimplemented!(),
+            Self::RVal(rval) => write!(f, "{} (RVal)", rval),
+            Self::Ret(retv) => write!(f, "{} (Ret)", retv),
+        }
+    }
+}
+
+impl ValType {
+    pub fn expect_rval(self) -> RValType {
+        match self {
+            Self::LVal(_) => panic!("Expect rval but found lval"),
+            Self::Ret(_) => panic!("Expect rval but found return value"),
+            Self::RVal(val) => val,
+        }
+    }
+}
+
+pub enum LValType {
+    // class full name, method name
+    Method(String, String),
+    // class full name, field name
+    Field(String, String),
+    // class full name
+    Class(String),
+    // module full name
+    Module(String),
+    // local name
+    Local(String),
+}
+
+pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
     /*
     // TODO Use constant folding
     if ast.is_const() {
@@ -14,32 +53,176 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> VarType {
     }
     */
     match ast.as_ref() {
-        AST::Block(stmts) => gen_block(ctx, stmts),
-        AST::Let(pattern, flag, ty, init) => gen_let(ctx, pattern, flag, ty, init),
-        AST::OpNew(ty, fields) => gen_new(ctx, ty, fields),
-        AST::OpCall(f, args) => gen_call(ctx, f, args),
-        AST::OpAssign(lhs, rhs) => gen_assign(ctx, lhs, rhs),
-        AST::OpAdd(lhs, rhs) => gen_add(ctx, lhs, rhs),
-        AST::Id(id) => gen_id_rval(ctx, id),
+        AST::Block(children) => gen_block(ctx, children),
+        AST::Stmt(stmt) => gen_stmt(ctx, stmt),
+        AST::Let(pattern, flag, ty, init) => ValType::RVal(gen_let(ctx, pattern, flag, ty, init)),
+        AST::OpNew(ty, fields) => ValType::RVal(gen_new(ctx, ty, fields)),
+        AST::OpCall(f, args) => ValType::RVal(gen_call(ctx, f, args)),
+        AST::OpAssign(lhs, rhs) => ValType::RVal(gen_assign(ctx, lhs, rhs)),
+        AST::OpAdd(lhs, rhs) => ValType::RVal(gen_add(ctx, lhs, rhs)),
+        AST::OpObjAccess(_, _) => {
+            let lval = gen_lval(ctx, ast, false);
+            match &lval {
+                LValType::Field(class_name, field_name) => {
+                    let class_rc = ctx
+                        .mgr
+                        .class_table
+                        .get(class_name)
+                        .unwrap()
+                        .upgrade()
+                        .unwrap();
+                    let class_ref = class_rc.borrow();
+                    let f = class_ref.fields.get(field_name).unwrap();
+
+                    let ret = f.ty.clone();
+                    let mut builder = ctx.class.builder.borrow_mut();
+                    let field_idx =
+                        builder.add_const_fieldref(class_name, field_name, &ret.descriptor());
+                    builder.add_inst(ctx.method.method_idx, Inst::GetField(field_idx));
+
+                    ValType::RVal(ret)
+                }
+                _ => unreachable!(),
+            }
+        }
+        AST::OpStaticAccess(_, _) => {
+            let lval = gen_lval(ctx, ast, false);
+            match &lval {
+                LValType::Field(class_name, field_name) => {
+                    let class_rc = ctx
+                        .mgr
+                        .class_table
+                        .get(class_name)
+                        .unwrap()
+                        .upgrade()
+                        .unwrap();
+                    let class_ref = class_rc.borrow();
+                    let f = class_ref.fields.get(field_name).unwrap();
+
+                    let ret = f.ty.clone();
+                    let mut builder = ctx.class.builder.borrow_mut();
+                    let field_idx =
+                        builder.add_const_fieldref(class_name, field_name, &ret.descriptor());
+                    builder.add_inst(ctx.method.method_idx, Inst::GetStatic(field_idx));
+
+                    ValType::RVal(ret)
+                }
+                _ => unreachable!(),
+            }
+        }
+        AST::Id(id) => ValType::RVal(gen_id_rval(ctx, id)),
         AST::Int(val) => {
             ctx.class
                 .builder
                 .borrow_mut()
                 .add_inst_pushi(ctx.method.method_idx, *val);
-            VarType::Int
+            ValType::RVal(RValType::Int)
         }
-        AST::None => VarType::Void,
-        _ => unimplemented!(),
+        AST::None => ValType::RVal(RValType::Void),
+        _ => unimplemented!("{}", ast),
     }
 }
 
-fn gen_compound_lval(ctx: &CodeGenCtx, ast: &Box<AST>, prefer_field: bool) -> XirType {
+fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
     match ast.as_ref() {
+        AST::Id(id) => {
+            if expect_method {
+                // query method in this class
+                if ctx.class.methods.contains_key(id) {
+                    return LValType::Method(ctx.class.fullname.clone(), id.to_owned());
+                }
+            } else {
+                // query local var
+                if ctx.locals.borrow().contains_key(id) {
+                    return LValType::Local(id.to_owned());
+                } else if ctx.class.fields.contains_key(id) {
+                    // query field in this class
+                    // either static or non-static is ok
+                    return LValType::Field(ctx.class.fullname.clone(), id.to_owned());
+                }
+            }
+
+            // module or class
+            let class_in_cur_module = format!(
+                "{}/{}",
+                ctx.class.path[..ctx.class.path.len() - 1].join("/"),
+                id
+            );
+            if ctx.mgr.class_table.contains_key(&class_in_cur_module) {
+                // a class in current module
+                LValType::Class(class_in_cur_module)
+            } else {
+                unimplemented!("Query {} as module not implemented", id);
+            }
+        }
         AST::OpObjAccess(lhs, rhs) => {
-            unimplemented!();
+            // generate lhs as lval (as the first arg in non-static method or objectref of putfield)
+            let lhs = gen(ctx, lhs).expect_rval();
+            match lhs {
+                RValType::Class(name) => {
+                    // Access a non-static method or non-static field in class
+                    let class_rc = ctx.mgr.class_table.get(&name).unwrap().upgrade().unwrap();
+                    let class_ref = class_rc.borrow();
+                    if expect_method {
+                        if let Some(m) = class_ref.methods.get(rhs) {
+                            if m.flag.is(FlagTag::Static) {
+                                panic!("Cannot obj access static method {}::{}", name, rhs);
+                            } else {
+                                LValType::Method(name, rhs.to_owned())
+                            }
+                        } else {
+                            panic!("No method {} found in class {}", rhs, name);
+                        }
+                    } else {
+                        if let Some(f) = class_ref.fields.get(rhs) {
+                            if f.flag.is(FlagTag::Static) {
+                                panic!("Cannot obj access static filed {}::{}", name, rhs);
+                            } else {
+                                LValType::Field(name, rhs.to_owned())
+                            }
+                        } else {
+                            panic!("No field {} found in class {}", rhs, name);
+                        }
+                    }
+                }
+                _ => panic!("Cannot obj access a non-obj value"),
+            }
         }
         AST::OpStaticAccess(lhs, rhs) => {
-            unimplemented!();
+            let lhs = gen_lval(ctx, lhs, expect_method);
+            match lhs {
+                LValType::Module(name) => {
+                    // Access a class or sub-class in module
+                    unimplemented!();
+                }
+                LValType::Class(name) => {
+                    // Access a static method or static field in class
+                    let class_rc = ctx.mgr.class_table.get(&name).unwrap().upgrade().unwrap();
+                    let class_ref = class_rc.borrow();
+                    if expect_method {
+                        if let Some(m) = class_ref.methods.get(rhs) {
+                            if m.flag.is(FlagTag::Static) {
+                                LValType::Method(name, rhs.to_owned())
+                            } else {
+                                panic!("Cannot static access non-static method {}.{}", name, rhs);
+                            }
+                        } else {
+                            panic!("No method {} found in class {}", rhs, name);
+                        }
+                    } else {
+                        if let Some(f) = class_ref.fields.get(rhs) {
+                            if f.flag.is(FlagTag::Static) {
+                                LValType::Field(name, rhs.to_owned())
+                            } else {
+                                panic!("Cannot static access non-static filed {}.{}", name, rhs);
+                            }
+                        } else {
+                            panic!("No field {} found in class {}", rhs, name);
+                        }
+                    }
+                }
+                _ => unimplemented!(),
+            }
         }
         AST::OpArrayAccess(lhs, rhs) => {
             unimplemented!();
@@ -48,12 +231,12 @@ fn gen_compound_lval(ctx: &CodeGenCtx, ast: &Box<AST>, prefer_field: bool) -> Xi
     }
 }
 
-fn gen_block(ctx: &CodeGenCtx, stmts: &Vec<Box<AST>>) -> VarType {
+fn gen_block(ctx: &CodeGenCtx, children: &Vec<Box<AST>>) -> ValType {
     // Push Symbol table
     ctx.locals.borrow_mut().push();
 
-    let mut ret = VarType::Void;
-    for stmt in stmts.iter() {
+    let mut ret = ValType::RVal(RValType::Void);
+    for stmt in children.iter() {
         ret = gen(ctx, stmt);
     }
 
@@ -62,13 +245,39 @@ fn gen_block(ctx: &CodeGenCtx, stmts: &Vec<Box<AST>>) -> VarType {
     ret
 }
 
+fn gen_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
+    let ret = gen(ctx, stmt);
+    match &ret {
+        ValType::RVal(ty) => {
+            // pop from stack
+            match ty.slot() {
+                0 => (),
+                1 => ctx
+                    .class
+                    .builder
+                    .borrow_mut()
+                    .add_inst(ctx.method.method_idx, Inst::Pop),
+                2 => ctx
+                    .class
+                    .builder
+                    .borrow_mut()
+                    .add_inst(ctx.method.method_idx, Inst::Pop2),
+                _ => unreachable!(),
+            };
+            ValType::RVal(RValType::Void)
+        }
+        ValType::Ret(_) => ret,
+        ValType::LVal(_) => unreachable!(),
+    }
+}
+
 fn gen_let(
     ctx: &CodeGenCtx,
     pattern: &Box<AST>,
     flag: &Flag,
     ty: &Box<AST>,
     init: &Box<AST>,
-) -> VarType {
+) -> RValType {
     match pattern.as_ref() {
         AST::Id(id) => {
             if let AST::None = init.as_ref() {
@@ -83,7 +292,7 @@ fn gen_let(
                 }
             } else {
                 // build init
-                let init_ty = gen(ctx, init);
+                let init_ty = gen(ctx, init).expect_rval();
                 let offset = ctx
                     .locals
                     .borrow_mut()
@@ -111,66 +320,11 @@ fn gen_let(
         _ => unreachable!(),
     };
 
-    VarType::Void
+    RValType::Void
 }
 
-fn query_method(ctx: &CodeGenCtx, id: &String) -> (u16, VarType, Vec<VarType>) {
-    let locals = ctx.locals.borrow();
-    let fields = ctx.class.fields.borrow();
-    let methods = ctx.class.methods.borrow();
-    let f: u16;
-    let ret: VarType;
-    let ps: Vec<VarType>;
-
-    // query local var
-    if let Some(_) = locals.get(id) {
-        unimplemented!("Call a local variable is not implemented");
-    }
-
-    // query method in this class
-    if let Some(m) = methods.get(id) {
-        if m.flag.is(FlagTag::Static) {
-            f = ctx.class.builder.borrow_mut().add_const_methodref(
-                &ctx.class.fullname(),
-                id,
-                &fn_descriptor(&m.ret_ty, &m.ps_ty),
-            );
-            ret = m.ret_ty.clone();
-            ps = m.ps_ty.to_vec();
-            return (f, ret, ps);
-        } else {
-            panic!("Called method is not a static method: try self.{}()", id);
-        }
-    }
-
-    // query field in this class
-    if let Some(_) = fields.get(id) {
-        unimplemented!("Call a field is not implemented");
-    } else {
-        panic!("No valid method found");
-    }
-}
-
-fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> VarType {
-    let (f, ret, ps) = match f.as_ref() {
-        AST::Id(id) => {
-            // local or static field or static method
-            query_method(ctx, id)
-        }
-        _ => {
-            let lval = gen_compound_lval(ctx, f, false);
-            match &lval {
-                XirType::RVal(_) => unreachable!(),
-                XirType::Method(class, id) => {
-                    unimplemented!();
-                }
-                XirType::Field(_, _) => unimplemented!(),
-                _ => panic!(),
-            }
-        }
-    };
-
-    let args_ty: Vec<VarType> = args.iter().map(|arg| gen(ctx, arg)).collect();
+fn build_args(ctx: &CodeGenCtx, ps: &Vec<RValType>, args: &Vec<Box<AST>>) {
+    let args_ty: Vec<RValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
 
     for (i, (p_ty, arg_ty)) in ps.iter().zip(args_ty.iter()).enumerate() {
         if p_ty != arg_ty {
@@ -180,14 +334,51 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> VarType {
             );
         }
     }
+}
+
+fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
+    let lval = gen_lval(ctx, f, true);
+    let (inst, ret) = match &lval {
+        LValType::Method(class, name) => {
+            // TODO priavte and public
+
+            // Find method
+            let class_rc = ctx.mgr.class_table.get(class).unwrap().upgrade().unwrap();
+            let class_ref = class_rc.borrow();
+            let m = class_ref.methods.get(name).unwrap();
+
+            // Add to class file
+            let m_idx =
+                ctx.class
+                    .builder
+                    .borrow_mut()
+                    .add_const_methodref(class, name, &m.descriptor());
+            let inst = if m.flag.is(FlagTag::Static) {
+                Inst::InvokeStatic(m_idx)
+            } else {
+                Inst::InvokeSpecial(m_idx)
+            };
+
+            build_args(ctx, &m.ps_ty, args);
+            (inst, m.ret_ty.clone())
+        }
+        LValType::Module(_) => panic!(),
+        LValType::Class(_) => panic!(),
+        _ => unreachable!(),
+    };
+
+    ctx.class
+        .builder
+        .borrow_mut()
+        .add_inst(ctx.method.method_idx, inst);
 
     ret
 }
 
-fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> VarType {
+fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.class.get_type(ty, ctx.mgr);
     match &ret {
-        VarType::Class(class_name) => {
+        RValType::Class(class_name) => {
             let class = ctx
                 .mgr
                 .class_table
@@ -195,37 +386,127 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> VarType {
                 .unwrap()
                 .upgrade()
                 .unwrap();
-            for field in fields.iter() {
-                if let AST::StructExprField(field_name, field_expr) = field.as_ref() {
-                    unimplemented!();
+            let class_ref = class.borrow();
+
+            let mut correct_idx: Vec<i32> = vec![-1; class_ref.non_static_fields.len()];
+            for (i, field) in fields.iter().enumerate() {
+                if let AST::StructExprField(field_name, _) = field.as_ref() {
+                    let mut matched = false;
+                    for (j, dec_field_name) in class_ref.non_static_fields.iter().enumerate() {
+                        if dec_field_name == field_name {
+                            correct_idx[j] = i as i32;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if !matched {
+                        panic!("Class {} has no field {}", class_name, field_name);
+                    }
                 }
             }
-            let class_name = ctx.class.builder.borrow_mut().add_const_class(class_name);
+            for (i, idx) in correct_idx.iter().enumerate() {
+                if *idx < 0 {
+                    panic!(
+                        "{}.{} is not initialized in new expr",
+                        class_name, class_ref.non_static_fields[i]
+                    );
+                }
+
+                if let AST::StructExprField(field_name, expr) = fields[*idx as usize].as_ref() {
+                    let v_ty = match expr.as_ref() {
+                        AST::None => gen(ctx, &Box::new(AST::Id(field_name.to_owned()))),
+                        _ => gen(ctx, expr),
+                    }
+                    .expect_rval();
+
+                    if let Some(field) = class_ref.fields.get(field_name) {
+                        if field.ty != v_ty {
+                            panic!(
+                                "Cannot assign {} to {}.{}: {}",
+                                v_ty, class_name, field_name, field.ty
+                            );
+                        }
+                    } else {
+                        unreachable!();
+                    }
+                }
+            }
+
+            let class_idx = ctx.class.builder.borrow_mut().add_const_class(class_name);
             ctx.class
                 .builder
                 .borrow_mut()
-                .add_inst(ctx.method.method_idx, Inst::New(class_name));
+                .add_inst(ctx.method.method_idx, Inst::New(class_idx));
         }
-        VarType::Array(inner_ty) => unimplemented!(),
+        RValType::Array(inner_ty) => unimplemented!(),
         _ => panic!("Invalid new expression, only new class or array is allowed"),
     }
     ret
 }
 
-fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> VarType {
-    unimplemented!();
+fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
+    let lval = gen_lval(ctx, lhs, false);
+    let v_ty = gen(ctx, rhs).expect_rval();
+
+    match lval {
+        LValType::Local(name) => {
+            let locals = ctx.locals.borrow();
+            let local = locals.get(&name).unwrap();
+            let local_ty = local.ty.clone();
+
+            if local_ty != v_ty {
+                panic!("Cannot assign {} to local var {}: {}", v_ty, name, local_ty);
+            }
+
+            ctx.class.builder.borrow_mut().add_inst_store(
+                ctx.method.method_idx,
+                &local_ty,
+                local.offset,
+            );
+
+            local_ty
+        }
+        LValType::Field(class, name) => {
+            // TODO private and public
+            let class_rc = ctx.mgr.class_table.get(&class).unwrap().upgrade().unwrap();
+            let class_ref = class_rc.borrow();
+            let field = class_ref.fields.get(&name).unwrap();
+            let field_ty = field.ty.clone();
+
+            if field_ty != v_ty {
+                panic!(
+                    "Cannot assign {} value to field {}.{}: {}",
+                    v_ty, class, name, field_ty
+                );
+            }
+
+            let mut builder = ctx.class.builder.borrow_mut();
+            let f_idx = builder.add_const_fieldref(&class, &name, &field_ty.descriptor());
+            let inst = if field.flag.is(FlagTag::Static) {
+                Inst::PutStatic(f_idx)
+            } else {
+                Inst::PutField(f_idx)
+            };
+
+            builder.add_inst(ctx.method.method_idx, inst);
+            field_ty
+        }
+        LValType::Module(_) => panic!(),
+        LValType::Class(_) => panic!(),
+        _ => unreachable!(),
+    }
 }
 
-fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> VarType {
-    let lty = gen(ctx, lhs);
-    let rty = gen(ctx, rhs);
+fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
+    let lty = gen(ctx, lhs).expect_rval();
+    let rty = gen(ctx, rhs).expect_rval();
 
     if lty != rty {
         panic!("Cannot add between {} and {}", lty, rty);
     }
 
     match &lty {
-        VarType::Int => {
+        RValType::Int => {
             ctx.class
                 .builder
                 .borrow_mut()
@@ -236,7 +517,7 @@ fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> VarType {
     }
 }
 
-fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> VarType {
+fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> RValType {
     // try search locals
     {
         let locals = ctx.locals.borrow();
@@ -250,5 +531,5 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> VarType {
             return local.ty.clone();
         }
     }
-    unimplemented!();
+    unimplemented!("{} is not local", id);
 }

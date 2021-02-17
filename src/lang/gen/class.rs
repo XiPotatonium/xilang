@@ -6,25 +6,55 @@ use std::path::Path;
 
 use super::super::ast::ast::AST;
 use super::class_builder::ClassBuilder;
-use super::ctx::CodeGenCtx;
-use super::gen::gen;
-use super::member::{Field, Locals, Method};
+use super::ctx::{CodeGenCtx, Locals};
+use super::gen::{gen, ValType};
+use super::member::{Field, Method};
 use super::module_mgr::ModuleMgr;
 use crate::ir::flag::{Flag, FlagTag};
-use crate::ir::ty::{fn_descriptor, VarType};
+use crate::ir::inst::Inst;
+use crate::ir::ty::{fn_descriptor, RValType};
 use crate::ir::CLINIT_METHOD_NAME;
 
 pub struct Class {
     pub path: Vec<String>,
-    pub descriptor: String,
-    ast_fields: Vec<Box<AST>>,
-    ast_methods: Vec<Box<AST>>,
+    pub fullname: String,
+    ast_fields: Option<Vec<Box<AST>>>,
+    ast_methods: Option<Vec<Box<AST>>>,
     // static init
-    ast_init: Box<AST>,
-    pub fields: RefCell<HashMap<String, Box<Field>>>,
+    ast_init: Option<Box<AST>>,
+    pub non_static_fields: Vec<String>,
+    pub fields: HashMap<String, Box<Field>>,
     // overload is not allowed
-    pub methods: RefCell<HashMap<String, Box<Method>>>,
+    pub methods: HashMap<String, Box<Method>>,
     pub builder: RefCell<ClassBuilder>,
+}
+
+// use macro to avoid borrow mutable self twice, SB rust
+macro_rules! declare_method {
+    ($self: ident, $id: expr, $flag: expr, $ret_ty: expr, $ps: expr) => {
+        let method_idx =
+            $self
+                .builder
+                .borrow_mut()
+                .add_method($id, &fn_descriptor(&$ret_ty, &$ps), $flag);
+
+        if let Some(_) = $self.methods.insert(
+            $id.to_owned(),
+            Box::new(Method {
+                ret_ty: $ret_ty,
+                ps_ty: $ps,
+                flag: $flag.clone(),
+                method_idx,
+            }),
+        ) {
+            // TODO: use expect_none once it becomes stable
+            panic!(
+                "Duplicated method {} in class {}",
+                $id,
+                $self.path.join("::")
+            );
+        }
+    };
 }
 
 impl Class {
@@ -34,14 +64,16 @@ impl Class {
         if let AST::Class(id, flag, methods, fields, init) = *ast {
             class_path.push(id);
             let fullname = class_path.join("/");
+            let builder = RefCell::new(ClassBuilder::new(&fullname, &flag));
             Class {
-                descriptor: format!("L{};", fullname),
-                ast_fields: fields,
-                ast_methods: methods,
-                ast_init: init,
-                fields: RefCell::new(HashMap::new()),
-                methods: RefCell::new(HashMap::new()),
-                builder: RefCell::new(ClassBuilder::new(&fullname, &flag)),
+                fullname,
+                ast_fields: Some(fields),
+                ast_methods: Some(methods),
+                ast_init: Some(init),
+                non_static_fields: Vec::new(),
+                fields: HashMap::new(),
+                methods: HashMap::new(),
+                builder,
                 path: class_path,
             }
         } else {
@@ -49,16 +81,16 @@ impl Class {
         }
     }
 
-    pub fn fullname(&self) -> String {
-        self.path.join("/")
+    pub fn descriptor(&self) -> String {
+        format!("L{};", self.fullname)
     }
 
-    pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> VarType {
+    pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> RValType {
         match ast.as_ref() {
-            AST::TypeI32 => VarType::Int,
-            AST::TypeF64 => VarType::Double,
-            AST::TypeBool => VarType::Boolean,
-            AST::None => VarType::Void,
+            AST::TypeI32 => RValType::Int,
+            AST::TypeF64 => RValType::Double,
+            AST::TypeBool => RValType::Boolean,
+            AST::None => RValType::Void,
             AST::TypeTuple(types) => {
                 unimplemented!();
             }
@@ -69,66 +101,45 @@ impl Class {
                     panic!("Parser error");
                 } else if class_name.len() == 1 {
                     // might be a class in this module
-                    let class_des = format!(
-                        "L{}/{};",
+                    let class_fullname = format!(
+                        "{}/{}",
                         self.path[..self.path.len() - 1].join("/"),
                         class_name[0]
                     );
-                    if mgr.class_table.contains_key(&class_des) {
-                        return VarType::Class(class_des);
+                    if mgr.class_table.contains_key(&class_fullname) {
+                        return RValType::Class(class_fullname);
                     }
                 }
 
                 // Search in global
-                let class_des = format!("L{};", class_name.join("/"));
-                if mgr.class_table.contains_key(&class_des) {
-                    VarType::Class(class_des)
+                let class_fullname = class_name.join("/");
+                if mgr.class_table.contains_key(&class_fullname) {
+                    RValType::Class(class_fullname)
                 } else {
-                    panic!("Class {} not found", class_des);
+                    panic!("Class {} not found", class_fullname);
                 }
             }
-            AST::TypeArr(dtype, _) => VarType::Array(Box::new(self.get_type(dtype, mgr))),
+            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_type(dtype, mgr))),
             _ => unreachable!(),
         }
     }
 
-    fn declare_method(&self, id: &str, flag: &Flag, ret_ty: VarType, ps: Vec<VarType>) {
-        let method_idx =
-            self.builder
-                .borrow_mut()
-                .add_method(id, &fn_descriptor(&ret_ty, &ps), flag);
-
-        if let Some(_) = self.methods.borrow_mut().insert(
-            id.to_owned(),
-            Box::new(Method {
-                ret_ty,
-                ps_ty: ps,
-                flag: flag.clone(),
-                method_idx,
-            }),
-        ) {
-            // TODO: use expect_none once it becomes stable
-            panic!("Duplicated method {} in class {}", id, self.path.join("::"));
-        }
-    }
-
-    pub fn member_pass(&self, mgr: &ModuleMgr) {
+    pub fn member_pass(&mut self, mgr: &ModuleMgr) {
         // Add static init
-        match self.ast_init.as_ref() {
+        match self.ast_init.as_ref().unwrap().as_ref() {
             AST::Block(_) => {
-                let ret_ty = VarType::Void;
-                let ps: Vec<VarType> = vec![];
+                let ret_ty = RValType::Void;
+                let ps: Vec<RValType> = vec![];
                 let mut flag = Flag::default();
                 flag.set(FlagTag::Static);
-
-                self.declare_method(CLINIT_METHOD_NAME, &flag, ret_ty, ps);
+                declare_method!(self, CLINIT_METHOD_NAME, &flag, ret_ty, ps);
             }
             AST::None => (),
             _ => unreachable!("Parser error"),
         };
 
-        for method in self.ast_methods.iter() {
-            if let AST::Func(id, flag, ty, ps, _) = method.as_ref() {
+        for method in self.ast_methods.as_ref().unwrap().iter() {
+            if let AST::Method(id, flag, ty, ps, _) = method.as_ref() {
                 let ps = ps
                     .iter()
                     .map(|p| {
@@ -140,11 +151,11 @@ impl Class {
                     })
                     .collect();
                 let ret_ty = self.get_type(ty, mgr);
-                self.declare_method(id, flag, ret_ty, ps);
+                declare_method!(self, id, flag, ret_ty, ps);
             }
         }
 
-        for field in self.ast_fields.iter() {
+        for field in self.ast_fields.as_ref().unwrap().iter() {
             if let AST::Field(id, flag, ty) = field.as_ref() {
                 // Field will have default initialization
                 let field = Box::new(Field::new(id, *flag, self.get_type(ty, mgr)));
@@ -154,7 +165,11 @@ impl Class {
                     .borrow_mut()
                     .add_field(id, &field.ty.descriptor(), flag);
 
-                if let Some(_) = self.fields.borrow_mut().insert(id.clone(), field) {
+                if !flag.is(FlagTag::Static) {
+                    // non-static field
+                    self.non_static_fields.push(id.to_owned());
+                }
+                if let Some(_) = self.fields.insert(id.to_owned(), field) {
                     // TODO: use expect_none once it becomes stable
                     panic!("Dulicated field {} in class {}", id, self.path.join("::"));
                 }
@@ -167,8 +182,17 @@ impl Class {
         let mut locals = Locals::new();
         {
             locals.push();
+            if !m.flag.is(FlagTag::Static) {
+                // non-static method variable "self"
+                locals.add(
+                    "self",
+                    RValType::Class(self.fullname.clone()),
+                    Default::default(),
+                    true,
+                );
+            }
             for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
-                if let AST::Field(id, flag, _) = p.as_ref() {
+                if let AST::Param(id, flag, _) = p.as_ref() {
                     // args will be initialized by caller
                     locals.add(id, ty.clone(), *flag, true);
                 } else {
@@ -183,21 +207,34 @@ impl Class {
             locals: RefCell::new(locals),
             method: m,
         };
-        let mut ret = VarType::Void;
+        let mut ret = ValType::RVal(RValType::Void);
         if let AST::Block(stmts) = block.as_ref() {
             for stmt in stmts.iter() {
                 ret = gen(&ctx, stmt);
             }
+
+            // Check type equivalent
+            match &ret {
+                ValType::RVal(rval_ty) => {
+                    if rval_ty != &m.ret_ty {
+                        panic!("Expect return {} but return {}", m.ret_ty, rval_ty);
+                    }
+                    // Add return instruction
+                    ctx.class
+                        .builder
+                        .borrow_mut()
+                        .add_inst(ctx.method.method_idx, Inst::Return);
+                }
+                ValType::Ret(ret_ty) => {
+                    if ret_ty != &m.ret_ty {
+                        panic!("Expect return {} but return {}", m.ret_ty, ret_ty);
+                    }
+                }
+                _ => unreachable!(),
+            }
         } else {
             unreachable!("Parser error")
         }
-
-        // Check type equivalent
-        if ret != m.ret_ty {
-            panic!();
-        }
-
-        // TODO add return instruction
 
         {
             let mut local_mut = ctx.locals.borrow_mut();
@@ -218,21 +255,20 @@ impl Class {
     ///
     /// There is no default value for fields
     pub fn code_gen(&self, mgr: &ModuleMgr) {
-        let ms = self.methods.borrow();
         // gen static init
-        match self.ast_init.as_ref() {
+        match self.ast_init.as_ref().unwrap().as_ref() {
             AST::Block(_) => {
-                let m = ms.get(CLINIT_METHOD_NAME).unwrap();
+                let m = self.methods.get(CLINIT_METHOD_NAME).unwrap();
                 let ps: Vec<Box<AST>> = vec![];
-                self.code_gen_method(mgr, m, &ps, &self.ast_init);
+                self.code_gen_method(mgr, m, &ps, &self.ast_init.as_ref().unwrap());
             }
             AST::None => (),
             _ => unreachable!("Parser error"),
         };
 
-        for method_ast in self.ast_methods.iter() {
-            if let AST::Func(id, _, _, ps, block) = method_ast.as_ref() {
-                let m = ms.get(id).unwrap();
+        for method_ast in self.ast_methods.as_ref().unwrap().iter() {
+            if let AST::Method(id, _, _, ps, block) = method_ast.as_ref() {
+                let m = self.methods.get(id).unwrap();
                 self.code_gen_method(mgr, m, ps, block);
             } else {
                 unreachable!("Parser error");

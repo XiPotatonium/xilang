@@ -131,7 +131,13 @@ impl<'i, T> Iterator for LinkedListIter<'i, T> {
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             match self.cur.as_ref() {
-                Some(ret) => Some(&ret.val),
+                Some(ret) => {
+                    self.cur = match &ret.next {
+                        Some(next) => next.as_ref() as *const Node<T>,
+                        None => null(),
+                    };
+                    Some(&ret.val)
+                }
                 None => None,
             }
         }
@@ -152,7 +158,13 @@ impl<'i, T> Iterator for LinkedListIterMut<'i, T> {
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             match self.cur.as_mut() {
-                Some(ret) => Some(&mut ret.val),
+                Some(ret) => {
+                    self.cur = match &mut ret.next {
+                        Some(next) => next.as_mut() as *mut Node<T>,
+                        None => null_mut(),
+                    };
+                    Some(&mut ret.val)
+                }
                 None => None,
             }
         }

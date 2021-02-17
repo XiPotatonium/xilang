@@ -4,4 +4,4 @@ pub mod inst;
 pub mod ty;
 pub mod util;
 
-pub static CLINIT_METHOD_NAME: &'static str = "clinit";
+pub static CLINIT_METHOD_NAME: &'static str = "<clinit>";

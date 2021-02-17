@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -13,7 +14,7 @@ use super::module_mgr::ModuleMgr;
 pub struct Module {
     name: String,
     sub_modules: HashMap<String, Rc<Module>>,
-    classes: HashMap<String, Rc<Class>>,
+    classes: HashMap<String, Rc<RefCell<Class>>>,
     from_dir: bool,
 }
 
@@ -29,26 +30,28 @@ fn check_module_name_validity(name: &str) -> bool {
 fn parse(
     module_path: &Vec<String>,
     paths: &Vec<PathBuf>,
-    class_tbl: &mut HashMap<String, Weak<Class>>,
+    class_tbl: &mut HashMap<String, Weak<RefCell<Class>>>,
     show_ast: bool,
-) -> HashMap<String, Rc<Class>> {
-    let mut ret: HashMap<String, Rc<Class>> = HashMap::new();
+) -> HashMap<String, Rc<RefCell<Class>>> {
+    let mut ret: HashMap<String, Rc<RefCell<Class>>> = HashMap::new();
     for path in paths.iter() {
         let ast = peg_parser::parse(path).unwrap();
 
         if show_ast {
             // save ast to .json file
             let mut f = PathBuf::from(path);
-            f.set_extension("ast");
+            f.set_extension("ast.json");
             let mut f = fs::File::create(f).unwrap();
             write!(f, "{}", ast);
         }
 
         if let AST::File(classes) = *ast {
             for class in classes {
-                let class = Rc::new(Class::new(module_path, class));
-                class_tbl.insert(class.descriptor.clone(), Rc::downgrade(&class));
-                ret.insert(class.path.last().unwrap().clone(), class);
+                let class = Rc::new(RefCell::new(Class::new(module_path, class)));
+                let fullname = class.borrow().fullname.clone();
+                class_tbl.insert(fullname, Rc::downgrade(&class));
+                let class_name = class.borrow().path.last().unwrap().clone();
+                ret.insert(class_name, class);
             }
         }
     }
@@ -60,7 +63,7 @@ impl Module {
     fn new(
         module_path: Vec<String>,
         paths: &Vec<PathBuf>,
-        class_tbl: &mut HashMap<String, Weak<Class>>,
+        class_tbl: &mut HashMap<String, Weak<RefCell<Class>>>,
         save_json: bool,
     ) -> Rc<Module> {
         let classes = parse(&module_path, paths, class_tbl, save_json);
@@ -76,7 +79,7 @@ impl Module {
     pub fn new_dir(
         module_path: Vec<String>,
         dir: &Path,
-        class_tbl: &mut HashMap<String, Weak<Class>>,
+        class_tbl: &mut HashMap<String, Weak<RefCell<Class>>>,
         show_ast: bool,
     ) -> Option<Rc<Module>> {
         let mut files: Vec<PathBuf> = Vec::new();
@@ -177,7 +180,7 @@ impl Module {
 
     pub fn member_pass(&self, mgr: &ModuleMgr) {
         for class in self.classes.values() {
-            class.member_pass(mgr);
+            class.borrow_mut().member_pass(mgr);
         }
         for sub in self.sub_modules.values() {
             sub.member_pass(mgr);
@@ -186,34 +189,36 @@ impl Module {
 
     pub fn code_gen(&self, mgr: &ModuleMgr) {
         for class in self.classes.values() {
-            class.code_gen(mgr);
+            class.borrow().code_gen(mgr);
         }
+
         for sub in self.sub_modules.values() {
             sub.code_gen(mgr);
         }
     }
 
-    pub fn dump(&self, dir: PathBuf) {
-        if self.from_dir {
-            // create a new dir
-            let mut dir = dir;
-            dir.push(&self.name);
-            if !dir.exists() {
-                fs::create_dir(&dir).unwrap();
-            } else if !dir.is_dir() {
-                panic!(
-                    "{} already exists but it is not a directory",
-                    dir.to_str().unwrap()
-                );
-            }
+    pub fn dump(&self, dir: &PathBuf) {
+        // dump in this dir
+        for class in self.classes.values() {
+            class.borrow().dump(&dir);
+        }
 
-            for class in self.classes.values() {
-                class.dump(&dir);
-            }
-        } else {
-            // dump in this dir
-            for class in self.classes.values() {
-                class.dump(&dir);
+        for sub in self.sub_modules.values() {
+            if sub.from_dir {
+                // create a new sub dir
+                let mut sub_dir = dir.to_owned();
+                sub_dir.push(&sub.name);
+                if !sub_dir.exists() {
+                    fs::create_dir(&sub_dir).unwrap();
+                } else if !sub_dir.is_dir() {
+                    panic!(
+                        "{} already exists but it is not a directory",
+                        sub_dir.to_str().unwrap()
+                    );
+                }
+                sub.dump(&sub_dir);
+            } else {
+                sub.dump(&dir);
             }
         }
     }

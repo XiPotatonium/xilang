@@ -46,7 +46,7 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
             }
             Rule::StaticField => fields.push(build_field(sub, true)),
             Rule::NonStaticField => fields.push(build_field(sub, false)),
-            Rule::Func => methods.push(build_func(sub)),
+            Rule::Func => methods.push(build_method(sub)),
             _ => unreachable!(),
         }
     }
@@ -75,10 +75,11 @@ fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
     Box::new(AST::Field(id, flag, build_type(iter.next().unwrap())))
 }
 
-fn build_func(tree: Pair<Rule>) -> Box<AST> {
+fn build_method(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
     let mut flag = Flag::default();
+    flag.set(FlagTag::Static);
 
     let mut ps: Vec<Box<AST>> = Vec::new();
     let mut sub = iter.next().unwrap();
@@ -88,9 +89,11 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
         let p0 = p_iter.next().unwrap();
         match p0.as_rule() {
             Rule::SelfParam => {
-                flag.set(FlagTag::Static);
+                // non-static method
+                flag.unset(FlagTag::Static);
             }
             Rule::Id => {
+                // static method
                 ps.push(Box::new(AST::Param(
                     build_id(p0),
                     Flag::default(),
@@ -122,7 +125,7 @@ fn build_func(tree: Pair<Rule>) -> Box<AST> {
         ret_type
     };
 
-    Box::new(AST::Func(id, flag, ret_type, ps, build_block(sub)))
+    Box::new(AST::Method(id, flag, ret_type, ps, build_block(sub)))
 }
 
 fn build_type(tree: Pair<Rule>) -> Box<AST> {
@@ -190,48 +193,54 @@ fn build_if(tree: Pair<Rule>) -> Box<AST> {
     Box::new(AST::If(cond, then, els))
 }
 
+fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
+    let sub = tree.into_inner().next().unwrap();
+    Box::new(AST::Stmt(match sub.as_rule() {
+        Rule::LetStmt => {
+            let mut iter = sub.into_inner();
+            let pattern = build_pattern(iter.next().unwrap());
+            Box::new(if let Some(sub) = iter.next() {
+                match sub.as_rule() {
+                    Rule::Type => {
+                        // has type
+                        let ty = build_type(sub);
+                        if let Some(sub) = iter.next() {
+                            AST::Let(pattern, Flag::default(), ty, build_expr(sub))
+                        } else {
+                            // no init
+                            AST::Let(pattern, Flag::default(), ty, Box::new(AST::None))
+                        }
+                    }
+                    _ => {
+                        // no type but has init
+                        AST::Let(
+                            pattern,
+                            Flag::default(),
+                            Box::new(AST::None),
+                            build_expr(sub),
+                        )
+                    }
+                }
+            } else {
+                // no type and no init
+                AST::Let(
+                    pattern,
+                    Flag::default(),
+                    Box::new(AST::None),
+                    Box::new(AST::None),
+                )
+            })
+        }
+        _ => build_expr(sub),
+    }))
+}
+
 fn build_block(tree: Pair<Rule>) -> Box<AST> {
     Box::new(AST::Block(
         tree.into_inner()
-            .map(|sub| {
-                match sub.as_rule() {
-                    Rule::LetStmt => {
-                        let mut iter = sub.into_inner();
-                        let pattern = build_pattern(iter.next().unwrap());
-                        Box::new(if let Some(sub) = iter.next() {
-                            match sub.as_rule() {
-                                Rule::Type => {
-                                    // has type
-                                    let ty = build_type(sub);
-                                    if let Some(sub) = iter.next() {
-                                        AST::Let(pattern, Flag::default(), ty, build_expr(sub))
-                                    } else {
-                                        // no init
-                                        AST::Let(pattern, Flag::default(), ty, Box::new(AST::None))
-                                    }
-                                }
-                                _ => {
-                                    // no type but has init
-                                    AST::Let(
-                                        pattern,
-                                        Flag::default(),
-                                        Box::new(AST::None),
-                                        build_expr(sub),
-                                    )
-                                }
-                            }
-                        } else {
-                            // no type and no init
-                            AST::Let(
-                                pattern,
-                                Flag::default(),
-                                Box::new(AST::None),
-                                Box::new(AST::None),
-                            )
-                        })
-                    }
-                    _ => build_expr(sub),
-                }
+            .map(|sub| match sub.as_rule() {
+                Rule::Stmt => build_stmt(sub),
+                _ => build_expr(sub),
             })
             .collect(),
     ))

@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[derive(Clone, Eq)]
-pub enum VarType {
+pub enum RValType {
     Boolean,
     Byte,
     Short,
@@ -11,13 +11,14 @@ pub enum VarType {
     Float,
     Double,
     Void,
+    /// class fullname
     Class(String),
-    Array(Box<VarType>),
-    // non-JVM standard
-    Tuple(Vec<VarType>),
+    Array(Box<RValType>),
+    /// non-JVM standard
+    Tuple(Vec<RValType>),
 }
 
-impl VarType {
+impl RValType {
     pub fn slot(&self) -> u16 {
         match self {
             Self::Boolean
@@ -62,7 +63,7 @@ impl VarType {
     }
 }
 
-impl PartialEq for VarType {
+impl PartialEq for RValType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Boolean, Self::Boolean)
@@ -80,21 +81,21 @@ impl PartialEq for VarType {
     }
 }
 
-impl fmt::Display for VarType {
+impl fmt::Display for RValType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            VarType::Boolean => write!(f, "Z"),
-            VarType::Byte => write!(f, "B"),
-            VarType::Char => write!(f, "C"),
-            VarType::Short => write!(f, "S"),
-            VarType::Int => write!(f, "I"),
-            VarType::Long => write!(f, "J"),
-            VarType::Float => write!(f, "F"),
-            VarType::Double => write!(f, "D"),
-            VarType::Void => write!(f, "V"),
-            VarType::Class(s) => write!(f, "L{};", s),
-            VarType::Array(t) => write!(f, "[{}", t),
-            VarType::Tuple(vs) => write!(
+            Self::Boolean => write!(f, "Z"),
+            Self::Byte => write!(f, "B"),
+            Self::Char => write!(f, "C"),
+            Self::Short => write!(f, "S"),
+            Self::Int => write!(f, "I"),
+            Self::Long => write!(f, "J"),
+            Self::Float => write!(f, "F"),
+            Self::Double => write!(f, "D"),
+            Self::Void => write!(f, "V"),
+            Self::Class(s) => write!(f, "L{};", s),
+            Self::Array(t) => write!(f, "[{}", t),
+            Self::Tuple(vs) => write!(
                 f,
                 "({}",
                 vs.iter().map(|t| format!("{}", t)).collect::<String>()
@@ -103,35 +104,7 @@ impl fmt::Display for VarType {
     }
 }
 
-pub struct MethodType {
-    pub class_name: String,
-    pub method_name: String,
-}
-
-pub enum XirType {
-    RVal(VarType),
-    // class full name, method name
-    Method(String, String),
-    // class full name, field name
-    Field(String, String),
-    // class full name
-    Class(String),
-    // module full name
-    Module(String),
-    // offset
-    Local(u16),
-}
-
-impl XirType {
-    pub fn expect_rval(self) -> VarType {
-        match self {
-            Self::RVal(ret) => ret,
-            _ => panic!("Expect XirType::VarType"),
-        }
-    }
-}
-
-pub fn fn_descriptor(ret_ty: &VarType, ps: &Vec<VarType>) -> String {
+pub fn fn_descriptor(ret_ty: &RValType, ps: &Vec<RValType>) -> String {
     format!(
         "({}){}",
         ps.iter().map(|t| format!("{}", t)).collect::<String>(),

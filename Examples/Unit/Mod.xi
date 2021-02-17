@@ -6,7 +6,7 @@
 class Program {
 	fn main() {
         let d = Demo::new(1, 100);
-        d.foo(16)
+        d.foo(16);
 	}
 }
 

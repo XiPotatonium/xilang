@@ -1,6 +1,7 @@
 use super::class::Class;
 use super::module::Module;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use std::rc::{Rc, Weak};
 pub struct ModuleMgr {
     root: Rc<Module>,
 
-    pub class_table: HashMap<String, Weak<Class>>,
+    pub class_table: HashMap<String, Weak<RefCell<Class>>>,
     // TODO Dependencies
 }
 
@@ -21,7 +22,7 @@ impl ModuleMgr {
 
         // TODO additional class path
         println!("Additional class path: {}", libs.join(";"));
-        let mut class_tbl: HashMap<String, Weak<Class>> = HashMap::new();
+        let mut class_tbl: HashMap<String, Weak<RefCell<Class>>> = HashMap::new();
 
         ModuleMgr {
             root: Module::new_dir(vec![crate_name], &root_path, &mut class_tbl, show_ast).unwrap(),
@@ -54,6 +55,6 @@ impl ModuleMgr {
             fs::create_dir_all(out_dir).unwrap();
         }
 
-        self.root.dump(out_dir.clone());
+        self.root.dump(&out_dir);
     }
 }

@@ -3,7 +3,7 @@ use super::super::inst::Inst;
 use std::ops::Index;
 
 const CAFEBABE: u32 = 0xCAFEBABE;
-const MAJOR_VERSION: u16 = 52;
+const MAJOR_VERSION: u16 = 1;
 const MINOR_VERSION: u16 = 0;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,9 +53,9 @@ pub struct IrMethod {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attribute {
     Code(
-        // index of "Code"
+        /// index of "Code"
         u16,
-        // max stacks
+        /// locals stack
         u16,
         Vec<Inst>,
         Vec<ExceptionTableEntry>,
@@ -120,6 +120,6 @@ impl Index<u16> for ClassFile {
     type Output = Constant;
 
     fn index(&self, idx: u16) -> &Self::Output {
-        &self.constant_pool[idx as usize]
+        &self.constant_pool[idx as usize - 1]
     }
 }

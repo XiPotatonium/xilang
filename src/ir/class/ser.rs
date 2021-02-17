@@ -17,12 +17,12 @@ impl ClassFile {
             // TODO restore escape chars
             Constant::String(utf8_idx) => format!("\"{}\"", self.get_str(*utf8_idx)),
             Constant::Fieldref(class_idx, name_and_ty) => format!(
-                "{}.{}",
+                "{}::{}",
                 self.get_ir_str(*class_idx),
                 self.get_ir_str(*name_and_ty)
             ),
             Constant::Methodref(class_idx, name_and_ty) => format!(
-                "{}.{}",
+                "{}::{}",
                 self.get_ir_str(*class_idx),
                 self.get_ir_str(*name_and_ty)
             ),
@@ -65,6 +65,8 @@ impl ClassFile {
             Inst::AStore1 => String::from("astore_1"),
             Inst::AStore2 => String::from("astore_2"),
             Inst::AStore3 => String::from("astore_3"),
+            Inst::Pop => String::from("pop"),
+            Inst::Pop2 => String::from("pop2"),
             Inst::IAdd => String::from("iadd"),
             Inst::Return => String::from("return"),
             Inst::GetStatic(idx) => format!("getstatic {}", self.get_ir_str(*idx)),
@@ -81,7 +83,7 @@ impl ClassFile {
 
     pub fn to_text(&self) -> String {
         let mut ret = format!(
-            "Class version: {}.{}",
+            "Class version: {}.{}\n\n",
             self.major_version, self.minor_version
         );
         let flag = Flag::new(self.access_flags);
@@ -121,8 +123,8 @@ impl ClassFile {
 
             for attr in method.attributes.iter() {
                 match attr {
-                    Attribute::Code(_, max_stack, insts, _, _) => {
-                        ret.push_str(&format!("        Max stack: {}", max_stack));
+                    Attribute::Code(_, locals_stack, insts, _, _) => {
+                        ret.push_str(&format!("        Locals stack: {}\n", locals_stack));
 
                         for inst in insts.iter() {
                             ret.push_str("\n        ");

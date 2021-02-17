@@ -1,8 +1,8 @@
 use std::fmt;
 
 pub enum FlagTag {
-    // Public = 0x0001,
-    // Private = 0x0002,
+    Pub = 0x0001,
+    Priv = 0x0002,
     // Protected = 0x0004,
     Static = 0x0008,
     // Final = 0x0010,
@@ -20,7 +20,7 @@ pub struct Flag {
 
 impl Default for Flag {
     fn default() -> Flag {
-        Flag { flag: 0 }
+        Flag { flag: FlagTag::Priv as u16 }
     }
 }
 
@@ -33,18 +33,28 @@ impl Flag {
         self.flag |= tag as u16;
     }
 
+    pub fn unset(&mut self, tag: FlagTag) {
+        self.flag ^= tag as u16;
+    }
+
     pub fn is(&self, tag: FlagTag) -> bool {
         self.flag & (tag as u16) != 0
     }
 }
 
 impl fmt::Display for Flag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {        
         let mut s = String::new();
-        let mut _i = 0;
+        if self.is(FlagTag::Priv) {
+            s.push_str("priv")
+        } else if self.is(FlagTag::Pub) {
+            s.push_str("pub");
+        } else {
+            unreachable!();
+        }
+
         if self.is(FlagTag::Static) {
-            s.push_str("static");
-            _i += 1;
+            s.push_str(" static");
         }
         write!(f, "{}", s)
     }

@@ -2,7 +2,7 @@ use crate::ir::class::class_file::{Attribute, ClassFile, Constant, IrField, IrMe
 use crate::ir::class::CODE_ATTR_NAME;
 use crate::ir::flag::Flag;
 use crate::ir::inst::Inst;
-use crate::ir::ty::VarType;
+use crate::ir::ty::RValType;
 use crate::ir::util::linkedlist::LinkedList;
 
 use std::collections::HashMap;
@@ -264,16 +264,16 @@ impl ClassBuilder {
         self.codes[method_idx].push(inst);
     }
 
-    pub fn add_inst_store(&mut self, method_idx: usize, local_ty: &VarType, local_offset: u16) {
+    pub fn add_inst_store(&mut self, method_idx: usize, local_ty: &RValType, local_offset: u16) {
         self.codes[method_idx].push(match local_ty {
-            VarType::Int => match local_offset {
+            RValType::Int => match local_offset {
                 0 => Inst::IStore0,
                 1 => Inst::IStore1,
                 2 => Inst::IStore2,
                 3 => Inst::IStore3,
                 _ => Inst::IStore(local_offset),
             },
-            VarType::Class(_) => match local_offset {
+            RValType::Class(_) => match local_offset {
                 0 => Inst::AStore0,
                 1 => Inst::AStore1,
                 2 => Inst::AStore2,
@@ -284,16 +284,16 @@ impl ClassBuilder {
         });
     }
 
-    pub fn add_inst_load(&mut self, method_idx: usize, local_ty: &VarType, local_offset: u16) {
+    pub fn add_inst_load(&mut self, method_idx: usize, local_ty: &RValType, local_offset: u16) {
         self.codes[method_idx].push(match local_ty {
-            VarType::Int => match local_offset {
+            RValType::Int => match local_offset {
                 0 => Inst::ILoad0,
                 1 => Inst::ILoad1,
                 2 => Inst::ILoad2,
                 3 => Inst::ILoad3,
                 _ => Inst::ILoad(local_offset),
             },
-            VarType::Class(_) => match local_offset {
+            RValType::Class(_) => match local_offset {
                 0 => Inst::ALoad0,
                 1 => Inst::ALoad1,
                 2 => Inst::ALoad2,

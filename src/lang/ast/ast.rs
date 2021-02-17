@@ -11,12 +11,14 @@ pub enum AST {
     // id, methods: Vec<Func>, fields: Vec<Var>, static-init
     Class(String, Flag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
     // id, ty, ps: Vec<Var>, body: Box<Block>
-    Func(String, Flag, Box<AST>, Vec<Box<AST>>, Box<AST>),
+    Method(String, Flag, Box<AST>, Vec<Box<AST>>, Box<AST>),
 
     Field(String, Flag, Box<AST>),
     Param(String, Flag, Box<AST>),
     // pattern, ty, flag, init: Box<AST>
     Let(Box<AST>, Flag, Box<AST>, Box<AST>),
+
+    Stmt(Box<AST>),
 
     // children: Vec<Stmt>
     Block(Vec<Box<AST>>),

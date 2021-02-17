@@ -5,7 +5,7 @@ impl AST {
         match self {
             Self::File(_)
             | Self::Class(_, _, _, _, _)
-            | Self::Func(_, _, _, _, _)
+            | Self::Method(_, _, _, _, _)
             | Self::Field(_, _, _)
             | Self::Param(_, _, _)
             | Self::Let(_, _, _, _)
@@ -23,7 +23,10 @@ impl AST {
             | Self::TypeTuple(_)
             | Self::TypeClass(_)
             | Self::TypeArr(_, _) => false,
-            Self::Block(stmts) => stmts.len() == 0 || (stmts.len() == 1 && stmts[0].is_constant()),
+            Self::Stmt(stmt) => stmt.is_constant(),
+            Self::Block(children) => {
+                children.len() == 0 || (children.len() == 1 && children[0].is_constant())
+            }
             Self::If(cond, then, els) => {
                 cond.is_constant() && then.is_constant() && els.is_constant()
             }

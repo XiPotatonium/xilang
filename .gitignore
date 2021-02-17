@@ -1,6 +1,6 @@
 .vscode
 /target
 
-*.ast
+*.ast.json
 *.xibc
 *.xir
