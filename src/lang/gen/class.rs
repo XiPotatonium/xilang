@@ -4,94 +4,15 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-use super::ast::ast::AST;
-use super::ast::gen::gen;
+use super::super::ast::ast::AST;
 use super::class_builder::ClassBuilder;
+use super::ctx::CodeGenCtx;
+use super::gen::gen;
+use super::member::{Field, Locals, Method};
 use super::module_mgr::ModuleMgr;
 use crate::ir::flag::{Flag, FlagTag};
 use crate::ir::ty::{fn_descriptor, VarType};
 use crate::ir::CLINIT_METHOD_NAME;
-
-pub struct Var {
-    pub id: String,
-    pub flag: Flag,
-    pub ty: VarType,
-    pub offset: u16,
-    pub initialized: bool,
-}
-
-impl Var {
-    pub fn new(id: &str, flag: Flag, ty: VarType, offset: u16, initialized: bool) -> Var {
-        Var {
-            id: id.to_owned(),
-            flag,
-            ty,
-            offset,
-            initialized,
-        }
-    }
-}
-
-pub struct Field {
-    pub id: String,
-    pub flag: Flag,
-    pub ty: VarType,
-}
-
-impl Field {
-    pub fn new(id: &str, flag: Flag, ty: VarType) -> Field {
-        Field {
-            id: id.to_owned(),
-            flag,
-            ty,
-        }
-    }
-}
-
-pub struct Locals {
-    pub locals: Vec<Var>,
-    pub size: u16,
-    pub sym_tbl: Vec<HashMap<String, usize>>,
-}
-
-impl Locals {
-    fn new() -> Locals {
-        Locals {
-            locals: Vec::new(),
-            size: 0,
-            sym_tbl: Vec::new(),
-        }
-    }
-
-    pub fn push(&mut self) {
-        self.sym_tbl.push(HashMap::new());
-    }
-
-    pub fn pop(&mut self) {
-        self.sym_tbl.pop().expect("Cannot pop empty stack");
-    }
-
-    pub fn add(&mut self, id: &str, ty: VarType, flag: Flag, initialized: bool) -> u16 {
-        let var_size = ty.slot();
-        let var = Var::new(id, flag, ty, self.size, initialized);
-        let offset = self.size;
-        self.sym_tbl
-            .last_mut()
-            .unwrap()
-            .insert(id.to_owned(), self.locals.len());
-        self.locals.push(var);
-        self.size += var_size;
-        offset
-    }
-}
-
-pub struct Method {
-    pub flag: Flag,
-    pub ret_ty: VarType,
-    pub ps_ty: Vec<VarType>,
-    // method idx in class file
-    pub method_idx: usize,
-}
 
 pub struct Class {
     pub path: Vec<String>,
@@ -106,32 +27,30 @@ pub struct Class {
     pub builder: RefCell<ClassBuilder>,
 }
 
-pub struct CodeGenCtx<'mgr> {
-    pub mgr: &'mgr ModuleMgr,
-    pub class: &'mgr Class,
-    pub method: &'mgr Method,
-    pub locals: RefCell<Locals>,
-}
-
 impl Class {
     pub fn new(module_path: &Vec<String>, ast: Box<AST>) -> Class {
         let mut class_path = module_path.to_owned();
 
         if let AST::Class(id, flag, methods, fields, init) = *ast {
             class_path.push(id);
+            let fullname = class_path.join("/");
             Class {
-                descriptor: format!("L{};", class_path.join("/")),
+                descriptor: format!("L{};", fullname),
                 ast_fields: fields,
                 ast_methods: methods,
                 ast_init: init,
                 fields: RefCell::new(HashMap::new()),
                 methods: RefCell::new(HashMap::new()),
-                builder: RefCell::new(ClassBuilder::new(&class_path.join("/"), &flag)),
+                builder: RefCell::new(ClassBuilder::new(&fullname, &flag)),
                 path: class_path,
             }
         } else {
-            panic!("Parser error");
+            unreachable!("Parser error");
         }
+    }
+
+    pub fn fullname(&self) -> String {
+        self.path.join("/")
     }
 
     pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> VarType {
@@ -253,7 +172,7 @@ impl Class {
                     // args will be initialized by caller
                     locals.add(id, ty.clone(), *flag, true);
                 } else {
-                    panic!("Parser error");
+                    unreachable!("Parser error");
                 }
             }
         }
@@ -270,12 +189,15 @@ impl Class {
                 ret = gen(&ctx, stmt);
             }
         } else {
-            panic!("Parser error")
+            unreachable!("Parser error")
         }
+
         // Check type equivalent
         if ret != m.ret_ty {
             panic!();
         }
+
+        // TODO add return instruction
 
         {
             let mut local_mut = ctx.locals.borrow_mut();

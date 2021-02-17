@@ -1,10 +1,9 @@
 use crate::ir::class::class_file::{Attribute, ClassFile, Constant, IrField, IrMethod};
+use crate::ir::class::CODE_ATTR_NAME;
 use crate::ir::flag::Flag;
 use crate::ir::inst::Inst;
 use crate::ir::ty::VarType;
 use crate::ir::util::linkedlist::LinkedList;
-
-use super::class::Method;
 
 use std::collections::HashMap;
 
@@ -112,6 +111,7 @@ impl ClassBuilder {
     /// Fill all jump instructions, concat all basic blocks
     ///
     pub fn done(&mut self, method_idx: usize, max_stack: u16) {
+        let code_attr_name_idx = self.add_const_utf8(CODE_ATTR_NAME);
         let ir_method = &mut self.class_file.methods[method_idx];
         let method_builder = &mut self.codes[method_idx];
         // fill jump instructions
@@ -121,9 +121,13 @@ impl ClassBuilder {
         for bb in method_builder.codes.iter_mut() {
             codes.append(&mut bb.insts);
         }
-        ir_method
-            .attributes
-            .push(Attribute::Code(max_stack, codes, vec![], vec![]));
+        ir_method.attributes.push(Attribute::Code(
+            code_attr_name_idx,
+            max_stack,
+            codes,
+            vec![],
+            vec![],
+        ));
     }
 }
 
@@ -267,32 +271,14 @@ impl ClassBuilder {
                 1 => Inst::IStore1,
                 2 => Inst::IStore2,
                 3 => Inst::IStore3,
-                _ => {
-                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
-                        Inst::IStore(local_offset as u8)
-                    } else {
-                        Inst::Wide(
-                            Box::new(Inst::IStore((local_offset >> 8) as u8)),
-                            (local_offset % (1u16 << 8)) as u8,
-                        )
-                    }
-                }
+                _ => Inst::IStore(local_offset),
             },
             VarType::Class(_) => match local_offset {
                 0 => Inst::AStore0,
                 1 => Inst::AStore1,
                 2 => Inst::AStore2,
                 3 => Inst::AStore3,
-                _ => {
-                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
-                        Inst::AStore(local_offset as u8)
-                    } else {
-                        Inst::Wide(
-                            Box::new(Inst::AStore((local_offset >> 8) as u8)),
-                            (local_offset % (1u16 << 8)) as u8,
-                        )
-                    }
-                }
+                _ => Inst::AStore(local_offset),
             },
             _ => unimplemented!(),
         });
@@ -305,32 +291,14 @@ impl ClassBuilder {
                 1 => Inst::ILoad1,
                 2 => Inst::ILoad2,
                 3 => Inst::ILoad3,
-                _ => {
-                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
-                        Inst::ILoad(local_offset as u8)
-                    } else {
-                        Inst::Wide(
-                            Box::new(Inst::ILoad((local_offset >> 8) as u8)),
-                            (local_offset % (1u16 << 8)) as u8,
-                        )
-                    }
-                }
+                _ => Inst::ILoad(local_offset),
             },
             VarType::Class(_) => match local_offset {
                 0 => Inst::ALoad0,
                 1 => Inst::ALoad1,
                 2 => Inst::ALoad2,
                 3 => Inst::ALoad3,
-                _ => {
-                    if local_offset >= u8::MIN as u16 && local_offset <= u8::MIN as u16 {
-                        Inst::ALoad(local_offset as u8)
-                    } else {
-                        Inst::Wide(
-                            Box::new(Inst::ALoad((local_offset >> 8) as u8)),
-                            (local_offset % (1u16 << 8)) as u8,
-                        )
-                    }
-                }
+                _ => Inst::ALoad(local_offset),
             },
             _ => unimplemented!(),
         });
@@ -353,12 +321,7 @@ impl ClassBuilder {
                     unimplemented!("SIPush is not implemented")
                 } else {
                     let i_const_idx = self.add_const_i(value);
-
-                    if i_const_idx >= u8::MIN as u16 && i_const_idx <= u8::MAX as u16 {
-                        Inst::LdC(i_const_idx as u8)
-                    } else {
-                        Inst::LdCW(i_const_idx)
-                    }
+                    Inst::LdC(i_const_idx)
                 }
             }
         };

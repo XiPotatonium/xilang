@@ -100,7 +100,16 @@ StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
 PathExpr = ${ Id ~ ("::" ~ Id)* }
-Id = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+Id = @{ !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+KeyWord = { 
+    "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "use" | "where"
+    | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
+    | "self" | "Self" | "super" | "crate" | "extern"
+    | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
+    | "false" | "true" | "null"
+    | "yield" | "typeof"
+}
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }

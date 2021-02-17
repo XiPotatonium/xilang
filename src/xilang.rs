@@ -8,7 +8,7 @@ extern crate regex;
 mod ir;
 mod lang;
 
-use lang::module_mgr;
+use lang::gen::module_mgr;
 
 use clap::{App, Arg};
 

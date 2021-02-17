@@ -17,7 +17,7 @@ class Demo {
 
 	static {
 		let foo: i32 = 0;
-		TAG = foo;
+		Demo::TAG = foo;
 	}
 
 	fn new(id: i32, value: i32) -> Demo {
@@ -25,11 +25,11 @@ class Demo {
 			id,
 			value: value,
 		};
-		TAG = TAG + 1;
+		Demo::TAG = Demo::TAG + 1;
 		ret
 	}
 
  	fn foo(self, a: i32) -> i32 {
- 		self.value + TAG + a + self.id
+ 		self.value + Demo::TAG + a + self.id
  	}
 }

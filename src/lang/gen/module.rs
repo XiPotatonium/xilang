@@ -5,10 +5,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 
-use super::ast::ast::AST;
+use super::super::ast::ast::AST;
+use super::super::parser::peg_parser;
 use super::class::Class;
 use super::module_mgr::ModuleMgr;
-use super::parser::peg_parser;
 
 pub struct Module {
     name: String,
@@ -22,7 +22,6 @@ lazy_static! {
     static ref NAME_RULE : regex::Regex = regex::Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*").unwrap();
 }
 
-// TODO: use regex to check module name
 fn check_module_name_validity(name: &str) -> bool {
     NAME_RULE.is_match(name)
 }

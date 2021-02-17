@@ -53,6 +53,8 @@ pub struct IrMethod {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Attribute {
     Code(
+        // index of "Code"
+        u16,
         // max stacks
         u16,
         Vec<Inst>,

@@ -3,7 +3,6 @@ use std::ptr::{null, null_mut};
 
 struct Node<T> {
     val: T,
-    root: *const LinkedList<T>,
     prev: *mut Node<T>,
     next: Option<Box<Node<T>>>,
 }
@@ -21,18 +20,8 @@ impl<T> AsMut<T> for Node<T> {
 }
 
 impl<T> Node<T> {
-    fn new(
-        val: T,
-        root: *const LinkedList<T>,
-        prev: *mut Node<T>,
-        next: Option<Box<Node<T>>>,
-    ) -> Node<T> {
-        Node {
-            val,
-            root,
-            prev,
-            next,
-        }
+    fn new(val: T, prev: *mut Node<T>, next: Option<Box<Node<T>>>) -> Node<T> {
+        Node { val, prev, next }
     }
 }
 
@@ -90,7 +79,6 @@ impl<T> LinkedList<T> {
     pub fn push_back(&mut self, val: T) {
         let mut node = Box::new(Node::new(
             val,
-            self as *const LinkedList<T>,
             if self.tail.is_null() {
                 self.tail
             } else {

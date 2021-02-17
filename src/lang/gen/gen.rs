@@ -1,8 +1,8 @@
-use super::super::class::CodeGenCtx;
-use super::ast::AST;
+use super::super::ast::ast::AST;
+use super::ctx::CodeGenCtx;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
-use crate::ir::ty::{VarType, XirType};
+use crate::ir::ty::{fn_descriptor, VarType, XirType};
 
 pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> VarType {
     /*
@@ -33,9 +33,8 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> VarType {
     }
 }
 
-fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>) -> Vec<XirType> {
+fn gen_compound_lval(ctx: &CodeGenCtx, ast: &Box<AST>, prefer_field: bool) -> XirType {
     match ast.as_ref() {
-        AST::Id(id) => gen_id_lval(ctx, id),
         AST::OpObjAccess(lhs, rhs) => {
             unimplemented!();
         }
@@ -115,34 +114,97 @@ fn gen_let(
     VarType::Void
 }
 
-fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> VarType {
-    let args_ty: Vec<VarType> = args.iter().map(|arg| gen(ctx, arg)).collect();
-    let possible_lval = gen_lval(ctx, f);
-    let ret: Option<VarType> = None;
+fn query_method(ctx: &CodeGenCtx, id: &String) -> (u16, VarType, Vec<VarType>) {
+    let locals = ctx.locals.borrow();
+    let fields = ctx.class.fields.borrow();
+    let methods = ctx.class.methods.borrow();
+    let f: u16;
+    let ret: VarType;
+    let ps: Vec<VarType>;
 
-    for lval in possible_lval.iter() {
-        match &lval {
-            XirType::RVal(_) => unreachable!(),
-            XirType::Method(class_name, method_name) => {
-                unimplemented!();
-            }
-            _ => (),
+    // query local var
+    if let Some(_) = locals.get(id) {
+        unimplemented!("Call a local variable is not implemented");
+    }
+
+    // query method in this class
+    if let Some(m) = methods.get(id) {
+        if m.flag.is(FlagTag::Static) {
+            f = ctx.class.builder.borrow_mut().add_const_methodref(
+                &ctx.class.fullname(),
+                id,
+                &fn_descriptor(&m.ret_ty, &m.ps_ty),
+            );
+            ret = m.ret_ty.clone();
+            ps = m.ps_ty.to_vec();
+            return (f, ret, ps);
+        } else {
+            panic!("Called method is not a static method: try self.{}()", id);
         }
     }
 
-    if let Some(ret) = ret {
-        ret
+    // query field in this class
+    if let Some(_) = fields.get(id) {
+        unimplemented!("Call a field is not implemented");
     } else {
-        panic!("Invalid call. Cannot find appropriate method");
+        panic!("No valid method found");
     }
+}
+
+fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> VarType {
+    let (f, ret, ps) = match f.as_ref() {
+        AST::Id(id) => {
+            // local or static field or static method
+            query_method(ctx, id)
+        }
+        _ => {
+            let lval = gen_compound_lval(ctx, f, false);
+            match &lval {
+                XirType::RVal(_) => unreachable!(),
+                XirType::Method(class, id) => {
+                    unimplemented!();
+                }
+                XirType::Field(_, _) => unimplemented!(),
+                _ => panic!(),
+            }
+        }
+    };
+
+    let args_ty: Vec<VarType> = args.iter().map(|arg| gen(ctx, arg)).collect();
+
+    for (i, (p_ty, arg_ty)) in ps.iter().zip(args_ty.iter()).enumerate() {
+        if p_ty != arg_ty {
+            panic!(
+                "Call parameter type mismatch, expect {} but found {} at {}",
+                p_ty, arg_ty, i
+            );
+        }
+    }
+
+    ret
 }
 
 fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> VarType {
     let ret = ctx.class.get_type(ty, ctx.mgr);
     match &ret {
         VarType::Class(class_name) => {
-            let builder = ctx.class.builder.borrow_mut();
-            unimplemented!();
+            let class = ctx
+                .mgr
+                .class_table
+                .get(class_name)
+                .unwrap()
+                .upgrade()
+                .unwrap();
+            for field in fields.iter() {
+                if let AST::StructExprField(field_name, field_expr) = field.as_ref() {
+                    unimplemented!();
+                }
+            }
+            let class_name = ctx.class.builder.borrow_mut().add_const_class(class_name);
+            ctx.class
+                .builder
+                .borrow_mut()
+                .add_inst(ctx.method.method_idx, Inst::New(class_name));
         }
         VarType::Array(inner_ty) => unimplemented!(),
         _ => panic!("Invalid new expression, only new class or array is allowed"),
@@ -151,8 +213,6 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> VarType {
 }
 
 fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> VarType {
-    let rval_ty = gen(ctx, rhs);
-    let lval_ty = gen_lval(ctx, lhs);
     unimplemented!();
 }
 
@@ -190,9 +250,5 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> VarType {
             return local.ty.clone();
         }
     }
-    unimplemented!();
-}
-
-fn gen_id_lval(ctx: &CodeGenCtx, id: &String) -> Vec<XirType> {
     unimplemented!();
 }
