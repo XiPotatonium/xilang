@@ -32,13 +32,13 @@ fn main() {
             .about("Hello world! This is xivm")
             .arg(
                 Arg::with_name("root")
-                    .help("Crate root directory")
+                    .help("Input root directory")
                     .required(true)
                     .index(1),
             )
             .arg(
                 Arg::with_name("output")
-                    .help("Output directory")
+                    .help("Output directory. Default to be <root> if not specified")
                     .short("o")
                     .long("output")
                     .takes_value(true),
@@ -54,7 +54,7 @@ fn main() {
                 Arg::with_name("v")
                     .short("v")
                     .multiple(true)
-                    .help("Level of verbosity"),
+                    .help("Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json"),
             )
             .get_matches();
 
