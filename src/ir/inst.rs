@@ -1,3 +1,5 @@
+// TODO: Once it becomes stable
+// https://github.com/rust-lang/rust/issues/60553
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
     IConstM1,           // 0X02

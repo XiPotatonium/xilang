@@ -121,18 +121,11 @@ impl ClassFile {
                 self.get_str(method.descriptor_index)
             ));
 
-            for attr in method.attributes.iter() {
-                match attr {
-                    Attribute::Code(_, locals_stack, insts, _, _) => {
-                        ret.push_str(&format!("        Locals stack: {}\n", locals_stack));
+            ret.push_str(&format!("        Locals stack: {}\n", method.locals_stack));
 
-                        for inst in insts.iter() {
-                            ret.push_str("\n        ");
-                            ret.push_str(&self.get_inst_str(inst));
-                        }
-                    }
-                    _ => unimplemented!(),
-                }
+            for inst in method.insts.iter() {
+                ret.push_str("\n        ");
+                ret.push_str(&self.get_inst_str(inst));
             }
 
             ret.push_str("\n\n");
@@ -143,15 +136,7 @@ impl ClassFile {
         ret
     }
 
-    pub fn to_binary(&self) -> Vec<u8> {
-        unimplemented!();
-    }
-
     pub fn from_text(text: &str) -> ClassFile {
-        unimplemented!();
-    }
-
-    pub fn from_binary(bin: &[u8]) -> ClassFile {
         unimplemented!();
     }
 }

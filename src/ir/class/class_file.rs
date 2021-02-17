@@ -17,7 +17,6 @@ pub struct ClassFile {
     pub interfaces: Vec<IrInterface>,
     pub fields: Vec<IrField>,
     pub methods: Vec<IrMethod>,
-    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -39,7 +38,6 @@ pub struct IrField {
     pub access_flags: u16,
     pub name_index: u16,
     pub descriptor_index: u16,
-    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,23 +45,10 @@ pub struct IrMethod {
     pub access_flags: u16,
     pub name_index: u16,
     pub descriptor_index: u16,
-    pub attributes: Vec<Attribute>,
-}
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Attribute {
-    Code(
-        /// index of "Code"
-        u16,
-        /// locals stack
-        u16,
-        Vec<Inst>,
-        Vec<ExceptionTableEntry>,
-        Vec<Attribute>,
-    ),
-    LineNumberTable(u16, Vec<LineNumberTableEntry>),
-    SourceFile(u16, u16),
-    StackMapTable(u16, Vec<StackMapFrame>),
+    pub locals_stack: u16,
+    pub insts: Vec<Inst>,
+    pub exception: Vec<ExceptionTableEntry>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -73,30 +58,6 @@ pub struct ExceptionTableEntry;
 pub struct LineNumberTableEntry {
     pub start_pc: u16,
     pub line_number: u16,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum StackMapFrame {
-    SameFrame(u8),
-    SameLocals1StackItemFrame(u8, VerificationType),
-    SameLocals1StackItemFrameExtended(u16, VerificationType),
-    ChopFrame(u8, u16),
-    SameFrameExtended(u16),
-    AppendFrame(u8, u16, Vec<VerificationType>),
-    FullFrame(u16, Vec<VerificationType>, Vec<VerificationType>),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum VerificationType {
-    Top,                // 0
-    Integer,            // 1
-    Float,              // 2
-    Long,               // 3
-    Double,             // 4
-    Null,               // 5
-    UninitializedThis,  // 6
-    Object(u16),        // 7
-    Uninitialized(u16), // 8
 }
 
 impl ClassFile {
@@ -111,7 +72,6 @@ impl ClassFile {
             interfaces: vec![],
             fields: vec![],
             methods: vec![],
-            attributes: vec![],
         }
     }
 }

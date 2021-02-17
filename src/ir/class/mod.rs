@@ -1,5 +1,4 @@
 pub mod class_file;
 
-pub mod ser;
-
-pub static CODE_ATTR_NAME: &'static str = "Code";
+pub mod bc_serde;
+pub mod text_serde;

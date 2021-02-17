@@ -1,5 +1,4 @@
-use crate::ir::class::class_file::{Attribute, ClassFile, Constant, IrField, IrMethod};
-use crate::ir::class::CODE_ATTR_NAME;
+use crate::ir::class::class_file::{ClassFile, Constant, IrField, IrMethod};
 use crate::ir::flag::Flag;
 use crate::ir::inst::Inst;
 use crate::ir::ty::RValType;
@@ -87,7 +86,6 @@ impl ClassBuilder {
             access_flags: flag.flag,
             name_index,
             descriptor_index,
-            attributes: vec![],
         });
         self.class_file.fields.len() - 1
     }
@@ -100,7 +98,9 @@ impl ClassBuilder {
             access_flags: flag.flag,
             name_index,
             descriptor_index,
-            attributes: vec![],
+            locals_stack: 0,
+            insts: vec![],
+            exception: vec![],
         });
         self.codes.push(MethodBuilder::new());
         self.class_file.methods.len() - 1
@@ -110,8 +110,7 @@ impl ClassBuilder {
     ///
     /// Fill all jump instructions, concat all basic blocks
     ///
-    pub fn done(&mut self, method_idx: usize, max_stack: u16) {
-        let code_attr_name_idx = self.add_const_utf8(CODE_ATTR_NAME);
+    pub fn done(&mut self, method_idx: usize, locals_stack: u16) {
         let ir_method = &mut self.class_file.methods[method_idx];
         let method_builder = &mut self.codes[method_idx];
         // fill jump instructions
@@ -121,13 +120,8 @@ impl ClassBuilder {
         for bb in method_builder.codes.iter_mut() {
             codes.append(&mut bb.insts);
         }
-        ir_method.attributes.push(Attribute::Code(
-            code_attr_name_idx,
-            max_stack,
-            codes,
-            vec![],
-            vec![],
-        ));
+        ir_method.locals_stack = locals_stack;
+        ir_method.insts = codes;
     }
 }
 

@@ -20,7 +20,9 @@ pub struct Flag {
 
 impl Default for Flag {
     fn default() -> Flag {
-        Flag { flag: FlagTag::Priv as u16 }
+        Flag {
+            flag: FlagTag::Priv as u16,
+        }
     }
 }
 
@@ -43,7 +45,7 @@ impl Flag {
 }
 
 impl fmt::Display for Flag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {        
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = String::new();
         if self.is(FlagTag::Priv) {
             s.push_str("priv")
