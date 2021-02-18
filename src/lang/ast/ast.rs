@@ -1,31 +1,31 @@
 use crate::ir::flag::*;
 
 pub enum AST {
-    // classes: Vec<AST>
+    /// classes: Vec<AST>
     File(Vec<Box<AST>>),
 
-    // id, methods: Vec<Func>, fields: Vec<Var>, static-init
+    /// id, flag, methods: Vec<Func>, fields: Vec<Var>, static-init
     Class(String, TypeFlag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
-    // id, ty, ps: Vec<Var>, body: Box<Block>
+    /// id, ty, ps: Vec<Var>, body: Box<Block>
     Method(String, MethodFlag, Box<AST>, Vec<Box<AST>>, Box<AST>),
 
     Field(String, FieldFlag, Box<AST>),
     Param(String, ParamFlag, Box<AST>),
-    // pattern, ty, flag, init: Box<AST>
+    /// pattern, ty, flag, init: Box<AST>
     Let(Box<AST>, LocalFlag, Box<AST>, Box<AST>),
 
     Stmt(Box<AST>),
 
-    // children: Vec<Stmt>
+    /// children: Vec<Stmt>
     Block(Vec<Box<AST>>),
-    // cond: Box<Expr>, then: Box<Block>, els: Box<Stmt>
+    /// cond: Box<Expr>, then: Box<Block>, els: Box<Stmt>
     If(Box<AST>, Box<AST>, Box<AST>),
     Loop(Box<AST>),
 
-    // ret_val: Box<Expr>
+    /// ret_val: Box<Expr>
     Return(Box<AST>),
     Continue,
-    // break_val: Box<Expr>
+    /// break_val: Box<Expr>
     Break(Box<AST>),
 
     OpPos(Box<AST>),
@@ -48,30 +48,30 @@ pub enum AST {
     OpStaticAccess(Box<AST>, String),
     OpObjAccess(Box<AST>, String),
     OpArrayAccess(Box<AST>, Box<AST>),
-    // ty, val
+    /// ty, val
     OpCast(Box<AST>, Box<AST>),
-    // f: Box<Expr>, ps: Vec<Expr>
+    /// f: Box<Expr>, ps: Vec<Expr>
     OpCall(Box<AST>, Vec<Box<AST>>),
-    // {id: expr}
+    /// {id: expr}
     StructExprField(String, Box<AST>),
-    // ty, struct-inits
+    /// ty, struct-inits
     OpNew(Box<AST>, Vec<Box<AST>>),
 
     Id(String),
     TuplePattern(Vec<Box<AST>>),
 
-    // Type
+    /// Type
     TypeBool,
     TypeChar,
     TypeI32,
     TypeF64,
     TypeTuple(Vec<Box<AST>>),
-    // type, dim
+    /// type, dim
     TypeArr(Box<AST>, Box<AST>),
-    // class names
+    /// class names
     TypeClass(Vec<String>),
 
-    // Literal
+    /// Literal
     Null,
     Bool(bool),
     Int(i32),
@@ -79,6 +79,6 @@ pub enum AST {
     String(String),
     Char(u32),
 
-    // Option<AST>::None
+    /// Option<AST>::None
     None,
 }

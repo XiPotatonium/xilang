@@ -2,24 +2,21 @@ use super::inst::Inst;
 
 use std::ops::Index;
 
-const CAFEBABE: u32 = 0xCAFEBABE;
 const MAJOR_VERSION: u16 = 1;
 const MINOR_VERSION: u16 = 0;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ClassFile {
-    pub magic: u32,
+#[derive(Debug)]
+pub struct ModuleFile {
     pub minor_version: u16,
     pub major_version: u16,
+    pub module_name: u32,
     pub constant_pool: Vec<Constant>,
-    pub access_flags: u32,
-    pub this_class: u32,
-    pub interfaces: Vec<IrInterface>,
+    pub classes: Vec<IrClass>,
     pub fields: Vec<IrField>,
     pub methods: Vec<IrMethod>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Constant {
     Utf8(String),          // 1
     Class(u32),            // 7
@@ -29,53 +26,58 @@ pub enum Constant {
     NameAndType(u32, u32), // 12
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct IrInterface;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IrField {
-    pub access_flags: u16,
-    pub name_index: u32,
-    pub descriptor_index: u32,
+#[derive(Debug)]
+pub struct IrClass {
+    pub flag: u32,
+    pub name_idx: u32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
+pub struct IrField {
+    pub class_idx: u16,
+
+    pub flag: u16,
+    pub name_idx: u32,
+    pub descriptor_idx: u32,
+}
+
+#[derive(Debug)]
 pub struct IrMethod {
-    pub access_flags: u16,
-    pub name_index: u32,
-    pub descriptor_index: u32,
+    pub class_idx: u16,
+
+    pub flag: u16,
+    pub name_idx: u32,
+    pub descriptor_idx: u32,
 
     pub locals: u16,
     pub insts: Vec<Inst>,
     pub exception: Vec<ExceptionTableEntry>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub struct ExceptionTableEntry;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub struct LineNumberTableEntry {
     pub start_pc: u16,
     pub line_number: u16,
 }
 
-impl ClassFile {
-    pub fn new(access_flags: u32) -> ClassFile {
-        ClassFile {
-            magic: CAFEBABE,
+impl ModuleFile {
+    pub fn new() -> ModuleFile {
+        ModuleFile {
             minor_version: MINOR_VERSION,
             major_version: MAJOR_VERSION,
+            module_name: 0,
             constant_pool: vec![],
-            access_flags: access_flags,
-            this_class: 0,
-            interfaces: vec![],
+            classes: vec![],
             fields: vec![],
             methods: vec![],
         }
     }
 }
 
-impl Index<u32> for ClassFile {
+impl Index<u32> for ModuleFile {
     type Output = Constant;
 
     fn index(&self, idx: u32) -> &Self::Output {

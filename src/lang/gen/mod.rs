@@ -1,8 +1,9 @@
 pub mod module_mgr;
 
+mod builder;
 mod class;
-mod class_builder;
-mod ctx;
+mod field;
 mod gen;
-mod member;
+mod method;
 mod module;
+mod var;

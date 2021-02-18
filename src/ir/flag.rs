@@ -27,15 +27,6 @@ impl FieldFlag {
         }
     }
 
-    pub fn unset(&mut self, tag: FieldFlagTag) {
-        match tag {
-            FieldFlagTag::Pub | FieldFlagTag::Priv => {
-                panic!("Cannot unset access tag. Use FieldFlag.set to set the correct tag")
-            }
-            _ => self.flag ^= tag as u16,
-        }
-    }
-
     pub fn is(&self, tag: FieldFlagTag) -> bool {
         self.flag & (tag as u16) != 0
     }
@@ -142,6 +133,7 @@ impl Default for ParamFlag {
 
 impl fmt::Display for ParamFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "");
         Ok(())
     }
 }
@@ -159,6 +151,7 @@ impl Default for LocalFlag {
 
 impl fmt::Display for LocalFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "");
         Ok(())
     }
 }
@@ -193,10 +186,6 @@ impl TypeFlag {
 
     pub fn set_sem(&mut self, tag: TypeSemTag) {
         self.flag = (self.flag & !TYPE_SEM_MASK) | tag as u32;
-    }
-
-    pub fn unset_sem(&mut self, tag: TypeSemTag) {
-        self.flag ^= tag as u32;
     }
 
     pub fn is_vis(&self, tag: TypeVisTag) -> bool {

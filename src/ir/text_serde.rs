@@ -1,10 +1,10 @@
-use super::class_file::*;
 use super::flag::*;
 use super::inst::Inst;
+use super::ir_file::*;
 
 use std::fmt;
 
-impl ClassFile {
+impl ModuleFile {
     fn get_str(&self, idx: u32) -> &str {
         match &self[idx] {
             Constant::Class(name_idx) => self.get_str(*name_idx),
@@ -35,43 +35,77 @@ impl ClassFile {
         }
     }
 
-    pub fn from_text(text: &str) -> ClassFile {
+    pub fn from_text(text: &str) -> ModuleFile {
         unimplemented!();
     }
 }
 
-impl fmt::Display for ClassFile {
+impl fmt::Display for ModuleFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            ".version: {}.{}\n",
-            self.major_version, self.minor_version
+            ".version: {}.{}\n.module {}",
+            self.major_version,
+            self.minor_version,
+            self.get_str(self.module_name)
         )?;
-        let flag = TypeFlag::new(self.access_flags);
-        write!(f, ".class {} {}", flag, self.get_str(self.this_class))?;
 
-        for field in self.fields.iter() {
-            let flag = FieldFlag::new(field.access_flags);
+        for (class_idx, class) in self.classes.iter().enumerate() {
+            let class_idx = class_idx as u16 + 1;
+            let flag = TypeFlag::new(class.flag);
+            write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name_idx))?;
+            for field in self.fields.iter().filter(|f| f.class_idx == class_idx) {
+                let flag = FieldFlag::new(field.flag);
+                write!(
+                    f,
+                    "\n    .field {} {} {}",
+                    flag,
+                    self.get_str(field.name_idx),
+                    self.get_str(field.descriptor_idx)
+                )?;
+            }
+
+            for method in self.methods.iter().filter(|m| m.class_idx == class_idx) {
+                let flag = MethodFlag::new(method.flag);
+                write!(
+                    f,
+                    "\n\n    .method {} {} {}\n",
+                    flag,
+                    self.get_str(method.name_idx),
+                    self.get_str(method.descriptor_idx)
+                )?;
+
+                write!(f, "        .locals\t{}", method.locals)?;
+
+                for inst in method.insts.iter() {
+                    write!(f, "\n        ")?;
+                    inst.fmt(f, self)?;
+                }
+            }
+        }
+
+        for field in self.fields.iter().filter(|f| f.class_idx == 0) {
+            let flag = FieldFlag::new(field.flag);
             write!(
                 f,
-                "\n\n    .field {} {} {}",
+                "\n\n.field {} {} {}",
                 flag,
-                self.get_str(field.name_index),
-                self.get_str(field.descriptor_index)
+                self.get_str(field.name_idx),
+                self.get_str(field.descriptor_idx)
             )?;
         }
 
-        for method in self.methods.iter() {
-            let flag = MethodFlag::new(method.access_flags);
+        for method in self.methods.iter().filter(|m| m.class_idx == 0) {
+            let flag = MethodFlag::new(method.flag);
             write!(
                 f,
-                "\n\n    .method {} {} {}\n",
+                "\n\n.method {} {} {}\n",
                 flag,
-                self.get_str(method.name_index),
-                self.get_str(method.descriptor_index)
+                self.get_str(method.name_idx),
+                self.get_str(method.descriptor_idx)
             )?;
 
-            write!(f, "        .locals\t{}", method.locals)?;
+            write!(f, "    .locals\t{}", method.locals)?;
 
             for inst in method.insts.iter() {
                 write!(f, "\n        ")?;
@@ -84,7 +118,7 @@ impl fmt::Display for ClassFile {
 }
 
 impl Inst {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &ClassFile) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &ModuleFile) -> fmt::Result {
         match self {
             Inst::Nop => write!(f, "nop"),
 

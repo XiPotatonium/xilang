@@ -1,10 +1,6 @@
-use super::class::Class;
-use super::member::Method;
-use super::module_mgr::ModuleMgr;
 use crate::ir::flag::*;
 use crate::ir::ty::RValType;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub struct Var {
@@ -80,15 +76,6 @@ impl Locals {
         None
     }
 
-    pub fn get_idx(&self, id: &str) -> Option<usize> {
-        for frame in self.sym_tbl.iter().rev() {
-            if let Some(ret) = frame.get(id) {
-                return Some(*ret);
-            }
-        }
-        None
-    }
-
     pub fn contains_key(&self, id: &str) -> bool {
         for frame in self.sym_tbl.iter().rev() {
             if frame.contains_key(id) {
@@ -101,12 +88,4 @@ impl Locals {
     pub fn size(&self) -> u16 {
         self.locals.len() as u16
     }
-}
-
-pub struct CodeGenCtx<'mgr> {
-    pub mgr: &'mgr ModuleMgr,
-    pub class: &'mgr Class,
-    pub method: &'mgr Method,
-    pub locals: RefCell<Locals>,
-    pub args_map: HashMap<String, Arg>,
 }
