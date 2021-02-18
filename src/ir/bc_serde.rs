@@ -27,7 +27,7 @@ impl ClassFile {
         let minor_version = u16::deserialize(&mut buf);
         let major_version = u16::deserialize(&mut buf);
         let constant_pool = Vec::deserialize(&mut buf);
-        let access_flags = u16::deserialize(&mut buf);
+        let access_flags = u32::deserialize(&mut buf);
         let this_class = u32::deserialize(&mut buf);
         let interfaces = Vec::deserialize(&mut buf);
         let fields = Vec::deserialize(&mut buf);
@@ -389,7 +389,7 @@ impl Serializable for IrMethod {
         self.name_index.serialize(buf);
         self.descriptor_index.serialize(buf);
 
-        self.locals_stack.serialize(buf);
+        self.locals.serialize(buf);
         self.insts.serialize(buf);
         self.exception.serialize(buf);
     }
@@ -398,7 +398,7 @@ impl Serializable for IrMethod {
         let access_flags = u16::deserialize(buf);
         let name_index = u32::deserialize(buf);
         let descriptor_index = u32::deserialize(buf);
-        let locals_stack = u16::deserialize(buf);
+        let locals = u16::deserialize(buf);
         let insts: Vec<Inst> = Vec::deserialize(buf);
         let exception: Vec<ExceptionTableEntry> = Vec::deserialize(buf);
 
@@ -406,7 +406,7 @@ impl Serializable for IrMethod {
             access_flags,
             name_index,
             descriptor_index,
-            locals_stack,
+            locals,
             insts,
             exception,
         }
@@ -446,15 +446,23 @@ impl Serializable for Inst {
             Inst::LdArg1 => 0x03u8.serialize(buf),
             Inst::LdArg2 => 0x04u8.serialize(buf),
             Inst::LdArg3 => 0x05u8.serialize(buf),
-            Inst::LdArgS(idx) => {
-                0x0Eu8.serialize(buf);
-                idx.serialize(buf);
-            }
-
             Inst::LdLoc0 => 0x06u8.serialize(buf),
             Inst::LdLoc1 => 0x07u8.serialize(buf),
             Inst::LdLoc2 => 0x08u8.serialize(buf),
             Inst::LdLoc3 => 0x09u8.serialize(buf),
+            Inst::StLoc0 => 0x0Au8.serialize(buf),
+            Inst::StLoc1 => 0x0Bu8.serialize(buf),
+            Inst::StLoc2 => 0x0Cu8.serialize(buf),
+            Inst::StLoc3 => 0x0Du8.serialize(buf),
+
+            Inst::LdArgS(idx) => {
+                0x0Eu8.serialize(buf);
+                idx.serialize(buf);
+            }
+            Inst::StArgS(idx) => {
+                0x10u8.serialize(buf);
+                idx.serialize(buf);
+            }
             Inst::LdLocS(idx) => {
                 0x11u8.serialize(buf);
                 idx.serialize(buf);
@@ -463,10 +471,6 @@ impl Serializable for Inst {
                 0xFE0Cu16.serialize(buf);
                 idx.serialize(buf);
             }
-            Inst::StLoc0 => 0x0Au8.serialize(buf),
-            Inst::StLoc1 => 0x0Bu8.serialize(buf),
-            Inst::StLoc2 => 0x0Cu8.serialize(buf),
-            Inst::StLoc3 => 0x0Du8.serialize(buf),
             Inst::StLocS(idx) => {
                 0x13u8.serialize(buf);
                 idx.serialize(buf);
@@ -543,17 +547,19 @@ impl Serializable for Inst {
             0x03 => Inst::LdArg1,
             0x04 => Inst::LdArg2,
             0x05 => Inst::LdArg3,
-            0x0E => Inst::LdArgS(u8::deserialize(buf)),
 
             0x06 => Inst::LdLoc0,
             0x07 => Inst::LdLoc1,
             0x08 => Inst::LdLoc2,
             0x09 => Inst::LdLoc3,
-            0x11 => Inst::LdLocS(u8::deserialize(buf)),
             0x0A => Inst::StLoc0,
             0x0B => Inst::StLoc1,
             0x0C => Inst::StLoc2,
             0x0D => Inst::StLoc3,
+
+            0x0E => Inst::LdArgS(u8::deserialize(buf)),
+            0x10 => Inst::StArgS(u8::deserialize(buf)),
+            0x11 => Inst::LdLocS(u8::deserialize(buf)),
             0x13 => Inst::StLocS(u8::deserialize(buf)),
 
             0x14 => Inst::LdNull,

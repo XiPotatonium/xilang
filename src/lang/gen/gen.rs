@@ -41,6 +41,8 @@ pub enum LValType {
     Module(String),
     // local name
     Local(String),
+    // Param name
+    Arg(String),
 }
 
 pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
@@ -115,7 +117,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
             ctx.class
                 .builder
                 .borrow_mut()
-                .add_inst_pushi(ctx.method.method_idx, *val);
+                .add_inst_ldc(ctx.method.method_idx, *val);
             ValType::RVal(RValType::I32)
         }
         AST::None => ValType::RVal(RValType::Void),
@@ -135,6 +137,8 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
                 // query local var
                 if ctx.locals.borrow().contains_key(id) {
                     return LValType::Local(id.to_owned());
+                } else if ctx.args_map.contains_key(id) {
+                    return LValType::Arg(id.to_owned());
                 } else if ctx.class.fields.contains_key(id) {
                     // query field in this class
                     // either static or non-static is ok
@@ -165,7 +169,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
                     let class_ref = class_rc.borrow();
                     if expect_method {
                         if let Some(m) = class_ref.methods.get(rhs) {
-                            if m.flag.is(FlagTag::Static) {
+                            if m.flag.is(MethodFlagTag::Static) {
                                 panic!("Cannot obj access static method {}::{}", name, rhs);
                             } else {
                                 LValType::Method(name, rhs.to_owned())
@@ -175,7 +179,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
                         }
                     } else {
                         if let Some(f) = class_ref.fields.get(rhs) {
-                            if f.flag.is(FlagTag::Static) {
+                            if f.flag.is(FieldFlagTag::Static) {
                                 panic!("Cannot obj access static filed {}::{}", name, rhs);
                             } else {
                                 LValType::Field(name, rhs.to_owned())
@@ -201,7 +205,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
                     let class_ref = class_rc.borrow();
                     if expect_method {
                         if let Some(m) = class_ref.methods.get(rhs) {
-                            if m.flag.is(FlagTag::Static) {
+                            if m.flag.is(MethodFlagTag::Static) {
                                 LValType::Method(name, rhs.to_owned())
                             } else {
                                 panic!("Cannot static access non-static method {}.{}", name, rhs);
@@ -211,7 +215,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
                         }
                     } else {
                         if let Some(f) = class_ref.fields.get(rhs) {
-                            if f.flag.is(FlagTag::Static) {
+                            if f.flag.is(FieldFlagTag::Static) {
                                 LValType::Field(name, rhs.to_owned())
                             } else {
                                 panic!("Cannot static access non-static filed {}.{}", name, rhs);
@@ -268,7 +272,7 @@ fn gen_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
 fn gen_let(
     ctx: &CodeGenCtx,
     pattern: &Box<AST>,
-    flag: &Flag,
+    flag: &LocalFlag,
     ty: &Box<AST>,
     init: &Box<AST>,
 ) -> RValType {
@@ -294,7 +298,7 @@ fn gen_let(
                 ctx.class
                     .builder
                     .borrow_mut()
-                    .add_inst_store(ctx.method.method_idx, offset);
+                    .add_inst_stloc(ctx.method.method_idx, offset);
 
                 if let AST::None = ty.as_ref() {
                     // no type, induce type from return value of init
@@ -346,10 +350,10 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
                     .builder
                     .borrow_mut()
                     .add_const_methodref(class, name, &m.descriptor());
-            let inst = if m.flag.is(FlagTag::Static) {
+            let inst = if m.flag.is(MethodFlagTag::Static) {
                 Inst::Call(m_idx)
             } else {
-                Inst::Call(m_idx)
+                Inst::CallVirt(m_idx)
             };
 
             build_args(ctx, &m.ps_ty, args);
@@ -454,9 +458,23 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             ctx.class
                 .builder
                 .borrow_mut()
-                .add_inst_store(ctx.method.method_idx, local.offset);
+                .add_inst_stloc(ctx.method.method_idx, local.offset);
 
             local_ty
+        }
+        LValType::Arg(name) => {
+            let arg = ctx.args_map.get(&name).unwrap();
+
+            if arg.ty != v_ty {
+                panic!("Cannot assign {} to arg {}: {}", v_ty, name, arg.ty);
+            }
+
+            ctx.class
+                .builder
+                .borrow_mut()
+                .add_inst_starg(ctx.method.method_idx, arg.offset);
+
+            arg.ty.clone()
         }
         LValType::Field(class, name) => {
             // TODO private and public
@@ -474,7 +492,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
 
             let mut builder = ctx.class.builder.borrow_mut();
             let f_idx = builder.add_const_fieldref(&class, &name, &field_ty.descriptor());
-            let inst = if field.flag.is(FlagTag::Static) {
+            let inst = if field.flag.is(FieldFlagTag::Static) {
                 Inst::StSFld(f_idx)
             } else {
                 Inst::StFld(f_idx)
@@ -508,14 +526,19 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> RValType {
     // try search locals
     {
         let locals = ctx.locals.borrow();
-        if let Some(local_idx) = locals.sym_tbl.last().unwrap().get(id) {
-            let local = &locals.locals[*local_idx];
+        if let Some(local_var) = locals.get(id) {
             ctx.class
                 .builder
                 .borrow_mut()
-                .add_inst_load(ctx.method.method_idx, local.offset);
-            return local.ty.clone();
+                .add_inst_ldloc(ctx.method.method_idx, local_var.offset);
+            return local_var.ty.clone();
+        } else if let Some(arg) = ctx.args_map.get(id) {
+            ctx.class
+                .builder
+                .borrow_mut()
+                .add_inst_ldarg(ctx.method.method_idx, arg.offset);
+            return arg.ty.clone();
         }
     }
-    unimplemented!("{} is not local", id);
+    unimplemented!("{} is not local nor arg", id);
 }

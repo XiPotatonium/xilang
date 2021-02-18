@@ -1,5 +1,5 @@
 use super::class_file::*;
-use super::flag::Flag;
+use super::flag::*;
 use super::inst::Inst;
 
 use std::fmt;
@@ -47,14 +47,14 @@ impl fmt::Display for ClassFile {
             ".version: {}.{}\n",
             self.major_version, self.minor_version
         )?;
-        let flag = Flag::new(self.access_flags);
+        let flag = TypeFlag::new(self.access_flags);
         write!(f, ".class {} {}", flag, self.get_str(self.this_class))?;
 
         for field in self.fields.iter() {
-            let flag = Flag::new(field.access_flags);
+            let flag = FieldFlag::new(field.access_flags);
             write!(
                 f,
-                "\n\n.field {} {} {}",
+                "\n\n    .field {} {} {}",
                 flag,
                 self.get_str(field.name_index),
                 self.get_str(field.descriptor_index)
@@ -62,19 +62,19 @@ impl fmt::Display for ClassFile {
         }
 
         for method in self.methods.iter() {
-            let flag = Flag::new(method.access_flags);
+            let flag = MethodFlag::new(method.access_flags);
             write!(
                 f,
-                "\n\n.method {} {} {}\n",
+                "\n\n    .method {} {} {}\n",
                 flag,
                 self.get_str(method.name_index),
                 self.get_str(method.descriptor_index)
             )?;
 
-            write!(f, "    .maxstack\t{}", method.locals_stack)?;
+            write!(f, "        .locals\t{}", method.locals)?;
 
             for inst in method.insts.iter() {
-                write!(f, "\n    ")?;
+                write!(f, "\n        ")?;
                 inst.fmt(f, self)?;
             }
         }
@@ -93,6 +93,8 @@ impl Inst {
             Inst::LdArg2 => write!(f, "ldarg.2"),
             Inst::LdArg3 => write!(f, "ldarg.3"),
             Inst::LdArgS(idx) => write!(f, "ldarg.s {}", idx),
+
+            Inst::StArgS(idx) => write!(f, "starg.s {}", idx),
 
             Inst::LdLoc0 => write!(f, "ldloc.0"),
             Inst::LdLoc1 => write!(f, "ldloc.1"),

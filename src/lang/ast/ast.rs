@@ -1,22 +1,18 @@
 use crate::ir::flag::*;
 
-#[derive(Debug)]
-pub enum Op {}
-
-#[derive(Debug)]
 pub enum AST {
     // classes: Vec<AST>
     File(Vec<Box<AST>>),
 
     // id, methods: Vec<Func>, fields: Vec<Var>, static-init
-    Class(String, Flag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
+    Class(String, TypeFlag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
     // id, ty, ps: Vec<Var>, body: Box<Block>
-    Method(String, Flag, Box<AST>, Vec<Box<AST>>, Box<AST>),
+    Method(String, MethodFlag, Box<AST>, Vec<Box<AST>>, Box<AST>),
 
-    Field(String, Flag, Box<AST>),
-    Param(String, Flag, Box<AST>),
+    Field(String, FieldFlag, Box<AST>),
+    Param(String, ParamFlag, Box<AST>),
     // pattern, ty, flag, init: Box<AST>
-    Let(Box<AST>, Flag, Box<AST>, Box<AST>),
+    Let(Box<AST>, LocalFlag, Box<AST>, Box<AST>),
 
     Stmt(Box<AST>),
 

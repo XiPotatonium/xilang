@@ -1,12 +1,11 @@
-use std::fmt;
-
-use super::class_file::ClassFile;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
     /// 0x00, nop
     Nop,
+
     /// 0x02, ldarg.0
+    ///
+    /// Load argument at index 0
     ///
     /// ... -> ..., val
     LdArg0,
@@ -16,11 +15,21 @@ pub enum Inst {
     LdArg2,
     /// 0x05, ldarg.3
     LdArg3,
-    /// 0x0E, ldarg.s <num>
+    /// 0x0E, ldarg.s <idx>
     LdArgS(u8),
+
+    /// 0x10, starg.s <idx>
+    ///
+    /// Store argument to index <odx>
+    ///
+    /// ..., val -> ...,
+    StArgS(u8),
+
     /// 0x06, ldloc.0
     ///
     /// Load local var 0 onto stack
+    ///
+    /// ..., -> ..., val
     LdLoc0,
     /// 0x07, ldloc.1
     LdLoc1,
@@ -32,6 +41,7 @@ pub enum Inst {
     LdLocS(u8),
     /// 0xFE0C, ldloc <idx>
     LdLoc(u16),
+
     /// 0x0A, stloc.0
     ///
     /// Store val to local var 0
@@ -48,6 +58,7 @@ pub enum Inst {
     StLocS(u8),
     /// 0xFE0E, stloc <idx>
     StLoc(u16),
+
     /// 0x14, ldnull
     ///
     /// Push a null ref on the stack
@@ -82,6 +93,7 @@ pub enum Inst {
     LdCS(i8),
     /// 0x20, ldc.i4 <num>
     LdC(i32),
+
     /// 0x25, dup
     ///
     /// Dup top stack value
@@ -94,6 +106,7 @@ pub enum Inst {
     ///
     /// ..., val -> ...
     Pop,
+
     /// 0x28, call <func>
     ///
     /// Call a func, See ECMA-335 page 368
@@ -106,12 +119,14 @@ pub enum Inst {
     ///
     /// retVal -> ..., retVal
     Ret,
+
     /// 0x58, add
     ///
     /// Add two numeric values without overflow check
     ///
     /// ..., val1, val2 -> ..., res
     Add,
+
     /// 0x6F, callvirt <method>
     ///
     /// Call a virtual method associate with an obj
@@ -160,6 +175,8 @@ impl Inst {
             Inst::LdArg2 => 1,
             Inst::LdArg3 => 1,
             Inst::LdArgS(_) => 2,
+
+            Inst::StArgS(_) => 2,
 
             Inst::LdLoc0 => 1,
             Inst::LdLoc1 => 1,

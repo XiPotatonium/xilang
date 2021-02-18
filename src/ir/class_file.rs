@@ -12,7 +12,7 @@ pub struct ClassFile {
     pub minor_version: u16,
     pub major_version: u16,
     pub constant_pool: Vec<Constant>,
-    pub access_flags: u16,
+    pub access_flags: u32,
     pub this_class: u32,
     pub interfaces: Vec<IrInterface>,
     pub fields: Vec<IrField>,
@@ -45,7 +45,7 @@ pub struct IrMethod {
     pub name_index: u32,
     pub descriptor_index: u32,
 
-    pub locals_stack: u16,
+    pub locals: u16,
     pub insts: Vec<Inst>,
     pub exception: Vec<ExceptionTableEntry>,
 }
@@ -60,7 +60,7 @@ pub struct LineNumberTableEntry {
 }
 
 impl ClassFile {
-    pub fn new(access_flags: u16) -> ClassFile {
+    pub fn new(access_flags: u32) -> ClassFile {
         ClassFile {
             magic: CAFEBABE,
             minor_version: MINOR_VERSION,

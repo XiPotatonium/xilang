@@ -1,5 +1,5 @@
 use super::super::ast::ast::AST;
-use crate::ir::flag::{Flag, FlagTag};
+use crate::ir::flag::*;
 
 use std::fs;
 use std::path::PathBuf;
@@ -53,7 +53,7 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
 
     Box::new(AST::Class(
         id,
-        Flag::default(),
+        TypeFlag::default(),
         methods,
         fields,
         if let Some(v) = init {
@@ -67,9 +67,9 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
 fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
-    let mut flag = Flag::default();
+    let mut flag = FieldFlag::default();
     if is_static {
-        flag.set(FlagTag::Static);
+        flag.set(FieldFlagTag::Static);
     }
 
     Box::new(AST::Field(id, flag, build_type(iter.next().unwrap())))
@@ -78,8 +78,8 @@ fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
 fn build_method(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
-    let mut flag = Flag::default();
-    flag.set(FlagTag::Static);
+    let mut flag = MethodFlag::default();
+    flag.set(MethodFlagTag::Static);
 
     let mut ps: Vec<Box<AST>> = Vec::new();
     let mut sub = iter.next().unwrap();
@@ -90,13 +90,13 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
         match p0.as_rule() {
             Rule::SelfParam => {
                 // non-static method
-                flag.unset(FlagTag::Static);
+                flag.unset(MethodFlagTag::Static);
             }
             Rule::Id => {
                 // static method
                 ps.push(Box::new(AST::Param(
                     build_id(p0),
-                    Flag::default(),
+                    ParamFlag::default(),
                     build_type(p_iter.next().unwrap()),
                 )));
             }
@@ -107,7 +107,7 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
             if let Some(p_id) = p_iter.next() {
                 ps.push(Box::new(AST::Param(
                     build_id(p_id),
-                    Flag::default(),
+                    ParamFlag::default(),
                     build_type(p_iter.next().unwrap()),
                 )));
             } else {
@@ -205,17 +205,17 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                         // has type
                         let ty = build_type(sub);
                         if let Some(sub) = iter.next() {
-                            AST::Let(pattern, Flag::default(), ty, build_expr(sub))
+                            AST::Let(pattern, LocalFlag::default(), ty, build_expr(sub))
                         } else {
                             // no init
-                            AST::Let(pattern, Flag::default(), ty, Box::new(AST::None))
+                            AST::Let(pattern, LocalFlag::default(), ty, Box::new(AST::None))
                         }
                     }
                     _ => {
                         // no type but has init
                         AST::Let(
                             pattern,
-                            Flag::default(),
+                            LocalFlag::default(),
                             Box::new(AST::None),
                             build_expr(sub),
                         )
@@ -225,7 +225,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                 // no type and no init
                 AST::Let(
                     pattern,
-                    Flag::default(),
+                    LocalFlag::default(),
                     Box::new(AST::None),
                     Box::new(AST::None),
                 )

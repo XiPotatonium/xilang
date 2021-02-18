@@ -1,63 +1,235 @@
 use std::fmt;
 
-pub enum FlagTag {
-    Pub = 0x0001,
-    Priv = 0x0002,
-    // Protected = 0x0004,
-    Static = 0x0008,
-    // Final = 0x0010,
-    // Interface = 0x0200,
-    // Abstract = 0x0400,
-    // Synthetic = 0x1000,
-    // Annotation = 0x2000,
-    // Enum = 0x4000,
+static FIELD_ACC_MASK: u16 = 0x0007;
+
+pub enum FieldFlagTag {
+    Priv = 0x0001,
+    Pub = 0x0006,
+    Static = 0x0010,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Flag {
+#[derive(Clone, Copy)]
+pub struct FieldFlag {
     pub flag: u16,
 }
 
-impl Default for Flag {
-    fn default() -> Flag {
-        Flag {
-            flag: FlagTag::Priv as u16,
+impl FieldFlag {
+    pub fn new(flag: u16) -> FieldFlag {
+        FieldFlag { flag }
+    }
+
+    pub fn set(&mut self, tag: FieldFlagTag) {
+        match tag {
+            FieldFlagTag::Pub | FieldFlagTag::Priv => {
+                self.flag = (self.flag & !FIELD_ACC_MASK) | tag as u16;
+            }
+            _ => self.flag |= tag as u16,
         }
     }
-}
 
-impl Flag {
-    pub fn new(flag: u16) -> Flag {
-        Flag { flag }
+    pub fn unset(&mut self, tag: FieldFlagTag) {
+        match tag {
+            FieldFlagTag::Pub | FieldFlagTag::Priv => {
+                panic!("Cannot unset access tag. Use FieldFlag.set to set the correct tag")
+            }
+            _ => self.flag ^= tag as u16,
+        }
     }
 
-    pub fn set(&mut self, tag: FlagTag) {
-        self.flag |= tag as u16;
-    }
-
-    pub fn unset(&mut self, tag: FlagTag) {
-        self.flag ^= tag as u16;
-    }
-
-    pub fn is(&self, tag: FlagTag) -> bool {
+    pub fn is(&self, tag: FieldFlagTag) -> bool {
         self.flag & (tag as u16) != 0
     }
 }
 
-impl fmt::Display for Flag {
+impl Default for FieldFlag {
+    fn default() -> FieldFlag {
+        FieldFlag {
+            flag: FieldFlagTag::Pub as u16,
+        }
+    }
+}
+
+impl fmt::Display for FieldFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::new();
-        if self.is(FlagTag::Priv) {
-            s.push_str("priv")
-        } else if self.is(FlagTag::Pub) {
-            s.push_str("pub");
-        } else {
-            unreachable!();
+        match self.flag & FIELD_ACC_MASK {
+            0x0001 => write!(f, "priv")?,
+            0x0006 => write!(f, "pub")?,
+            _ => unreachable!(),
         }
 
-        if self.is(FlagTag::Static) {
-            s.push_str(" static");
+        if self.is(FieldFlagTag::Static) {
+            write!(f, " static")?;
         }
-        write!(f, "{}", s)
+
+        Ok(())
+    }
+}
+
+static METHOD_ACC_MASK: u16 = 0x0007;
+
+pub enum MethodFlagTag {
+    Priv = 0x0001,
+    Pub = 0x0006,
+    Static = 0x0010,
+}
+
+#[derive(Clone, Copy)]
+pub struct MethodFlag {
+    pub flag: u16,
+}
+
+impl MethodFlag {
+    pub fn new(flag: u16) -> MethodFlag {
+        MethodFlag { flag }
+    }
+    pub fn set(&mut self, tag: MethodFlagTag) {
+        match tag {
+            MethodFlagTag::Pub | MethodFlagTag::Priv => {
+                self.flag = (self.flag & !METHOD_ACC_MASK) | tag as u16;
+            }
+            _ => self.flag |= tag as u16,
+        }
+    }
+
+    pub fn unset(&mut self, tag: MethodFlagTag) {
+        match tag {
+            MethodFlagTag::Pub | MethodFlagTag::Priv => {
+                panic!("Cannot unset access tag. Use FieldFlag.set to set the correct tag")
+            }
+            _ => self.flag ^= tag as u16,
+        }
+    }
+
+    pub fn is(&self, tag: MethodFlagTag) -> bool {
+        self.flag & (tag as u16) != 0
+    }
+}
+
+impl Default for MethodFlag {
+    fn default() -> MethodFlag {
+        MethodFlag {
+            flag: MethodFlagTag::Pub as u16,
+        }
+    }
+}
+
+impl fmt::Display for MethodFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.flag & METHOD_ACC_MASK {
+            0x0001 => write!(f, "priv")?,
+            0x0006 => write!(f, "pub")?,
+            _ => unreachable!(),
+        }
+
+        if self.is(MethodFlagTag::Static) {
+            write!(f, " static")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ParamFlag {
+    pub flag: u16,
+}
+
+impl Default for ParamFlag {
+    fn default() -> ParamFlag {
+        ParamFlag { flag: 0 }
+    }
+}
+
+impl fmt::Display for ParamFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct LocalFlag {
+    pub flag: u16,
+}
+
+impl Default for LocalFlag {
+    fn default() -> LocalFlag {
+        LocalFlag { flag: 0 }
+    }
+}
+
+impl fmt::Display for LocalFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
+    }
+}
+
+static TYPE_VIS_MASK: u32 = 0x00000007;
+
+pub enum TypeVisTag {
+    Priv = 0x00000000,
+    Pub = 0x00000001,
+}
+
+static TYPE_SEM_MASK: u32 = 0x00000020;
+
+pub enum TypeSemTag {
+    Class = 0x00000000,
+    Interface = 0x00000020,
+}
+
+#[derive(Clone, Copy)]
+pub struct TypeFlag {
+    pub flag: u32,
+}
+
+impl TypeFlag {
+    pub fn new(flag: u32) -> TypeFlag {
+        TypeFlag { flag }
+    }
+
+    pub fn set_vis(&mut self, tag: TypeVisTag) {
+        self.flag = (self.flag & !TYPE_VIS_MASK) | tag as u32;
+    }
+
+    pub fn set_sem(&mut self, tag: TypeSemTag) {
+        self.flag = (self.flag & !TYPE_SEM_MASK) | tag as u32;
+    }
+
+    pub fn unset_sem(&mut self, tag: TypeSemTag) {
+        self.flag ^= tag as u32;
+    }
+
+    pub fn is_vis(&self, tag: TypeVisTag) -> bool {
+        self.flag & (tag as u32) != 0
+    }
+
+    pub fn is_sem(&self, tag: TypeSemTag) -> bool {
+        self.flag & (tag as u32) != 0
+    }
+}
+
+impl Default for TypeFlag {
+    fn default() -> TypeFlag {
+        TypeFlag {
+            flag: TypeVisTag::Pub as u32,
+        }
+    }
+}
+
+impl fmt::Display for TypeFlag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.flag & TYPE_VIS_MASK {
+            0x00000000 => write!(f, "priv")?,
+            0x00000001 => write!(f, "pub")?,
+            _ => unreachable!(),
+        }
+
+        match self.flag & TYPE_SEM_MASK {
+            0x00000000 => write!(f, " class")?,
+            0x00000020 => write!(f, " interface")?,
+            _ => unreachable!(),
+        }
+
+        Ok(())
     }
 }

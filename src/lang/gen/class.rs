@@ -6,11 +6,11 @@ use std::path::Path;
 
 use super::super::ast::ast::AST;
 use super::class_builder::ClassBuilder;
-use super::ctx::{CodeGenCtx, Locals};
+use super::ctx::*;
 use super::gen::{gen, ValType};
 use super::member::{Field, Method};
 use super::module_mgr::ModuleMgr;
-use crate::ir::flag::{Flag, FlagTag};
+use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::ty::{fn_descriptor, RValType};
 use crate::ir::CLINIT_METHOD_NAME;
@@ -43,6 +43,7 @@ macro_rules! declare_method {
             Box::new(Method {
                 ret_ty: $ret_ty,
                 ps_ty: $ps,
+                ps_flag: vec![],
                 flag: $flag.clone(),
                 method_idx,
             }),
@@ -130,8 +131,8 @@ impl Class {
             AST::Block(_) => {
                 let ret_ty = RValType::Void;
                 let ps: Vec<RValType> = vec![];
-                let mut flag = Flag::default();
-                flag.set(FlagTag::Static);
+                let mut flag = MethodFlag::default();
+                flag.set(MethodFlagTag::Static);
                 declare_method!(self, CLINIT_METHOD_NAME, &flag, ret_ty, ps);
             }
             AST::None => (),
@@ -165,7 +166,7 @@ impl Class {
                     .borrow_mut()
                     .add_field(id, &field.ty.descriptor(), flag);
 
-                if !flag.is(FlagTag::Static) {
+                if !flag.is(FieldFlagTag::Static) {
                     // non-static field
                     self.non_static_fields.push(id.to_owned());
                 }
@@ -178,67 +179,61 @@ impl Class {
     }
 
     fn code_gen_method(&self, mgr: &ModuleMgr, m: &Method, ps: &Vec<Box<AST>>, block: &Box<AST>) {
-        // Create symbol table, put args into locals
-        let mut locals = Locals::new();
-        {
-            locals.push();
-            if !m.flag.is(FlagTag::Static) {
-                // non-static method variable "self"
-                locals.add(
-                    "self",
-                    RValType::Obj(self.fullname.clone()),
+        let mut args_map: HashMap<String, Arg> = HashMap::new();
+        if !m.flag.is(MethodFlagTag::Static) {
+            // non-static method param "self"
+            args_map.insert(
+                String::from("self"),
+                Arg::new(
                     Default::default(),
-                    true,
+                    RValType::Obj(self.fullname.clone()),
+                    args_map.len() as u16,
+                ),
+            );
+        }
+        for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
+            if let AST::Param(id, flag, _) = p.as_ref() {
+                // args will be initialized by caller
+                args_map.insert(
+                    id.to_owned(),
+                    Arg::new(*flag, ty.clone(), args_map.len() as u16),
                 );
-            }
-            for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
-                if let AST::Param(id, flag, _) = p.as_ref() {
-                    // args will be initialized by caller
-                    locals.add(id, ty.clone(), *flag, true);
-                } else {
-                    unreachable!("Parser error");
-                }
+            } else {
+                unreachable!("Parser error");
             }
         }
 
         let ctx = CodeGenCtx {
             mgr,
             class: self,
-            locals: RefCell::new(locals),
+            locals: RefCell::new(Locals::new()),
             method: m,
+            args_map,
         };
-        let mut ret = ValType::RVal(RValType::Void);
-        if let AST::Block(stmts) = block.as_ref() {
-            for stmt in stmts.iter() {
-                ret = gen(&ctx, stmt);
-            }
+        let ret = gen(&ctx, block);
 
-            // Check type equivalent
-            match &ret {
-                ValType::RVal(rval_ty) => {
-                    if rval_ty != &m.ret_ty {
-                        panic!("Expect return {} but return {}", m.ret_ty, rval_ty);
-                    }
-                    // Add return instruction
-                    ctx.class
-                        .builder
-                        .borrow_mut()
-                        .add_inst(ctx.method.method_idx, Inst::Ret);
+        // Check type equivalent
+        match &ret {
+            ValType::RVal(rval_ty) => {
+                if rval_ty != &m.ret_ty {
+                    panic!("Expect return {} but return {}", m.ret_ty, rval_ty);
                 }
-                ValType::Ret(ret_ty) => {
-                    if ret_ty != &m.ret_ty {
-                        panic!("Expect return {} but return {}", m.ret_ty, ret_ty);
-                    }
-                }
-                _ => unreachable!(),
+                // Add return instruction
+                ctx.class
+                    .builder
+                    .borrow_mut()
+                    .add_inst(ctx.method.method_idx, Inst::Ret);
             }
-        } else {
-            unreachable!("Parser error")
+            ValType::Ret(ret_ty) => {
+                if ret_ty != &m.ret_ty {
+                    panic!("Expect return {} but return {}", m.ret_ty, ret_ty);
+                }
+            }
+            _ => unreachable!(),
         }
 
         {
-            let mut local_mut = ctx.locals.borrow_mut();
-            local_mut.pop();
+            let local_mut = ctx.locals.borrow();
             assert_eq!(
                 local_mut.sym_tbl.len(),
                 0,

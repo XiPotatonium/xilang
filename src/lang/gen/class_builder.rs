@@ -1,5 +1,5 @@
 use crate::ir::class_file::{ClassFile, Constant, IrField, IrMethod};
-use crate::ir::flag::Flag;
+use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::util::linkedlist::LinkedList;
 
@@ -57,7 +57,7 @@ pub struct ClassBuilder {
 }
 
 impl ClassBuilder {
-    pub fn new(class_name: &str, flag: &Flag) -> ClassBuilder {
+    pub fn new(class_name: &str, flag: &TypeFlag) -> ClassBuilder {
         let mut ret = ClassBuilder {
             utf8_map: HashMap::new(),
             str_map: HashMap::new(),
@@ -75,7 +75,7 @@ impl ClassBuilder {
     }
 
     /// Add a field of this class
-    pub fn add_field(&mut self, name: &str, ty: &str, flag: &Flag) -> usize {
+    pub fn add_field(&mut self, name: &str, ty: &str, flag: &FieldFlag) -> usize {
         let name_index = self.add_const_utf8(name);
         let descriptor_index = self.add_const_utf8(ty);
         self.class_file.fields.push(IrField {
@@ -87,14 +87,14 @@ impl ClassBuilder {
     }
 
     /// Add a field of this class
-    pub fn add_method(&mut self, name: &str, ty: &str, flag: &Flag) -> usize {
+    pub fn add_method(&mut self, name: &str, ty: &str, flag: &MethodFlag) -> usize {
         let name_index = self.add_const_utf8(name);
         let descriptor_index = self.add_const_utf8(ty);
         self.class_file.methods.push(IrMethod {
             access_flags: flag.flag,
             name_index,
             descriptor_index,
-            locals_stack: 0,
+            locals: 0,
             insts: vec![],
             exception: vec![],
         });
@@ -116,7 +116,7 @@ impl ClassBuilder {
         for bb in method_builder.codes.iter_mut() {
             codes.append(&mut bb.insts);
         }
-        ir_method.locals_stack = locals_stack;
+        ir_method.locals = locals_stack;
         ir_method.insts = codes;
     }
 }
@@ -217,7 +217,7 @@ impl ClassBuilder {
         self.codes[method_idx].push(inst);
     }
 
-    pub fn add_inst_store(&mut self, method_idx: usize, local_offset: u16) {
+    pub fn add_inst_stloc(&mut self, method_idx: usize, local_offset: u16) {
         self.codes[method_idx].push(match local_offset {
             0 => Inst::StLoc0,
             1 => Inst::StLoc1,
@@ -233,7 +233,7 @@ impl ClassBuilder {
         });
     }
 
-    pub fn add_inst_load(&mut self, method_idx: usize, local_offset: u16) {
+    pub fn add_inst_ldloc(&mut self, method_idx: usize, local_offset: u16) {
         self.codes[method_idx].push(match local_offset {
             0 => Inst::LdLoc0,
             1 => Inst::LdLoc1,
@@ -249,8 +249,34 @@ impl ClassBuilder {
         });
     }
 
+    pub fn add_inst_ldarg(&mut self, method_idx: usize, arg_offset: u16) {
+        self.codes[method_idx].push(match arg_offset {
+            0 => Inst::LdArg0,
+            1 => Inst::LdArg1,
+            2 => Inst::LdArg2,
+            3 => Inst::LdArg3,
+            _ => {
+                if arg_offset >= u8::MIN as u16 && arg_offset <= u8::MAX as u16 {
+                    Inst::LdArgS(arg_offset as u8)
+                } else {
+                    unimplemented!("ldarg is not implemeneted");
+                }
+            }
+        });
+    }
+
+    pub fn add_inst_starg(&mut self, method_idx: usize, arg_offset: u16) {
+        self.codes[method_idx].push(
+            if arg_offset >= u8::MIN as u16 && arg_offset <= u8::MAX as u16 {
+                Inst::StArgS(arg_offset as u8)
+            } else {
+                unimplemented!("ldarg is not implemeneted");
+            },
+        );
+    }
+
     /// Push an int value to the stack
-    pub fn add_inst_pushi(&mut self, method_idx: usize, value: i32) {
+    pub fn add_inst_ldc(&mut self, method_idx: usize, value: i32) {
         let inst = match value {
             -1 => Inst::LdCM1,
             0 => Inst::LdC0,

@@ -1,11 +1,43 @@
 use super::class::Class;
-use super::member::{Method, Var};
+use super::member::Method;
 use super::module_mgr::ModuleMgr;
-use crate::ir::flag::Flag;
+use crate::ir::flag::*;
 use crate::ir::ty::RValType;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+pub struct Var {
+    pub id: String,
+    pub flag: LocalFlag,
+    pub ty: RValType,
+    pub offset: u16,
+    pub initialized: bool,
+}
+
+impl Var {
+    pub fn new(id: &str, flag: LocalFlag, ty: RValType, offset: u16, initialized: bool) -> Var {
+        Var {
+            id: id.to_owned(),
+            flag,
+            ty,
+            offset,
+            initialized,
+        }
+    }
+}
+
+pub struct Arg {
+    pub flag: ParamFlag,
+    pub ty: RValType,
+    pub offset: u16,
+}
+
+impl Arg {
+    pub fn new(flag: ParamFlag, ty: RValType, offset: u16) -> Arg {
+        Arg { flag, ty, offset }
+    }
+}
 
 pub struct Locals {
     pub locals: Vec<Var>,
@@ -28,7 +60,7 @@ impl Locals {
         self.sym_tbl.pop().expect("Cannot pop empty stack");
     }
 
-    pub fn add(&mut self, id: &str, ty: RValType, flag: Flag, initialized: bool) -> u16 {
+    pub fn add(&mut self, id: &str, ty: RValType, flag: LocalFlag, initialized: bool) -> u16 {
         let offset = self.size();
         let var = Var::new(id, flag, ty, offset, initialized);
         self.sym_tbl
@@ -76,4 +108,5 @@ pub struct CodeGenCtx<'mgr> {
     pub class: &'mgr Class,
     pub method: &'mgr Method,
     pub locals: RefCell<Locals>,
+    pub args_map: HashMap<String, Arg>,
 }
