@@ -87,9 +87,9 @@ impl Class {
 
     pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> RValType {
         match ast.as_ref() {
-            AST::TypeI32 => RValType::Int,
-            AST::TypeF64 => RValType::Double,
-            AST::TypeBool => RValType::Boolean,
+            AST::TypeI32 => RValType::I32,
+            AST::TypeF64 => RValType::F64,
+            AST::TypeBool => RValType::Bool,
             AST::None => RValType::Void,
             AST::TypeTuple(types) => {
                 unimplemented!();
@@ -107,14 +107,14 @@ impl Class {
                         class_name[0]
                     );
                     if mgr.class_table.contains_key(&class_fullname) {
-                        return RValType::Class(class_fullname);
+                        return RValType::Obj(class_fullname);
                     }
                 }
 
                 // Search in global
                 let class_fullname = class_name.join("/");
                 if mgr.class_table.contains_key(&class_fullname) {
-                    RValType::Class(class_fullname)
+                    RValType::Obj(class_fullname)
                 } else {
                     panic!("Class {} not found", class_fullname);
                 }
@@ -186,7 +186,7 @@ impl Class {
                 // non-static method variable "self"
                 locals.add(
                     "self",
-                    RValType::Class(self.fullname.clone()),
+                    RValType::Obj(self.fullname.clone()),
                     Default::default(),
                     true,
                 );
@@ -223,7 +223,7 @@ impl Class {
                     ctx.class
                         .builder
                         .borrow_mut()
-                        .add_inst(ctx.method.method_idx, Inst::Return);
+                        .add_inst(ctx.method.method_idx, Inst::Ret);
                 }
                 ValType::Ret(ret_ty) => {
                     if ret_ty != &m.ret_ty {
@@ -247,7 +247,7 @@ impl Class {
 
             self.builder
                 .borrow_mut()
-                .done(ctx.method.method_idx, local_mut.size);
+                .done(ctx.method.method_idx, local_mut.size());
         }
     }
 
@@ -280,10 +280,9 @@ impl Class {
         let module_name = &self.path[self.path.len() - 2];
         let class_name = &self.path[self.path.len() - 1];
 
-        let ir = self.builder.borrow().class_file.to_text();
         let mut f =
             fs::File::create(dir.join(format!("{}.{}.xir", module_name, class_name))).unwrap();
-        f.write_all(ir.as_bytes()).unwrap();
+        write!(f, "{}", self.builder.borrow().class_file);
 
         let buf = self.builder.borrow().class_file.to_binary();
         let mut f =

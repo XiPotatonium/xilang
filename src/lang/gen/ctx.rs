@@ -9,7 +9,6 @@ use std::collections::HashMap;
 
 pub struct Locals {
     pub locals: Vec<Var>,
-    pub size: u16,
     pub sym_tbl: Vec<HashMap<String, usize>>,
 }
 
@@ -17,7 +16,6 @@ impl Locals {
     pub fn new() -> Locals {
         Locals {
             locals: Vec::new(),
-            size: 0,
             sym_tbl: Vec::new(),
         }
     }
@@ -31,15 +29,13 @@ impl Locals {
     }
 
     pub fn add(&mut self, id: &str, ty: RValType, flag: Flag, initialized: bool) -> u16 {
-        let var_size = ty.slot();
-        let var = Var::new(id, flag, ty, self.size, initialized);
-        let offset = self.size;
+        let offset = self.size();
+        let var = Var::new(id, flag, ty, offset, initialized);
         self.sym_tbl
             .last_mut()
             .unwrap()
             .insert(id.to_owned(), self.locals.len());
         self.locals.push(var);
-        self.size += var_size;
         offset
     }
 
@@ -68,6 +64,10 @@ impl Locals {
             }
         }
         false
+    }
+
+    pub fn size(&self) -> u16 {
+        self.locals.len() as u16
     }
 }
 

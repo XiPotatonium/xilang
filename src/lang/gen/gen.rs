@@ -78,7 +78,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                     let mut builder = ctx.class.builder.borrow_mut();
                     let field_idx =
                         builder.add_const_fieldref(class_name, field_name, &ret.descriptor());
-                    builder.add_inst(ctx.method.method_idx, Inst::GetField(field_idx));
+                    builder.add_inst(ctx.method.method_idx, Inst::LdFld(field_idx));
 
                     ValType::RVal(ret)
                 }
@@ -103,7 +103,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                     let mut builder = ctx.class.builder.borrow_mut();
                     let field_idx =
                         builder.add_const_fieldref(class_name, field_name, &ret.descriptor());
-                    builder.add_inst(ctx.method.method_idx, Inst::GetStatic(field_idx));
+                    builder.add_inst(ctx.method.method_idx, Inst::LdSFld(field_idx));
 
                     ValType::RVal(ret)
                 }
@@ -116,7 +116,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                 .builder
                 .borrow_mut()
                 .add_inst_pushi(ctx.method.method_idx, *val);
-            ValType::RVal(RValType::Int)
+            ValType::RVal(RValType::I32)
         }
         AST::None => ValType::RVal(RValType::Void),
         _ => unimplemented!("{}", ast),
@@ -159,7 +159,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
             // generate lhs as lval (as the first arg in non-static method or objectref of putfield)
             let lhs = gen(ctx, lhs).expect_rval();
             match lhs {
-                RValType::Class(name) => {
+                RValType::Obj(name) => {
                     // Access a non-static method or non-static field in class
                     let class_rc = ctx.mgr.class_table.get(&name).unwrap().upgrade().unwrap();
                     let class_ref = class_rc.borrow();
@@ -250,19 +250,13 @@ fn gen_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
     match &ret {
         ValType::RVal(ty) => {
             // pop from stack
-            match ty.slot() {
-                0 => (),
-                1 => ctx
+            match ty {
+                RValType::Void => (),
+                _ => ctx
                     .class
                     .builder
                     .borrow_mut()
                     .add_inst(ctx.method.method_idx, Inst::Pop),
-                2 => ctx
-                    .class
-                    .builder
-                    .borrow_mut()
-                    .add_inst(ctx.method.method_idx, Inst::Pop2),
-                _ => unreachable!(),
             };
             ValType::RVal(RValType::Void)
         }
@@ -297,11 +291,10 @@ fn gen_let(
                     .locals
                     .borrow_mut()
                     .add(id, init_ty.clone(), *flag, true);
-                ctx.class.builder.borrow_mut().add_inst_store(
-                    ctx.method.method_idx,
-                    &init_ty,
-                    offset,
-                );
+                ctx.class
+                    .builder
+                    .borrow_mut()
+                    .add_inst_store(ctx.method.method_idx, offset);
 
                 if let AST::None = ty.as_ref() {
                     // no type, induce type from return value of init
@@ -354,9 +347,9 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
                     .borrow_mut()
                     .add_const_methodref(class, name, &m.descriptor());
             let inst = if m.flag.is(FlagTag::Static) {
-                Inst::InvokeStatic(m_idx)
+                Inst::Call(m_idx)
             } else {
-                Inst::InvokeSpecial(m_idx)
+                Inst::Call(m_idx)
             };
 
             build_args(ctx, &m.ps_ty, args);
@@ -378,7 +371,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
 fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.class.get_type(ty, ctx.mgr);
     match &ret {
-        RValType::Class(class_name) => {
+        RValType::Obj(class_name) => {
             let class = ctx
                 .mgr
                 .class_table
@@ -458,11 +451,10 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 panic!("Cannot assign {} to local var {}: {}", v_ty, name, local_ty);
             }
 
-            ctx.class.builder.borrow_mut().add_inst_store(
-                ctx.method.method_idx,
-                &local_ty,
-                local.offset,
-            );
+            ctx.class
+                .builder
+                .borrow_mut()
+                .add_inst_store(ctx.method.method_idx, local.offset);
 
             local_ty
         }
@@ -483,9 +475,9 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             let mut builder = ctx.class.builder.borrow_mut();
             let f_idx = builder.add_const_fieldref(&class, &name, &field_ty.descriptor());
             let inst = if field.flag.is(FlagTag::Static) {
-                Inst::PutStatic(f_idx)
+                Inst::StSFld(f_idx)
             } else {
-                Inst::PutField(f_idx)
+                Inst::StFld(f_idx)
             };
 
             builder.add_inst(ctx.method.method_idx, inst);
@@ -505,16 +497,11 @@ fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         panic!("Cannot add between {} and {}", lty, rty);
     }
 
-    match &lty {
-        RValType::Int => {
-            ctx.class
-                .builder
-                .borrow_mut()
-                .add_inst(ctx.method.method_idx, Inst::IAdd);
-            lty
-        }
-        _ => unimplemented!(),
-    }
+    ctx.class
+        .builder
+        .borrow_mut()
+        .add_inst(ctx.method.method_idx, Inst::Add);
+    lty
 }
 
 fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> RValType {
@@ -523,11 +510,10 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> RValType {
         let locals = ctx.locals.borrow();
         if let Some(local_idx) = locals.sym_tbl.last().unwrap().get(id) {
             let local = &locals.locals[*local_idx];
-            ctx.class.builder.borrow_mut().add_inst_load(
-                ctx.method.method_idx,
-                &local.ty,
-                local.offset,
-            );
+            ctx.class
+                .builder
+                .borrow_mut()
+                .add_inst_load(ctx.method.method_idx, local.offset);
             return local.ty.clone();
         }
     }

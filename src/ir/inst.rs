@@ -1,96 +1,207 @@
-// TODO: Once it becomes stable
-// https://github.com/rust-lang/rust/issues/60553
+use std::fmt;
+
+use super::class_file::ClassFile;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
-    IConstM1,           // 0X02
-    IConst0,            // 0X03
-    IConst1,            // 0X04
-    IConst2,            // 0X05
-    IConst3,            // 0X06
-    IConst4,            // 0X07
-    IConst5,            // 0X08
-    BIPush(i8),         // 0X10
-    LdC(u16),           // 0X12
-    ILoad(u16),         // 0X15
-    ALoad(u16),         // 0X19
-    ILoad0,             // 0X1A
-    ILoad1,             // 0X1B
-    ILoad2,             // 0X1C
-    ILoad3,             // 0X1D
-    ALoad0,             // 0X2A
-    ALoad1,             // 0X2B
-    ALoad2,             // 0X2C
-    ALoad3,             // 0X2D
-    IStore(u16),        // 0X36
-    AStore(u16),        // 0X3A
-    IStore0,            // 0X3B
-    IStore1,            // 0X3C
-    IStore2,            // 0X3D
-    IStore3,            // 0X3E
-    AStore0,            // 0X4B
-    AStore1,            // 0X4C
-    AStore2,            // 0X4D
-    AStore3,            // 0X4E
-    Pop,                // 0X57
-    Pop2,               // 0X58
-    IAdd,               // 0X60
-    Return,             // 0XB1
-    GetStatic(u16),     // 0XB2
-    PutStatic(u16),     // 0XB3
-    GetField(u16),      // 0XB4
-    PutField(u16),      // 0XB5
-    InvokeVirtual(u16), // 0XB6
-    InvokeSpecial(u16), // 0XB7
-    InvokeStatic(u16),  // 0XB8
-    New(u16),           // 0XBB
-    ArrayLength,        // 0XBE
+    /// 0x00, nop
+    Nop,
+    /// 0x02, ldarg.0
+    ///
+    /// ... -> ..., val
+    LdArg0,
+    /// 0x03, ldarg.1
+    LdArg1,
+    /// 0x04, ldarg.2
+    LdArg2,
+    /// 0x05, ldarg.3
+    LdArg3,
+    /// 0x0E, ldarg.s <num>
+    LdArgS(u8),
+    /// 0x06, ldloc.0
+    ///
+    /// Load local var 0 onto stack
+    LdLoc0,
+    /// 0x07, ldloc.1
+    LdLoc1,
+    /// 0x08, ldloc.2
+    LdLoc2,
+    /// 0x09, ldloc.3
+    LdLoc3,
+    /// 0x11, ldloc.s <idx>
+    LdLocS(u8),
+    /// 0xFE0C, ldloc <idx>
+    LdLoc(u16),
+    /// 0x0A, stloc.0
+    ///
+    /// Store val to local var 0
+    ///
+    /// ... val -> ...
+    StLoc0,
+    /// 0x0B, stloc.1
+    StLoc1,
+    /// 0x0C, stloc.2
+    StLoc2,
+    /// 0x0D, stloc.3
+    StLoc3,
+    /// 0x13, stloc.s <idx>
+    StLocS(u8),
+    /// 0xFE0E, stloc <idx>
+    StLoc(u16),
+    /// 0x14, ldnull
+    ///
+    /// Push a null ref on the stack
+    ///
+    /// ... -> ..., null
+    LdNull,
+    /// 0x15, ldc.i4.m1
+    ///
+    /// Push -1 onto the stack as i32
+    ///
+    /// ... -> ..., num
+    LdCM1,
+    /// 0x16, ldc.i4.0
+    LdC0,
+    /// 0x17, ldc.i4.1
+    LdC1,
+    /// 0x18, ldc.i4.2
+    LdC2,
+    /// 0x19, ldc.i4.3
+    LdC3,
+    /// 0x1A, ldc.i4.4
+    LdC4,
+    /// 0x1B, ldc.i4.5
+    LdC5,
+    /// 0x1C, ldc.i4.6
+    LdC6,
+    /// 0x1D, ldc.i4.7
+    LdC7,
+    /// 0x1E, ldc.i4.8
+    LdC8,
+    /// 0x1F, ldc.i4.s <num>
+    LdCS(i8),
+    /// 0x20, ldc.i4 <num>
+    LdC(i32),
+    /// 0x25, dup
+    ///
+    /// Dup top stack value
+    ///
+    /// ..., val -> ..., val, val
+    Dup,
+    /// 0x26, pop
+    ///
+    /// Pop top val from stack
+    ///
+    /// ..., val -> ...
+    Pop,
+    /// 0x28, call <func>
+    ///
+    /// Call a func, See ECMA-335 page 368
+    ///
+    /// ..., arg0, arg1 ... argN -> ..., retVal
+    Call(u32),
+    /// 0x2A, ret
+    ///
+    /// return from current method
+    ///
+    /// retVal -> ..., retVal
+    Ret,
+    /// 0x58, add
+    ///
+    /// Add two numeric values without overflow check
+    ///
+    /// ..., val1, val2 -> ..., res
+    Add,
+    /// 0x6F, callvirt <method>
+    ///
+    /// Call a virtual method associate with an obj
+    ///
+    /// ..., obj, arg1, ..., argN -> ..., retVal
+    CallVirt(u32),
+    /// 0x73, newobj <class>
+    ///
+    /// This is not CLR standard.
+    ///
+    /// ..., f0, ..., fN -> ..., obj
+    New(u32),
+    /// 0x7B, ldfld <field>
+    ///
+    /// Load a field onto the stack
+    ///
+    /// ..., obj -> ..., val
+    LdFld(u32),
+    /// 0x7D, stfld <field>
+    ///
+    /// Store a value to field
+    ///
+    /// ..., obj, val -> ...,
+    StFld(u32),
+    /// 0x7E, ldsfld <field>
+    ///
+    /// Load a static field onto the stack
+    ///
+    /// ..., -> ..., val
+    LdSFld(u32),
+    /// 0x80, stsfld <field>
+    ///
+    /// Store a value to field
+    ///
+    /// ..., val -> ...,
+    StSFld(u32),
 }
 
 impl Inst {
     pub fn size(&self) -> u16 {
         match self {
-            Self::IConstM1 => 1,
-            Self::IConst0 => 1,
-            Self::IConst1 => 1,
-            Self::IConst2 => 1,
-            Self::IConst3 => 1,
-            Self::IConst4 => 1,
-            Self::IConst5 => 1,
-            Self::BIPush(_) => 2,
-            Self::LdC(_) => 3,
-            Self::ILoad(_) => 3,
-            Self::ALoad(_) => 3,
-            Self::ILoad0 => 1,
-            Self::ILoad1 => 1,
-            Self::ILoad2 => 1,
-            Self::ILoad3 => 1,
-            Self::ALoad0 => 1,
-            Self::ALoad1 => 1,
-            Self::ALoad2 => 1,
-            Self::ALoad3 => 1,
-            Self::IStore(_) => 3,
-            Self::AStore(_) => 3,
-            Self::IStore0 => 1,
-            Self::IStore1 => 1,
-            Self::IStore2 => 1,
-            Self::IStore3 => 1,
-            Self::AStore0 => 1,
-            Self::AStore1 => 1,
-            Self::AStore2 => 1,
-            Self::AStore3 => 1,
-            Self::Pop => 1,
-            Self::Pop2 => 1,
-            Self::IAdd => 1,
-            Self::Return => 1,
-            Self::GetStatic(_) => 3,
-            Self::PutStatic(_) => 3,
-            Self::GetField(_) => 3,
-            Self::PutField(_) => 3,
-            Self::InvokeVirtual(_) => 3,
-            Self::InvokeSpecial(_) => 3,
-            Self::InvokeStatic(_) => 3,
-            Self::New(_) => 3,
-            Self::ArrayLength => 1,
+            Inst::Nop => 1,
+
+            Inst::LdArg0 => 1,
+            Inst::LdArg1 => 1,
+            Inst::LdArg2 => 1,
+            Inst::LdArg3 => 1,
+            Inst::LdArgS(_) => 2,
+
+            Inst::LdLoc0 => 1,
+            Inst::LdLoc1 => 1,
+            Inst::LdLoc2 => 1,
+            Inst::LdLoc3 => 1,
+            Inst::LdLocS(_) => 2,
+            Inst::LdLoc(_) => 4,
+            Inst::StLoc0 => 1,
+            Inst::StLoc1 => 1,
+            Inst::StLoc2 => 1,
+            Inst::StLoc3 => 1,
+            Inst::StLocS(_) => 2,
+            Inst::StLoc(_) => 4,
+
+            Inst::LdNull => 1,
+            Inst::LdCM1 => 1,
+            Inst::LdC0 => 1,
+            Inst::LdC1 => 1,
+            Inst::LdC2 => 1,
+            Inst::LdC3 => 1,
+            Inst::LdC4 => 1,
+            Inst::LdC5 => 1,
+            Inst::LdC6 => 1,
+            Inst::LdC7 => 1,
+            Inst::LdC8 => 1,
+            Inst::LdCS(_) => 2,
+            Inst::LdC(_) => 5,
+
+            Inst::Dup => 1,
+            Inst::Pop => 1,
+
+            Inst::Call(_) => 5,
+            Inst::Ret => 1,
+
+            Inst::Add => 1,
+
+            Inst::CallVirt(_) => 5,
+            Inst::New(_) => 5,
+            Inst::LdFld(_) => 5,
+            Inst::StFld(_) => 5,
+            Inst::LdSFld(_) => 5,
+            Inst::StSFld(_) => 5,
         }
     }
 }

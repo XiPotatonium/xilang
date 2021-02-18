@@ -1,7 +1,6 @@
-use crate::ir::class::class_file::{ClassFile, Constant, IrField, IrMethod};
+use crate::ir::class_file::{ClassFile, Constant, IrField, IrMethod};
 use crate::ir::flag::Flag;
 use crate::ir::inst::Inst;
-use crate::ir::ty::RValType;
 use crate::ir::util::linkedlist::LinkedList;
 
 use std::collections::HashMap;
@@ -41,19 +40,17 @@ impl MethodBuilder {
 pub struct ClassBuilder {
     // use const map to avoid redeclaration
     // str -> utf8 idx
-    utf8_map: HashMap<String, u16>,
+    utf8_map: HashMap<String, u32>,
     // utf8 idx -> String idx
-    str_map: HashMap<u16, u16>,
+    str_map: HashMap<u32, u32>,
     // utf8 idx -> Class idx
-    class_map: HashMap<u16, u16>,
+    class_map: HashMap<u32, u32>,
     // (Class idx, NameAndType idx) -> Field idx
-    field_map: HashMap<(u16, u16), u16>,
+    field_map: HashMap<(u32, u32), u32>,
     // (Class idx, NameAndType idx) -> Field idx
-    method_map: HashMap<(u16, u16), u16>,
+    method_map: HashMap<(u32, u32), u32>,
     // (utf8 name idx, utf8 ty idx) -> NameAndType idx
-    name_and_type_map: HashMap<(u16, u16), u16>,
-    // value -> idx
-    int_map: HashMap<i32, u16>,
+    name_and_type_map: HashMap<(u32, u32), u32>,
     pub class_file: ClassFile,
 
     codes: Vec<MethodBuilder>,
@@ -68,7 +65,6 @@ impl ClassBuilder {
             field_map: HashMap::new(),
             method_map: HashMap::new(),
             name_and_type_map: HashMap::new(),
-            int_map: HashMap::new(),
             class_file: ClassFile::new(flag.flag),
             codes: Vec::new(),
         };
@@ -127,32 +123,32 @@ impl ClassBuilder {
 
 // Const values
 impl ClassBuilder {
-    pub fn add_const_string(&mut self, v: &str) -> u16 {
+    pub fn add_const_string(&mut self, v: &str) -> u32 {
         let utf8 = self.add_const_utf8(v);
         if let Some(ret) = self.str_map.get(&utf8) {
             *ret
         } else {
             self.class_file.constant_pool.push(Constant::String(utf8));
-            let ret = self.class_file.constant_pool.len() as u16;
+            let ret = self.class_file.constant_pool.len() as u32;
             self.str_map.insert(utf8, ret);
             ret
         }
     }
 
-    pub fn add_const_utf8(&mut self, v: &str) -> u16 {
+    pub fn add_const_utf8(&mut self, v: &str) -> u32 {
         if let Some(ret) = self.utf8_map.get(v) {
             *ret
         } else {
             self.class_file
                 .constant_pool
                 .push(Constant::Utf8(String::from(v)));
-            let ret = self.class_file.constant_pool.len() as u16;
+            let ret = self.class_file.constant_pool.len() as u32;
             self.utf8_map.insert(String::from(v), ret);
             ret
         }
     }
 
-    pub fn add_const_class(&mut self, class_name: &str) -> u16 {
+    pub fn add_const_class(&mut self, class_name: &str) -> u32 {
         let class_name_idx = self.add_const_utf8(class_name);
         if let Some(ret) = self.class_map.get(&class_name_idx) {
             *ret
@@ -160,13 +156,13 @@ impl ClassBuilder {
             self.class_file
                 .constant_pool
                 .push(Constant::Class(class_name_idx));
-            let ret = self.class_file.constant_pool.len() as u16;
+            let ret = self.class_file.constant_pool.len() as u32;
             self.class_map.insert(class_name_idx, ret);
             ret
         }
     }
 
-    fn add_const_name_and_type(&mut self, name: &str, ty: &str) -> u16 {
+    fn add_const_name_and_type(&mut self, name: &str, ty: &str) -> u32 {
         let name = self.add_const_utf8(name);
         let ty = self.add_const_utf8(ty);
 
@@ -176,13 +172,13 @@ impl ClassBuilder {
             self.class_file
                 .constant_pool
                 .push(Constant::NameAndType(name, ty));
-            let ret = self.class_file.constant_pool.len() as u16;
+            let ret = self.class_file.constant_pool.len() as u32;
             self.name_and_type_map.insert((name, ty), ret);
             ret
         }
     }
 
-    pub fn add_const_fieldref(&mut self, class_name: &str, name: &str, ty: &str) -> u16 {
+    pub fn add_const_fieldref(&mut self, class_name: &str, name: &str, ty: &str) -> u32 {
         let class = self.add_const_class(class_name);
         let name_and_type = self.add_const_name_and_type(name, ty);
 
@@ -192,13 +188,13 @@ impl ClassBuilder {
             self.class_file
                 .constant_pool
                 .push(Constant::Fieldref(class, name_and_type));
-            let ret = self.class_file.constant_pool.len() as u16;
+            let ret = self.class_file.constant_pool.len() as u32;
             self.field_map.insert((class, name_and_type), ret);
             ret
         }
     }
 
-    pub fn add_const_methodref(&mut self, class_name: &str, name: &str, ty: &str) -> u16 {
+    pub fn add_const_methodref(&mut self, class_name: &str, name: &str, ty: &str) -> u32 {
         let class = self.add_const_class(class_name);
         let name_and_type = self.add_const_name_and_type(name, ty);
 
@@ -208,49 +204,12 @@ impl ClassBuilder {
             self.class_file
                 .constant_pool
                 .push(Constant::Methodref(class, name_and_type));
-            let ret = self.class_file.constant_pool.len() as u16;
+            let ret = self.class_file.constant_pool.len() as u32;
             self.method_map.insert((class, name_and_type), ret);
             ret
         }
     }
-
-    fn add_const_i(&mut self, val: i32) -> u16 {
-        if let Some(ret) = self.int_map.get(&val) {
-            *ret
-        } else {
-            self.class_file.constant_pool.push(Constant::Integer(val));
-            let ret = self.class_file.constant_pool.len() as u16;
-            self.int_map.insert(val, ret);
-            ret
-        }
-    }
 }
-
-/// Wrap load/store/iinc
-///
-/// TODO: use concat_idents! once it becomes stable
-/*
-macro_rules! wrap_wide {
-    ($inst: path, $arg: expr) => {
-        {
-            let val = $arg as u16;
-            match val {
-                0 => inst0(val as u8),
-                1 => inst1(val as u8),
-                2 => inst2(val as u8),
-                3 => inst3(val as u8),
-                _ => {
-                    if val >= u8::MIN as u16 && val <= u8::MAX as u16 {
-                        $inst(val as u8)
-                    } else {
-                        Inst::Wide(Box::new($inst((val >> 8) as u8)), (val % (1u16 << 8)) as u8)
-                    }
-                }
-            }
-        }
-    };
-}
-*/
 
 // instructions
 impl ClassBuilder {
@@ -258,64 +217,56 @@ impl ClassBuilder {
         self.codes[method_idx].push(inst);
     }
 
-    pub fn add_inst_store(&mut self, method_idx: usize, local_ty: &RValType, local_offset: u16) {
-        self.codes[method_idx].push(match local_ty {
-            RValType::Int => match local_offset {
-                0 => Inst::IStore0,
-                1 => Inst::IStore1,
-                2 => Inst::IStore2,
-                3 => Inst::IStore3,
-                _ => Inst::IStore(local_offset),
-            },
-            RValType::Class(_) => match local_offset {
-                0 => Inst::AStore0,
-                1 => Inst::AStore1,
-                2 => Inst::AStore2,
-                3 => Inst::AStore3,
-                _ => Inst::AStore(local_offset),
-            },
-            _ => unimplemented!(),
+    pub fn add_inst_store(&mut self, method_idx: usize, local_offset: u16) {
+        self.codes[method_idx].push(match local_offset {
+            0 => Inst::StLoc0,
+            1 => Inst::StLoc1,
+            2 => Inst::StLoc2,
+            3 => Inst::StLoc3,
+            _ => {
+                if local_offset >= u8::MIN as u16 && local_offset <= u8::MAX as u16 {
+                    Inst::StLocS(local_offset as u8)
+                } else {
+                    Inst::StLoc(local_offset)
+                }
+            }
         });
     }
 
-    pub fn add_inst_load(&mut self, method_idx: usize, local_ty: &RValType, local_offset: u16) {
-        self.codes[method_idx].push(match local_ty {
-            RValType::Int => match local_offset {
-                0 => Inst::ILoad0,
-                1 => Inst::ILoad1,
-                2 => Inst::ILoad2,
-                3 => Inst::ILoad3,
-                _ => Inst::ILoad(local_offset),
-            },
-            RValType::Class(_) => match local_offset {
-                0 => Inst::ALoad0,
-                1 => Inst::ALoad1,
-                2 => Inst::ALoad2,
-                3 => Inst::ALoad3,
-                _ => Inst::ALoad(local_offset),
-            },
-            _ => unimplemented!(),
+    pub fn add_inst_load(&mut self, method_idx: usize, local_offset: u16) {
+        self.codes[method_idx].push(match local_offset {
+            0 => Inst::LdLoc0,
+            1 => Inst::LdLoc1,
+            2 => Inst::LdLoc2,
+            3 => Inst::LdLoc3,
+            _ => {
+                if local_offset >= u8::MIN as u16 && local_offset <= u8::MAX as u16 {
+                    Inst::LdLocS(local_offset as u8)
+                } else {
+                    Inst::LdLoc(local_offset)
+                }
+            }
         });
     }
 
     /// Push an int value to the stack
     pub fn add_inst_pushi(&mut self, method_idx: usize, value: i32) {
         let inst = match value {
-            -1 => Inst::IConstM1,
-            0 => Inst::IConst0,
-            1 => Inst::IConst1,
-            2 => Inst::IConst2,
-            3 => Inst::IConst3,
-            4 => Inst::IConst4,
-            5 => Inst::IConst5,
+            -1 => Inst::LdCM1,
+            0 => Inst::LdC0,
+            1 => Inst::LdC1,
+            2 => Inst::LdC2,
+            3 => Inst::LdC3,
+            4 => Inst::LdC4,
+            5 => Inst::LdC5,
+            6 => Inst::LdC6,
+            7 => Inst::LdC7,
+            8 => Inst::LdC8,
             _ => {
                 if value >= i8::MIN as i32 && value <= i8::MAX as i32 {
-                    Inst::BIPush(value as i8)
-                } else if value >= i16::MIN as i32 && value >= i16::MAX as i32 {
-                    unimplemented!("SIPush is not implemented")
+                    Inst::LdCS(value as i8)
                 } else {
-                    let i_const_idx = self.add_const_i(value);
-                    Inst::LdC(i_const_idx)
+                    Inst::LdC(value)
                 }
             }
         };

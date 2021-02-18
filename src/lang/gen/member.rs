@@ -1,8 +1,6 @@
 use crate::ir::flag::Flag;
 use crate::ir::ty::{fn_descriptor, RValType};
 
-use std::collections::HashMap;
-
 pub struct Var {
     pub id: String,
     pub flag: Flag,

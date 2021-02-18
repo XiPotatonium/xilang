@@ -1,4 +1,4 @@
-use super::super::inst::Inst;
+use super::inst::Inst;
 
 use std::ops::Index;
 
@@ -13,7 +13,7 @@ pub struct ClassFile {
     pub major_version: u16,
     pub constant_pool: Vec<Constant>,
     pub access_flags: u16,
-    pub this_class: u16,
+    pub this_class: u32,
     pub interfaces: Vec<IrInterface>,
     pub fields: Vec<IrField>,
     pub methods: Vec<IrMethod>,
@@ -22,12 +22,11 @@ pub struct ClassFile {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
     Utf8(String),          // 1
-    Integer(i32),          // 3
-    Class(u16),            // 7
-    String(u16),           // 8
-    Fieldref(u16, u16),    // 9
-    Methodref(u16, u16),   // 10
-    NameAndType(u16, u16), // 12
+    Class(u32),            // 7
+    String(u32),           // 8
+    Fieldref(u32, u32),    // 9
+    Methodref(u32, u32),   // 10
+    NameAndType(u32, u32), // 12
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,15 +35,15 @@ pub struct IrInterface;
 #[derive(Clone, Debug, PartialEq)]
 pub struct IrField {
     pub access_flags: u16,
-    pub name_index: u16,
-    pub descriptor_index: u16,
+    pub name_index: u32,
+    pub descriptor_index: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IrMethod {
     pub access_flags: u16,
-    pub name_index: u16,
-    pub descriptor_index: u16,
+    pub name_index: u32,
+    pub descriptor_index: u32,
 
     pub locals_stack: u16,
     pub insts: Vec<Inst>,
@@ -76,10 +75,10 @@ impl ClassFile {
     }
 }
 
-impl Index<u16> for ClassFile {
+impl Index<u32> for ClassFile {
     type Output = Constant;
 
-    fn index(&self, idx: u16) -> &Self::Output {
+    fn index(&self, idx: u32) -> &Self::Output {
         &self.constant_pool[idx as usize - 1]
     }
 }

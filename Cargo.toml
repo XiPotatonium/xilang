@@ -15,8 +15,8 @@ regex = "1"
 lazy_static = "1.4.0"
 
 [[bin]]
-name = "xilang"
-path = "src/xilang.rs"
+name = "xic"
+path = "src/xic.rs"
 
 [[bin]]
 name = "xivm"

@@ -2,58 +2,24 @@ use std::fmt;
 
 #[derive(Clone, Eq)]
 pub enum RValType {
-    Boolean,
-    Byte,
-    Short,
+    Bool,
+    U8,
     Char,
-    Int,
-    Long,
-    Float,
-    Double,
+    I32,
+    F64,
     Void,
     /// class fullname
-    Class(String),
+    Obj(String),
     Array(Box<RValType>),
-    /// non-JVM standard
-    Tuple(Vec<RValType>),
 }
 
 impl RValType {
-    pub fn slot(&self) -> u16 {
-        match self {
-            Self::Boolean
-            | Self::Byte
-            | Self::Short
-            | Self::Char
-            | Self::Int
-            | Self::Float
-            | Self::Class(_)
-            | Self::Array(_) => 1,
-            Self::Double | Self::Long => 2,
-            Self::Tuple(types) => {
-                let mut size = 0;
-                for ty in types.iter() {
-                    size += ty.slot();
-                }
-                size
-            }
-            Self::Void => 0,
-        }
-    }
-
     pub fn size(&self) -> u16 {
         match self {
-            Self::Byte => 1,
-            Self::Short | Self::Char => 2,
-            Self::Int | Self::Boolean | Self::Float | Self::Class(_) | Self::Array(_) => 4,
-            Self::Double | Self::Long => 8,
-            Self::Tuple(types) => {
-                let mut size = 0u16;
-                for ty in types.iter() {
-                    size += ty.size();
-                }
-                size
-            }
+            Self::U8 => 1,
+            Self::Char => 2,
+            Self::I32 | Self::Bool | Self::Obj(_) | Self::Array(_) => 4,
+            Self::F64 => 8,
             Self::Void => 0,
         }
     }
@@ -66,16 +32,13 @@ impl RValType {
 impl PartialEq for RValType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Boolean, Self::Boolean)
-            | (Self::Byte, Self::Byte)
+            (Self::Bool, Self::Bool)
+            | (Self::U8, Self::U8)
             | (Self::Char, Self::Char)
-            | (Self::Short, Self::Short)
-            | (Self::Int, Self::Int)
-            | (Self::Long, Self::Long)
-            | (Self::Float, Self::Float)
-            | (Self::Double, Self::Double)
+            | (Self::I32, Self::I32)
+            | (Self::F64, Self::F64)
             | (Self::Void, Self::Void) => true,
-            (Self::Class(class0), Self::Class(class1)) => class0 == class1,
+            (Self::Obj(class0), Self::Obj(class1)) => class0 == class1,
             _ => false,
         }
     }
@@ -84,22 +47,14 @@ impl PartialEq for RValType {
 impl fmt::Display for RValType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Boolean => write!(f, "Z"),
-            Self::Byte => write!(f, "B"),
+            Self::Bool => write!(f, "Z"),
+            Self::U8 => write!(f, "B"),
             Self::Char => write!(f, "C"),
-            Self::Short => write!(f, "S"),
-            Self::Int => write!(f, "I"),
-            Self::Long => write!(f, "J"),
-            Self::Float => write!(f, "F"),
-            Self::Double => write!(f, "D"),
+            Self::I32 => write!(f, "I"),
+            Self::F64 => write!(f, "D"),
             Self::Void => write!(f, "V"),
-            Self::Class(s) => write!(f, "L{};", s),
+            Self::Obj(s) => write!(f, "L{};", s),
             Self::Array(t) => write!(f, "[{}", t),
-            Self::Tuple(vs) => write!(
-                f,
-                "({}",
-                vs.iter().map(|t| format!("{}", t)).collect::<String>()
-            ),
         }
     }
 }

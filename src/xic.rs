@@ -26,37 +26,35 @@ fn main() {
     let cfg: Config;
 
     {
-        let matches = App::new("xivm")
-            .version("0.1.0")
-            .author("Xi")
-            .about("Hello world! This is xivm")
-            .arg(
-                Arg::with_name("root")
-                    .help("Input root directory")
-                    .required(true)
-                    .index(1),
-            )
-            .arg(
-                Arg::with_name("output")
-                    .help("Output directory. Default to be <root> if not specified")
-                    .short("o")
-                    .long("output")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("cp")
-                    .help("Additional class path")
-                    .short("cp")
-                    .long("classpath")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("v")
-                    .short("v")
-                    .multiple(true)
-                    .help("Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json"),
-            )
-            .get_matches();
+        let matches =
+            App::new("xic")
+                .version("0.1.0")
+                .author("Xi")
+                .about("Hello world! This is xic")
+                .arg(
+                    Arg::with_name("root")
+                        .help("Input root directory")
+                        .required(true)
+                        .index(1),
+                )
+                .arg(
+                    Arg::with_name("output")
+                        .help("Output directory. Default to be <root> if not specified")
+                        .short("o")
+                        .long("output")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("cp")
+                        .help("Additional class path")
+                        .short("cp")
+                        .long("classpath")
+                        .takes_value(true),
+                )
+                .arg(Arg::with_name("v").short("v").multiple(true).help(
+                    "Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json",
+                ))
+                .get_matches();
 
         let class_path = matches.value_of("cp").unwrap_or("");
         let input_dir = matches.value_of("root").unwrap();
