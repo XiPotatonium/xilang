@@ -2,7 +2,7 @@ use super::super::ast::ast::AST;
 use crate::ir::flag::*;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 use pest::error::Error;
 use pest::iterators::Pair;
@@ -12,7 +12,7 @@ use pest::Parser;
 #[grammar = "lang/parser/grammar.pest"]
 pub struct LRParser;
 
-pub fn parse(path: &PathBuf) -> Result<Box<AST>, Error<Rule>> {
+pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
     let code = fs::read_to_string(path).unwrap();
 
     let file = LRParser::parse(Rule::File, &code)?.next().unwrap();

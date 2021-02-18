@@ -19,6 +19,6 @@ name = "xic"
 path = "src/xic.rs"
 
 [[bin]]
-name = "xivm"
-path = "src/xivm.rs"
+name = "xilang"
+path = "src/xilang.rs"
 

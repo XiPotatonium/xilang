@@ -1,4 +1,4 @@
-pub mod module_mgr;
+pub mod xi_crate;
 
 mod builder;
 mod class;

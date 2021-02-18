@@ -8,16 +8,23 @@ extern crate regex;
 mod ir;
 mod lang;
 
-use lang::gen::module_mgr;
+use lang::gen::xi_crate::Crate;
 
 use clap::{App, Arg};
+use lazy_static::lazy_static;
 
 use std::path::PathBuf;
 use std::time::SystemTime;
+use std::fs;
+
+lazy_static! {
+    // Same as identifier
+    static ref NAME_RULE : regex::Regex = regex::Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*.xi").unwrap();
+}
 
 struct Config {
     ext_paths: Vec<String>,
-    dir: PathBuf,
+    root_path: PathBuf,
     out_dir: PathBuf,
     verbose: usize,
 }
@@ -33,7 +40,7 @@ fn main() {
                 .about("Hello world! This is xic")
                 .arg(
                     Arg::with_name("root")
-                        .help("Input root directory")
+                        .help("Root path")
                         .required(true)
                         .index(1),
                 )
@@ -57,21 +64,37 @@ fn main() {
                 .get_matches();
 
         let ext_paths = matches.value_of("ext").unwrap_or("");
-        let input_dir = matches.value_of("root").unwrap();
+        let root_path = matches.value_of("root").unwrap();
+        let output_dir = matches.value_of("output");
+        let root_path =
+            fs::canonicalize(root_path).expect(&format!("Fail to canonicalize {}", root_path));
+        if !root_path.is_file() {
+            panic!("Root path {} is not a file", root_path.to_str().unwrap());
+        }
+        let root_dir = root_path.parent().unwrap().to_owned();
+        let root_file_name = root_path.file_name().unwrap().to_str().unwrap().to_owned();
+
+        if !NAME_RULE.is_match(&root_file_name) {
+            panic!("Invalid root file name {}", root_file_name);
+        }
 
         cfg = Config {
             ext_paths: ext_paths
                 .split(';')
                 .map(|x| x.to_owned())
-                .collect::<Vec<String>>(), // TODO: 暂时没有cp
-            dir: PathBuf::from(input_dir),
-            out_dir: PathBuf::from(matches.value_of("output").unwrap_or(input_dir)),
+                .collect::<Vec<String>>(),
+            root_path,
+            out_dir: if let Some(output_dir) = output_dir {
+                PathBuf::from(output_dir)
+            } else {
+                root_dir
+            },
             verbose: matches.occurrences_of("v") as usize,
         };
     }
 
     let start_time = SystemTime::now();
-    let mut module_mgr = module_mgr::ModuleMgr::new(&cfg.dir, &cfg.ext_paths, cfg.verbose >= 2);
+    let mut module_mgr = Crate::new(&cfg.root_path, &cfg.ext_paths, cfg.verbose >= 2);
     if cfg.verbose >= 1 {
         println!(
             "Parsing finished in {} seconds",

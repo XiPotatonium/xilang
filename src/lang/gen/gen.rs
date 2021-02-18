@@ -1,21 +1,20 @@
 use super::super::ast::ast::AST;
+use super::builder::MethodBuilder;
+use super::class::Class;
+use super::method::Method;
+use super::module::Module;
+use super::var::{Arg, Locals};
+use super::xi_crate::Crate;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::ty::RValType;
-use super::method::Method;
-use super::class::Class;
-use super::module::Module;
-use super::module_mgr::ModuleMgr;
-use super::builder::MethodBuilder;
-use super::var::{Locals, Arg};
 
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 pub struct CodeGenCtx<'mgr> {
-    pub mgr: &'mgr ModuleMgr,
+    pub mgr: &'mgr Crate,
     pub module: &'mgr Module,
-    pub use_map: &'mgr HashMap<String, String>,
     pub class: &'mgr Class,
     pub method: &'mgr Method,
     pub locals: RefCell<Locals>,
@@ -25,7 +24,7 @@ pub struct CodeGenCtx<'mgr> {
 
 impl<'mgr> CodeGenCtx<'mgr> {
     fn get_ty(&self, ast: &Box<AST>) -> RValType {
-        self.module.get_ty(ast, self.mgr, self.use_map)
+        self.module.get_ty(ast, self.mgr)
     }
 
     pub fn done(&self) {

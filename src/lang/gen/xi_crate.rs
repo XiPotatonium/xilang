@@ -4,28 +4,26 @@ use super::module::Module;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::rc::{Rc, Weak};
 
-pub struct ModuleMgr {
+pub struct Crate {
     pub root: Rc<Module>,
 
     pub class_table: HashMap<String, Weak<RefCell<Class>>>,
     // TODO Dependencies
 }
 
-impl ModuleMgr {
-    pub fn new(root_path: &PathBuf, exts: &Vec<String>, show_ast: bool) -> ModuleMgr {
-        let root_path =
-            fs::canonicalize(root_path).expect(&format!("Fail to canonicalize {:?}", root_path));
-        let crate_name = root_path.file_name().unwrap().to_str().unwrap().to_owned();
+impl Crate {
+    pub fn new(root_path: &Path, exts: &Vec<String>, show_ast: bool) -> Crate {
+        let root_name = root_path.file_stem().unwrap().to_str().unwrap().to_owned();
 
         // TODO external module paths
         println!("External module paths: {}", exts.join(";"));
         let mut class_tbl: HashMap<String, Weak<RefCell<Class>>> = HashMap::new();
 
-        ModuleMgr {
-            root: Module::new_dir(vec![crate_name], &root_path, &mut class_tbl, show_ast).unwrap(),
+        Crate {
+            root: Module::new(vec![root_name], &root_path, false, &mut class_tbl, show_ast),
             class_table: class_tbl,
         }
     }
@@ -43,7 +41,7 @@ impl ModuleMgr {
         self.root.code_gen(self);
     }
 
-    pub fn dump(&self, out_dir: &PathBuf) {
+    pub fn dump(&self, out_dir: &Path) {
         if out_dir.exists() {
             if !out_dir.is_dir() {
                 panic!(

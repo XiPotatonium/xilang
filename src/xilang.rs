@@ -13,10 +13,10 @@ struct Config {
 fn main() {
     let cfg: Config;
     {
-        let matches = App::new("xivm")
+        let matches = App::new("xilang")
             .version("0.1.0")
             .author("Xi")
-            .about("Hello world! This is xivm")
+            .about("Hello world! This is xilang")
             .arg(
                 Arg::with_name("entry")
                     .help("Entry of executable")
