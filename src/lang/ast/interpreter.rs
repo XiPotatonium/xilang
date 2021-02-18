@@ -3,7 +3,8 @@ use super::ast::AST;
 impl AST {
     pub fn is_constant(&self) -> bool {
         match self {
-            Self::File(_)
+            Self::File(_, _, _)
+            | Self::Use(_, _)
             | Self::Class(_, _, _, _, _)
             | Self::Method(_, _, _, _, _)
             | Self::Field(_, _, _)

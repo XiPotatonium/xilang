@@ -1,4 +1,9 @@
-File = { SOI ~ Class* ~ EOI }
+File = { SOI ~ ModStmt* ~ UseStmt* ~ Class* ~ EOI }
+
+ModStmt = { "mod" ~ Id ~ ";" }
+
+UseStmt = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ ";" }
+
 Class = { "class" ~ Id ~ "{" ~ (StaticInit | Func | StaticField | NonStaticField)* ~ "}" }
 
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ ";" }
@@ -6,22 +11,19 @@ NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ ";" }
 
 StaticInit = { "static" ~ BlockExpr }
 Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ BlockExpr }
-SelfParam = { "self" }
-Params = { (SelfParam | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
+Params = { (KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
 
 Pattern = { Id | TuplePattern }
 TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
 
 Type = { 
-    BoolType | CharType | I32Type | F64Type
+    BasicType
+    | KwUSelf
     | PathExpr
     | TupleType
     | ArrType
 }
-BoolType = { "bool" }
-CharType = { "char" }
-I32Type = { "i32" }
-F64Type = { "f64" }
+BasicType = _{ KwBool | KwChar | KwI32 | KwF64 }
 TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
 ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
 
@@ -46,7 +48,7 @@ BreakExpr = { "break" ~ Expr? }
 ReturnExpr = { "return" ~ Expr? }
 
 GroupedExpr = { "(" ~ Expr ~ ")" }
-PrimaryExpr = { LiteralExpr | Id | GroupedExpr | ExprWithBlock }
+PrimaryExpr = { LiteralExpr | Id | KwLSelf | GroupedExpr | ExprWithBlock | BasicType }
 ArgsExpr = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
 ObjAccessExpr = { "." ~ Id }
 PathAccessExpr = { "::" ~ Id }
@@ -80,9 +82,9 @@ ModOp = { "%" }
 LogNegOp = { "!" }
 
 LiteralExpr = {
-    TrueLiteral
-    | FalseLiteral
-    | NullLiteral
+    KwTrue
+    | KwFalse
+    | KwNull
     | EmptyLiteral
     | IntLiteral
     | FloatLiteral
@@ -90,28 +92,35 @@ LiteralExpr = {
     | CharLiteral
 }
 
-TrueLiteral = { "true" }
-FalseLiteral = { "false" }
-NullLiteral = { "null" }
 EmptyLiteral = { "(" ~ ")" }
 IntLiteral = { ASCII_DIGIT+ }
 FloatLiteral = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
 StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
-PathExpr = ${ Id ~ ("::" ~ Id)* }
-Id = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+PathExpr = ${ (Id | KwCrate | KwSuper) ~ ("::" ~ Id)* }
+Id = @{ !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
-/*
-KeyWord = { 
-    "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "use" | "where"
+KwLSelf = { "self" }
+KwUSelf = { "Self" }
+KwSuper = { "super" }
+KwCrate = { "crate" }
+KwBool = { "bool" }
+KwChar = { "char" }
+KwI32 = { "i32" }
+KwF64 = { "f64" }
+KwTrue = { "true" }
+KwFalse = { "false" }
+KwNull = { "null" }
+KeyWord = @{ 
+    "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where"
     | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
-    | "self" | "Self" | "super" | "crate" | "extern"
+    | KwLSelf | KwUSelf | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
-    | "false" | "true" | "null"
+    | KwBool | KwChar | KwI32 | KwF64
+    | KwFalse | KwTrue | KwNull
     | "yield" | "typeof"
 }
-*/
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }

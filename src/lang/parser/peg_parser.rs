@@ -17,16 +17,30 @@ pub fn parse(path: &PathBuf) -> Result<Box<AST>, Error<Rule>> {
 
     let file = LRParser::parse(Rule::File, &code)?.next().unwrap();
 
+    let mut uses: Vec<Box<AST>> = Vec::new();
+    let mut mods: Vec<String> = Vec::new();
     let mut classes: Vec<Box<AST>> = Vec::new();
     for sub in file.into_inner() {
         match sub.as_rule() {
             Rule::EOI => break,
             Rule::Class => classes.push(build_class(sub)),
+            Rule::ModStmt => mods.push(build_id(sub.into_inner().next().unwrap())),
+            Rule::UseStmt => {
+                let mut iter = sub.into_inner();
+                let path = build_pathexpr(iter.next().unwrap());
+                let as_id = if let Some(as_id) = iter.next() {
+                    Some(build_id(as_id))
+                } else {
+                    None
+                };
+
+                uses.push(Box::new(AST::Use(path, as_id)));
+            }
             _ => unreachable!(),
         };
     }
 
-    Ok(Box::new(AST::File(classes)))
+    Ok(Box::new(AST::File(mods, uses, classes)))
 }
 
 fn build_class(tree: Pair<Rule>) -> Box<AST> {
@@ -88,7 +102,7 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
         let mut p_iter = sub.into_inner();
         let p0 = p_iter.next().unwrap();
         match p0.as_rule() {
-            Rule::SelfParam => {
+            Rule::KwLSelf => {
                 // non-static method
                 flag.unset(MethodFlagTag::Static);
             }
@@ -128,14 +142,26 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
     Box::new(AST::Method(id, flag, ret_type, ps, build_block(sub)))
 }
 
+fn build_pathexpr(tree: Pair<Rule>) -> Vec<String> {
+    tree.into_inner()
+        .map(|seg| match seg.as_rule() {
+            Rule::Id => String::from(seg.as_span().as_str().trim()),
+            Rule::KwCrate => String::from("crate"),
+            Rule::KwSuper => String::from("super"),
+            _ => unreachable!(),
+        })
+        .collect()
+}
+
 fn build_type(tree: Pair<Rule>) -> Box<AST> {
     let tree = tree.into_inner().next().unwrap();
     let ret = Box::new(match tree.as_rule() {
-        Rule::BoolType => AST::TypeBool,
-        Rule::CharType => AST::TypeChar,
-        Rule::I32Type => AST::TypeI32,
-        Rule::F64Type => AST::TypeF64,
-        Rule::PathExpr => AST::TypeClass(tree.into_inner().map(|id| build_id(id)).collect()),
+        Rule::KwBool => AST::TypeBool,
+        Rule::KwChar => AST::TypeChar,
+        Rule::KwI32 => AST::TypeI32,
+        Rule::KwF64 => AST::TypeF64,
+        Rule::KwUSelf => AST::TypeClass(vec![String::from("Self")]),
+        Rule::PathExpr => AST::TypeClass(build_pathexpr(tree)),
         Rule::TupleType => AST::TypeTuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {
             let mut iter = tree.into_inner();
@@ -436,6 +462,7 @@ fn build_primary_expr(tree: Pair<Rule>) -> Box<AST> {
         Rule::GroupedExpr => build_expr(tree.into_inner().next().unwrap()),
         Rule::Type => build_type(tree),
         Rule::LiteralExpr => build_literal(tree),
+        Rule::KwLSelf => Box::new(AST::Id(String::from("self"))),
         // Actually only expr with block
         _ => build_expr(tree),
     }
@@ -444,9 +471,9 @@ fn build_primary_expr(tree: Pair<Rule>) -> Box<AST> {
 fn build_literal(tree: Pair<Rule>) -> Box<AST> {
     let tree = tree.into_inner().next().unwrap();
     Box::new(match tree.as_rule() {
-        Rule::TrueLiteral => AST::Bool(true),
-        Rule::FalseLiteral => AST::Bool(false),
-        Rule::NullLiteral => AST::Null,
+        Rule::KwTrue => AST::Bool(true),
+        Rule::KwFalse => AST::Bool(false),
+        Rule::KwNull => AST::Null,
         Rule::EmptyLiteral => AST::None,
         Rule::IntLiteral => AST::Int(tree.as_span().as_str().trim().parse::<i32>().expect(
             &format!("Unable to parse \"{}\" as i32", tree.as_span().as_str()),

@@ -11,7 +11,7 @@ A toy programming language that runs on a simple virtual machine.
 
 ```
 USAGE:
-    xilang.exe [FLAGS] [OPTIONS] <root>
+    xic.exe [FLAGS] [OPTIONS] <root>
 
 FLAGS:
     -h, --help       Prints help information
@@ -19,7 +19,7 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -c, --classpath <cp>     Additional class path
+    -i, --import <ext>       External module paths
     -o, --output <output>    Output directory. Default to be <root> if not specified
 
 ARGS:

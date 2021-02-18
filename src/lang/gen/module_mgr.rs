@@ -8,20 +8,20 @@ use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
 pub struct ModuleMgr {
-    root: Rc<Module>,
+    pub root: Rc<Module>,
 
     pub class_table: HashMap<String, Weak<RefCell<Class>>>,
     // TODO Dependencies
 }
 
 impl ModuleMgr {
-    pub fn new(root_path: &PathBuf, libs: &Vec<String>, show_ast: bool) -> ModuleMgr {
+    pub fn new(root_path: &PathBuf, exts: &Vec<String>, show_ast: bool) -> ModuleMgr {
         let root_path =
             fs::canonicalize(root_path).expect(&format!("Fail to canonicalize {:?}", root_path));
         let crate_name = root_path.file_name().unwrap().to_str().unwrap().to_owned();
 
-        // TODO additional class path
-        println!("Additional class path: {}", libs.join(";"));
+        // TODO external module paths
+        println!("External module paths: {}", exts.join(";"));
         let mut class_tbl: HashMap<String, Weak<RefCell<Class>>> = HashMap::new();
 
         ModuleMgr {

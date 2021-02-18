@@ -1,8 +1,48 @@
 use super::super::ast::ast::AST;
-use super::builder::CodeGenCtx;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::ty::RValType;
+use super::method::Method;
+use super::class::Class;
+use super::module::Module;
+use super::module_mgr::ModuleMgr;
+use super::builder::MethodBuilder;
+use super::var::{Locals, Arg};
+
+use std::collections::HashMap;
+use std::cell::RefCell;
+
+pub struct CodeGenCtx<'mgr> {
+    pub mgr: &'mgr ModuleMgr,
+    pub module: &'mgr Module,
+    pub use_map: &'mgr HashMap<String, String>,
+    pub class: &'mgr Class,
+    pub method: &'mgr Method,
+    pub locals: RefCell<Locals>,
+    pub args_map: HashMap<String, Arg>,
+    pub method_builder: RefCell<MethodBuilder>,
+}
+
+impl<'mgr> CodeGenCtx<'mgr> {
+    fn get_ty(&self, ast: &Box<AST>) -> RValType {
+        self.module.get_ty(ast, self.mgr, self.use_map)
+    }
+
+    pub fn done(&self) {
+        let local_mut = self.locals.borrow();
+        assert_eq!(
+            local_mut.sym_tbl.len(),
+            0,
+            "Symbol table is not empty after generation"
+        );
+
+        self.module.builder.borrow_mut().done(
+            &mut self.method_builder.borrow_mut(),
+            self.method.method_idx,
+            local_mut.size(),
+        );
+    }
+}
 
 pub enum ValType {
     LVal(LValType),
@@ -282,7 +322,7 @@ fn gen_let(
                     panic!("Specify type or use initialization");
                 } else {
                     // this variable is declared but not initialized
-                    let ty = ctx.module.get_type(ty, ctx.mgr);
+                    let ty = ctx.get_ty(ty);
                     ctx.locals.borrow_mut().add(id, ty.clone(), *flag, false);
                 }
             } else {
@@ -298,7 +338,7 @@ fn gen_let(
                     // no type, induce type from return value of init
                 } else {
                     // check type match
-                    let ty = ctx.module.get_type(ty, ctx.mgr);
+                    let ty = ctx.get_ty(ty);
                     if ty != init_ty {
                         panic!("Invalid let statement: Incompatible type");
                     }
@@ -364,7 +404,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
 }
 
 fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType {
-    let ret = ctx.module.get_type(ty, ctx.mgr);
+    let ret = ctx.get_ty(ty);
     match &ret {
         RValType::Obj(class_name) => {
             let class = ctx

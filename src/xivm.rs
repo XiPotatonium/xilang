@@ -2,7 +2,16 @@ extern crate clap;
 
 use clap::{App, Arg};
 
+use std::path::PathBuf;
+
+struct Config {
+    module_dir: PathBuf,
+    ext_paths: Vec<String>,
+    diagnose: bool,
+}
+
 fn main() {
+    let cfg: Config;
     {
         let matches = App::new("xivm")
             .version("0.1.0")
@@ -15,10 +24,10 @@ fn main() {
                     .index(1),
             )
             .arg(
-                Arg::with_name("cp")
-                    .help("Additional class path")
-                    .short("cp")
-                    .long("classpath")
+                Arg::with_name("ext")
+                    .help("External module paths")
+                    .short("i")
+                    .long("import")
                     .takes_value(true),
             )
             .arg(
@@ -30,17 +39,26 @@ fn main() {
             )
             .get_matches();
 
-        // Calling .unwrap() is safe here because "INPUT" is required (if "INPUT" wasn't
-        // required we could have used an 'if let' to conditionally get the value)
-        println!("Entry: {}", matches.value_of("entry").unwrap());
+        let entry = matches.value_of("entry").unwrap();
+        let ext_paths = matches.value_of("ext").unwrap_or("");
 
-        let class_path = matches.value_of("cp").unwrap_or("");
-        println!("Class path: {}", class_path);
-
-        if matches.is_present("diagnose") {
-            println!("Use diagnose.");
-        } else {
-            println!("No diagnose.");
-        }
+        cfg = Config {
+            module_dir: PathBuf::from(entry),
+            ext_paths: ext_paths
+                .split(';')
+                .map(|x| x.to_owned())
+                .collect::<Vec<String>>(), // TODO: 暂时没有cp
+            diagnose: matches.is_present("diagnose"),
+        };
     }
+
+    println!("Module path: {}", cfg.module_dir.to_str().unwrap());
+    println!("External module paths:");
+    for cp in cfg.ext_paths.iter() {
+        println!("    {}", cp);
+    }
+    println!(
+        "Use diagnose: {}",
+        if cfg.diagnose { "true" } else { "false" }
+    );
 }

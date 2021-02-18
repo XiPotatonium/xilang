@@ -1,8 +1,11 @@
 use crate::ir::flag::*;
 
 pub enum AST {
-    /// classes: Vec<AST>
-    File(Vec<Box<AST>>),
+    /// mods, uses, classes: Vec<AST>
+    File(Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
+
+    /// path, as
+    Use(Vec<String>, Option<String>),
 
     /// id, flag, methods: Vec<Func>, fields: Vec<Var>, static-init
     Class(String, TypeFlag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),

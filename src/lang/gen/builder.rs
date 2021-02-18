@@ -1,43 +1,9 @@
-use super::class::Class;
-use super::method::Method;
-use super::module::Module;
-use super::module_mgr::ModuleMgr;
-use super::var::Arg;
-use super::var::Locals;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::ir_file::{Constant, IrClass, IrField, IrMethod, ModuleFile};
 use crate::ir::util::linkedlist::LinkedList;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-
-pub struct CodeGenCtx<'mgr> {
-    pub mgr: &'mgr ModuleMgr,
-    pub module: &'mgr Module,
-    pub class: &'mgr Class,
-    pub method: &'mgr Method,
-    pub locals: RefCell<Locals>,
-    pub args_map: HashMap<String, Arg>,
-    pub method_builder: RefCell<MethodBuilder>,
-}
-
-impl<'mgr> CodeGenCtx<'mgr> {
-    pub fn done(&self) {
-        let local_mut = self.locals.borrow();
-        assert_eq!(
-            local_mut.sym_tbl.len(),
-            0,
-            "Symbol table is not empty after generation"
-        );
-
-        self.module.builder.borrow_mut().done(
-            &mut self.method_builder.borrow_mut(),
-            self.method.method_idx,
-            local_mut.size(),
-        );
-    }
-}
 
 struct BasicBlock {
     insts: Vec<Inst>,

@@ -12,6 +12,8 @@ impl ModuleFile {
         self.major_version.serialize(&mut buf);
         self.module_name.serialize(&mut buf);
         self.constant_pool.serialize(&mut buf);
+        self.sub_mods.serialize(&mut buf);
+        self.imports.serialize(&mut buf);
         self.classes.serialize(&mut buf);
         self.fields.serialize(&mut buf);
         self.methods.serialize(&mut buf);
@@ -26,6 +28,8 @@ impl ModuleFile {
         let major_version = u16::deserialize(&mut buf);
         let module_name = u32::deserialize(&mut buf);
         let constant_pool = Vec::deserialize(&mut buf);
+        let sub_mods = Vec::deserialize(&mut buf);
+        let imports = Vec::deserialize(&mut buf);
         let classes = Vec::deserialize(&mut buf);
         let fields = Vec::deserialize(&mut buf);
         let methods = Vec::deserialize(&mut buf);
@@ -35,6 +39,8 @@ impl ModuleFile {
             major_version,
             module_name,
             constant_pool,
+            sub_mods,
+            imports,
             classes,
             fields,
             methods,
@@ -167,7 +173,7 @@ impl Serializable for String {
 impl Serializable for Vec<u8> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u32).serialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
-        for b in self.into_iter() {
+        for b in self.iter() {
             b.serialize(buf);
         }
     }
@@ -178,10 +184,27 @@ impl Serializable for Vec<u8> {
     }
 }
 
+impl Serializable for Vec<u32> {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        (self.len() as u32).serialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
+        for val in self.iter() {
+            val.serialize(buf);
+        }
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Vec<u32> {
+        let len = u32::deserialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
+        (0..len)
+            .into_iter()
+            .map(|_| u32::deserialize(buf))
+            .collect()
+    }
+}
+
 impl Serializable for Vec<Constant> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u16).serialize(buf);
-        for constant in self.into_iter() {
+        for constant in self.iter() {
             constant.serialize(buf);
         }
     }
@@ -198,7 +221,7 @@ impl Serializable for Vec<Constant> {
 impl Serializable for Vec<IrClass> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u16).serialize(buf);
-        for cls in self.into_iter() {
+        for cls in self.iter() {
             cls.serialize(buf);
         }
     }
@@ -215,7 +238,7 @@ impl Serializable for Vec<IrClass> {
 impl Serializable for Vec<IrField> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u16).serialize(buf);
-        for f in self.into_iter() {
+        for f in self.iter() {
             f.serialize(buf);
         }
     }
@@ -232,7 +255,7 @@ impl Serializable for Vec<IrField> {
 impl Serializable for Vec<IrMethod> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u16).serialize(buf);
-        for m in self.into_iter() {
+        for m in self.iter() {
             m.serialize(buf);
         }
     }
@@ -249,7 +272,7 @@ impl Serializable for Vec<IrMethod> {
 impl Serializable for Vec<ExceptionTableEntry> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u16).serialize(buf);
-        for e in self.into_iter() {
+        for e in self.iter() {
             e.serialize(buf);
         }
     }
@@ -266,7 +289,7 @@ impl Serializable for Vec<ExceptionTableEntry> {
 impl Serializable for Vec<LineNumberTableEntry> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u16).serialize(buf);
-        for l in self.into_iter() {
+        for l in self.iter() {
             l.serialize(buf);
         }
     }
@@ -283,7 +306,7 @@ impl Serializable for Vec<LineNumberTableEntry> {
 impl Serializable for Vec<Inst> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         let mut code = vec![];
-        for inst in self.into_iter() {
+        for inst in self.iter() {
             inst.serialize(&mut code);
         }
         code.serialize(buf);

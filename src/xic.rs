@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 struct Config {
-    class_path: Vec<String>,
+    ext_paths: Vec<String>,
     dir: PathBuf,
     out_dir: PathBuf,
     verbose: usize,
@@ -45,10 +45,10 @@ fn main() {
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("cp")
-                        .help("Additional class path")
-                        .short("cp")
-                        .long("classpath")
+                    Arg::with_name("ext")
+                        .help("External module paths")
+                        .short("i")
+                        .long("import")
                         .takes_value(true),
                 )
                 .arg(Arg::with_name("v").short("v").multiple(true).help(
@@ -56,22 +56,22 @@ fn main() {
                 ))
                 .get_matches();
 
-        let class_path = matches.value_of("cp").unwrap_or("");
+        let ext_paths = matches.value_of("ext").unwrap_or("");
         let input_dir = matches.value_of("root").unwrap();
 
         cfg = Config {
-            class_path: class_path
+            ext_paths: ext_paths
                 .split(';')
                 .map(|x| x.to_owned())
                 .collect::<Vec<String>>(), // TODO: 暂时没有cp
             dir: PathBuf::from(input_dir),
-            out_dir: PathBuf::from(matches.value_of("cp").unwrap_or(input_dir)),
+            out_dir: PathBuf::from(matches.value_of("output").unwrap_or(input_dir)),
             verbose: matches.occurrences_of("v") as usize,
         };
     }
 
     let start_time = SystemTime::now();
-    let mut module_mgr = module_mgr::ModuleMgr::new(&cfg.dir, &cfg.class_path, cfg.verbose >= 2);
+    let mut module_mgr = module_mgr::ModuleMgr::new(&cfg.dir, &cfg.ext_paths, cfg.verbose >= 2);
     if cfg.verbose >= 1 {
         println!(
             "Parsing finished in {} seconds",

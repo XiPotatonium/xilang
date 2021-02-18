@@ -13,10 +13,10 @@ use crate::ir::CLINIT_METHOD_NAME;
 
 use super::super::ast::ast::AST;
 use super::super::parser::peg_parser;
-use super::builder::{Builder, CodeGenCtx, MethodBuilder};
+use super::builder::{Builder, MethodBuilder};
 use super::class::Class;
 use super::field::Field;
-use super::gen::{gen, ValType};
+use super::gen::{gen, ValType ,CodeGenCtx};
 use super::method::Method;
 use super::module_mgr::ModuleMgr;
 use super::var::{Arg, Locals};
@@ -88,7 +88,7 @@ fn parse(
             write!(f, "{}", ast);
         }
 
-        if let AST::File(classes) = ast.as_ref() {
+        if let AST::File(_, _, classes) = ast.as_ref() {
             for class in classes {
                 if let AST::Class(id, flag, _, _, _) = class.as_ref() {
                     let idx = builder.add_class(id, flag);
@@ -235,16 +235,12 @@ impl Module {
         }))
     }
 
-    fn name(&self) -> &str {
-        &self.name
-    }
-
     /// Display module and its sub-modules
     pub fn tree(&self, depth: usize) {
         if depth > 0 {
             print!("{}+---", "|   ".repeat(depth - 1));
         }
-        println!("{}", self.name());
+        println!("{}", self.name);
         for (_, sub) in self.sub_modules.iter() {
             sub.tree(depth + 1);
         }
@@ -252,18 +248,18 @@ impl Module {
 
     pub fn dump(&self, dir: &PathBuf) {
         // dump in this dir
-        let mut f = fs::File::create(dir.join(format!("{}.xir", self.name()))).unwrap();
+        let mut f = fs::File::create(dir.join(format!("{}.xir", self.name))).unwrap();
         write!(f, "{}", self.builder.borrow().file);
 
         let buf = self.builder.borrow().file.to_binary();
-        let mut f = fs::File::create(dir.join(format!("{}.xibc", self.name()))).unwrap();
+        let mut f = fs::File::create(dir.join(format!("{}.xibc", self.name))).unwrap();
         f.write_all(&buf).unwrap();
 
         for sub in self.sub_modules.values() {
             if sub.from_dir {
                 // create a new sub dir
                 let mut sub_dir = dir.to_owned();
-                sub_dir.push(sub.name());
+                sub_dir.push(&sub.name);
                 if !sub_dir.exists() {
                     fs::create_dir(&sub_dir).unwrap();
                 } else if !sub_dir.is_dir() {
@@ -281,7 +277,49 @@ impl Module {
 }
 
 impl Module {
-    pub fn get_type(&self, ast: &Box<AST>, mgr: &ModuleMgr) -> RValType {
+    fn process_use_path(&self, mgr: &ModuleMgr, uses: &Vec<Box<AST>>) -> HashMap<String, String> {
+        let mut use_map: HashMap<String, String> = HashMap::new();
+        for use_ast in uses.iter() {
+            if let AST::Use(raw_paths, as_id) = use_ast.as_ref() {
+                let mut paths: Vec<&str> = Vec::new();
+                let mut raw_paths_iter = raw_paths.iter();
+                let first_path_seg = raw_paths_iter.next().unwrap();
+                if first_path_seg == "super" {
+                    unimplemented!();
+                } else if first_path_seg == "crate" {
+                    paths.push(&mgr.root.name)
+                } else {
+                    paths.push(first_path_seg);
+                }
+
+                for seg in raw_paths_iter {
+                    paths.push(seg);
+                }
+
+                let as_id = if let Some(as_id) = as_id {
+                    as_id.to_owned()
+                } else {
+                    (*paths.last().unwrap()).to_owned()
+                };
+
+                if use_map.contains_key(&as_id) {
+                    panic!("Duplicated use as {}", as_id);
+                } else {
+                    use_map.insert(as_id, paths.join("::"));
+                }
+            } else {
+                unreachable!();
+            }
+        }
+        use_map
+    }
+
+    pub fn get_ty(
+        &self,
+        ast: &Box<AST>,
+        mgr: &ModuleMgr,
+        use_map: &HashMap<String, String>,
+    ) -> RValType {
         match ast.as_ref() {
             AST::TypeI32 => RValType::I32,
             AST::TypeF64 => RValType::F64,
@@ -311,7 +349,7 @@ impl Module {
                     panic!("Class {} not found", class_fullname);
                 }
             }
-            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_type(dtype, mgr))),
+            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mgr, use_map))),
             _ => unreachable!(),
         }
     }
@@ -321,7 +359,9 @@ impl Module {
 impl Module {
     pub fn member_pass(&self, mgr: &ModuleMgr) {
         for file in self.asts.iter() {
-            if let AST::File(classes) = file.as_ref() {
+            if let AST::File(_, uses, classes) = file.as_ref() {
+                let use_map = self.process_use_path(mgr, uses);
+
                 for class in classes.iter() {
                     if let AST::Class(id, _, ast_methods, ast_fields, static_init) = class.as_ref()
                     {
@@ -352,13 +392,13 @@ impl Module {
                                     .iter()
                                     .map(|p| {
                                         if let AST::Param(_, _, ty) = p.as_ref() {
-                                            self.get_type(ty, mgr)
+                                            self.get_ty(ty, mgr, &use_map)
                                         } else {
                                             unreachable!();
                                         }
                                     })
                                     .collect();
-                                let ret_ty = self.get_type(ty, mgr);
+                                let ret_ty = self.get_ty(ty, mgr, &use_map);
                                 declare_method!(class_mut, self.builder, id, flag, ret_ty, ps);
                             }
                         }
@@ -366,7 +406,11 @@ impl Module {
                         for field in ast_fields.iter() {
                             if let AST::Field(id, flag, ty) = field.as_ref() {
                                 // Field will have default initialization
-                                let field = Box::new(Field::new(id, *flag, self.get_type(ty, mgr)));
+                                let field = Box::new(Field::new(
+                                    id,
+                                    *flag,
+                                    self.get_ty(ty, mgr, &use_map),
+                                ));
 
                                 // Build Field in class file
                                 self.builder.borrow_mut().add_field(
@@ -410,6 +454,7 @@ impl Module {
     fn code_gen_method(
         &self,
         mgr: &ModuleMgr,
+        use_map: &HashMap<String, String>,
         class: &Class,
         m: &Method,
         ps: &Vec<Box<AST>>,
@@ -446,6 +491,7 @@ impl Module {
             locals: RefCell::new(Locals::new()),
             method: m,
             args_map,
+            use_map,
             method_builder: RefCell::new(MethodBuilder::new()),
         };
         let ret = gen(&ctx, block);
@@ -472,7 +518,9 @@ impl Module {
 
     pub fn code_gen(&self, mgr: &ModuleMgr) {
         for file in self.asts.iter() {
-            if let AST::File(classes) = file.as_ref() {
+            if let AST::File(_, uses, classes) = file.as_ref() {
+                let use_map = self.process_use_path(mgr, uses);
+
                 for class in classes.iter() {
                     if let AST::Class(id, _, ast_methods, _, ast_init) = class.as_ref() {
                         let class_ref = self.classes.get(id).unwrap().borrow();
@@ -481,7 +529,7 @@ impl Module {
                             AST::Block(_) => {
                                 let m = class_ref.methods.get(CLINIT_METHOD_NAME).unwrap();
                                 let ps: Vec<Box<AST>> = vec![];
-                                self.code_gen_method(mgr, &class_ref, m, &ps, ast_init);
+                                self.code_gen_method(mgr, &use_map, &class_ref, m, &ps, ast_init);
                             }
                             AST::None => (),
                             _ => unreachable!("Parser error"),
@@ -490,7 +538,7 @@ impl Module {
                         for method_ast in ast_methods.iter() {
                             if let AST::Method(id, _, _, ps, block) = method_ast.as_ref() {
                                 let m = class_ref.methods.get(id).unwrap();
-                                self.code_gen_method(mgr, &class_ref, m, ps, block);
+                                self.code_gen_method(mgr, &use_map, &class_ref, m, ps, block);
                             } else {
                                 unreachable!("Parser error");
                             }

@@ -2,6 +2,8 @@
  * Author: Xi
  */
 // Basic unit test
+mod Loop;
+mod Branch;
 
 class Program {
     fn main() {

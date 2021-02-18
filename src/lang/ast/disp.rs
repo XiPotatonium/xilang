@@ -24,7 +24,24 @@ impl fmt::Display for AST {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // write!(f, "({}, {})", self.x, self.y)
         match self {
-            Self::File(children) => write!(f, "{}", ASTChildrenWrapper(children)),
+            Self::File(mods, uses, children) => {
+                write!(
+                    f,
+                    "{{\"name\":\"(file)\",\"mods\":[{}],\"uses\":{},\"classes\":{}}}",
+                    mods.iter()
+                        .map(|m| format!("\"{}\"", m))
+                        .collect::<Vec<String>>()
+                        .join(","),
+                    ASTChildrenWrapper(uses),
+                    ASTChildrenWrapper(children)
+                )
+            }
+            Self::Use(path, as_id) => write!(
+                f,
+                "{{\"name\":\"(use)\",\"path\":\"{}\",\"as\":\"{}\"}}",
+                path.join("::"),
+                if let Some(as_id) = as_id { as_id } else { "" }
+            ),
             Self::Class(id, flag, funcs, fields, init) => write!(
                 f,
                 "{{\"name\":\"(class){}\",\"flag\":\"{}\",\"fields\":{},\"init\":{},\"funcs\":{}}}",
@@ -224,15 +241,7 @@ impl fmt::Display for AST {
                 "{{\"name\":\"(ArrType)\",\"dtype\":{},\"dim\":{}}}",
                 dtype, dim
             ),
-            Self::TypeClass(names) => {
-                let mut iter = names.iter();
-                let mut s = iter.next().unwrap().clone();
-                for name in iter {
-                    s.push('.');
-                    s.push_str(name);
-                }
-                write!(f, "{{\"name\":\"(ClassType){}\"}}", s)
-            }
+            Self::TypeClass(names) => write!(f, "{{\"name\":\"(ClassType){}\"}}", names.join("::")),
             Self::Null => write!(f, "{{\"name\":\"null\" }}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
             Self::Int(val) => write!(f, "{{\"name\":\"(int){}\"}}", val),
