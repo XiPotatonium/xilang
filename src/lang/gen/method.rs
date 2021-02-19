@@ -8,7 +8,7 @@ pub struct Method {
     /// self is not included
     pub ps_ty: Vec<RValType>,
     /// method idx in class file
-    pub method_idx: u16,
+    pub method_idx: u32,
 }
 
 impl Method {

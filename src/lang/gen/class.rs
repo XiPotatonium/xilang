@@ -7,7 +7,7 @@ pub struct Class {
     pub fullname: String,
 
     /// index in module file
-    pub idx: u16,
+    pub idx: u32,
 
     pub non_static_fields: Vec<String>,
     pub fields: HashMap<String, Box<Field>>,
@@ -16,7 +16,7 @@ pub struct Class {
 }
 
 impl Class {
-    pub fn new(fullname: String, idx: u16) -> Class {
+    pub fn new(fullname: String, idx: u32) -> Class {
         Class {
             fullname,
             idx,

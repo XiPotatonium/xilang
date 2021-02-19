@@ -4,7 +4,7 @@ use super::ir_file::*;
 
 use std::fmt;
 
-impl ModuleFile {
+impl IrFile {
     fn get_str(&self, idx: u32) -> &str {
         match &self[idx] {
             Constant::Class(name_idx) => self.get_str(*name_idx),
@@ -35,81 +35,121 @@ impl ModuleFile {
         }
     }
 
-    pub fn from_text(text: &str) -> ModuleFile {
+    pub fn from_text(text: &str) -> IrFile {
         unimplemented!();
+    }
+
+    pub fn write_field(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        indent: usize,
+        field_i: usize,
+    ) -> fmt::Result {
+        let field = &self.field_tbl[field_i - 1];
+        let flag = FieldFlag::new(field.flag);
+        write!(
+            f,
+            "\n{}.field {} {} {}",
+            " ".repeat(indent * 2),
+            flag,
+            self.get_str(field.name),
+            self.get_str(field.descriptor)
+        )
+    }
+
+    pub fn write_method(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        indent: usize,
+        method_i: usize,
+        is_entrypoint: bool,
+    ) -> fmt::Result {
+        let method = &self.method_tbl[method_i - 1];
+        let code = &self.codes[method_i - 1];
+        let flag = MethodFlag::new(method.flag);
+        write!(
+            f,
+            "\n\n{}.method {} {} {}\n",
+            " ".repeat(indent * 4),
+            flag,
+            self.get_str(method.name),
+            self.get_str(method.descriptor)
+        )?;
+
+        write!(f, "{}.locals\t{}", " ".repeat(indent * 8), method.locals)?;
+        if is_entrypoint {
+            write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
+        }
+
+        for inst in code.iter() {
+            write!(f, "\n{}", " ".repeat(indent * 8))?;
+            inst.fmt(f, self)?;
+        }
+
+        Ok(())
     }
 }
 
-impl fmt::Display for ModuleFile {
+impl fmt::Display for IrFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            ".version: {}.{}\n.module {}",
-            self.major_version,
-            self.minor_version,
-            self.get_str(self.module_name)
+            ".version {}.{}\n",
+            self.major_version, self.minor_version
         )?;
 
-        for (class_idx, class) in self.classes.iter().enumerate() {
-            let class_idx = class_idx as u16 + 1;
+        let mut entrypoint = 0usize;
+        if let Some(c) = self.crate_tbl.first() {
+            write!(f, ".crate {}\n", self.get_str(c.name))?;
+            entrypoint = c.entrypoint as usize;
+        }
+
+        if let Some(m) = self.mod_tbl.first() {
+            write!(f, ".mod {}\n", self.get_str(m.name))?;
+        }
+
+        let mut field_lim = if let Some(c0) = self.class_tbl.first() {
+            c0.fields as usize
+        } else {
+            self.field_tbl.len()
+        };
+        let mut method_lim = if let Some(c0) = self.class_tbl.first() {
+            c0.methods as usize
+        } else {
+            self.method_tbl.len()
+        };
+        let mut field_i = 1;
+        let mut method_i = 1;
+
+        while field_i < field_lim {
+            self.write_field(f, 0, field_i)?;
+            field_i += 1;
+        }
+
+        while method_i < method_lim {
+            self.write_method(f, 0, method_i, method_i == entrypoint)?;
+            method_i += 1;
+        }
+
+        for class_i in (0..self.class_tbl.len()).into_iter() {
+            if class_i + 1 >= self.class_tbl.len() {
+                // last class
+                field_lim = self.field_tbl.len();
+                method_lim = self.method_tbl.len();
+            }
+
+            let class = &self.class_tbl[class_i];
             let flag = TypeFlag::new(class.flag);
-            write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name_idx))?;
-            for field in self.fields.iter().filter(|f| f.class_idx == class_idx) {
-                let flag = FieldFlag::new(field.flag);
-                write!(
-                    f,
-                    "\n    .field {} {} {}",
-                    flag,
-                    self.get_str(field.name_idx),
-                    self.get_str(field.descriptor_idx)
-                )?;
+            write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name))?;
+
+            while field_i < field_lim {
+                self.write_field(f, 1, field_i)?;
+                field_i += 1;
             }
 
-            for method in self.methods.iter().filter(|m| m.class_idx == class_idx) {
-                let flag = MethodFlag::new(method.flag);
-                write!(
-                    f,
-                    "\n\n    .method {} {} {}\n",
-                    flag,
-                    self.get_str(method.name_idx),
-                    self.get_str(method.descriptor_idx)
-                )?;
-
-                write!(f, "        .locals\t{}", method.locals)?;
-
-                for inst in method.insts.iter() {
-                    write!(f, "\n        ")?;
-                    inst.fmt(f, self)?;
-                }
-            }
-        }
-
-        for field in self.fields.iter().filter(|f| f.class_idx == 0) {
-            let flag = FieldFlag::new(field.flag);
-            write!(
-                f,
-                "\n\n.field {} {} {}",
-                flag,
-                self.get_str(field.name_idx),
-                self.get_str(field.descriptor_idx)
-            )?;
-        }
-
-        for method in self.methods.iter().filter(|m| m.class_idx == 0) {
-            let flag = MethodFlag::new(method.flag);
-            write!(
-                f,
-                "\n\n.method {} {} {}\n",
-                flag,
-                self.get_str(method.name_idx),
-                self.get_str(method.descriptor_idx)
-            )?;
-
-            write!(f, "    .locals\t{}", method.locals)?;
-
-            for inst in method.insts.iter() {
-                write!(f, "\n        ")?;
-                inst.fmt(f, self)?;
+            while method_i < method_lim {
+                self.write_method(f, 1, method_i, method_i == entrypoint)?;
+                method_i += 1;
             }
         }
 
@@ -118,7 +158,7 @@ impl fmt::Display for ModuleFile {
 }
 
 impl Inst {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &ModuleFile) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &IrFile) -> fmt::Result {
         match self {
             Inst::Nop => write!(f, "nop"),
 

@@ -1,6 +1,6 @@
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
-use crate::ir::ir_file::{Constant, IrClass, IrField, IrMethod, ModuleFile};
+use crate::ir::ir_file::*;
 use crate::ir::util::linkedlist::LinkedList;
 
 use std::collections::HashMap;
@@ -134,79 +134,87 @@ pub struct Builder {
     method_map: HashMap<(u32, u32), u32>,
     // (utf8 name idx, utf8 ty idx) -> NameAndType idx
     name_and_type_map: HashMap<(u32, u32), u32>,
-    pub file: ModuleFile,
+
+    pub file: IrFile,
 }
 
 impl Builder {
-    pub fn new(module_name: &str) -> Builder {
-        let mut ret = Builder {
+    pub fn new() -> Builder {
+        Builder {
             utf8_map: HashMap::new(),
             str_map: HashMap::new(),
             class_map: HashMap::new(),
             field_map: HashMap::new(),
             method_map: HashMap::new(),
             name_and_type_map: HashMap::new(),
-            file: ModuleFile::new(),
-        };
-
-        ret.file.module_name = ret.add_const_utf8(module_name);
-
-        ret
+            file: IrFile::new(),
+        }
     }
 
-    pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u16 {
-        let name_idx = self.add_const_utf8(name);
-        self.file.classes.push(IrClass {
-            name_idx,
-            flag: flag.flag,
+    pub fn set_crate(&mut self, name: &str) {
+        let name = self.add_const_utf8(name);
+        self.file.crate_tbl.push(IrCrate {
+            name,
+            entrypoint: 0,
         });
-        self.file.classes.len() as u16
+    }
+
+    pub fn set_mod(&mut self, name: &str) {
+        let name = self.add_const_utf8(name);
+        self.file.mod_tbl.push(IrMod { name });
+    }
+
+    pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u32 {
+        let name = self.add_const_utf8(name);
+        self.file.class_tbl.push(IrClass {
+            name,
+            flag: flag.flag,
+            fields: 0,
+            methods: 0,
+        });
+        self.file.class_tbl.len() as u32
     }
 
     /// Add a field of this class
-    pub fn add_field(&mut self, class_idx: u16, name: &str, ty: &str, flag: &FieldFlag) -> u16 {
-        let name_idx = self.add_const_utf8(name);
-        let descriptor_idx = self.add_const_utf8(ty);
-        self.file.fields.push(IrField {
-            class_idx,
+    pub fn add_field(&mut self, name: &str, ty: &str, flag: &FieldFlag) -> u32 {
+        let name = self.add_const_utf8(name);
+        let descriptor = self.add_const_utf8(ty);
+        self.file.field_tbl.push(IrField {
+            name,
+            descriptor,
             flag: flag.flag,
-            name_idx,
-            descriptor_idx,
         });
-        self.file.fields.len() as u16
+        self.file.field_tbl.len() as u32
     }
 
     /// Add a field of this class
-    pub fn add_method(&mut self, class_idx: u16, name: &str, ty: &str, flag: &MethodFlag) -> u16 {
-        let name_idx = self.add_const_utf8(name);
-        let descriptor_idx = self.add_const_utf8(ty);
-        self.file.methods.push(IrMethod {
-            class_idx,
+    pub fn add_method(&mut self, name: &str, ty: &str, flag: &MethodFlag) -> u32 {
+        let name = self.add_const_utf8(name);
+        let descriptor = self.add_const_utf8(ty);
+        self.file.method_tbl.push(IrMethod {
             flag: flag.flag,
-            name_idx,
-            descriptor_idx,
+            name,
+            descriptor,
             locals: 0,
-            insts: vec![],
-            exception: vec![],
         });
-        self.file.methods.len() as u16
+        self.file.method_tbl.len() as u32
     }
 
     /// Post-Process
     ///
     /// Fill all jump instructions, concat all basic blocks
     ///
-    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u16, locals_stack: u16) {
-        let ir_method = &mut self.file.methods[(method_idx - 1) as usize];
+    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals_stack: u16) {
+        let ir_method = &mut self.file.method_tbl[(method_idx - 1) as usize];
         // fill jump instructions
 
         // concat basic blocks
-        let mut codes: Vec<Inst> = Vec::new();
+        let mut code: Vec<Inst> = Vec::new();
         for bb in m.codes.iter_mut() {
-            codes.append(&mut bb.insts);
+            code.append(&mut bb.insts);
         }
         ir_method.locals = locals_stack;
-        ir_method.insts = codes;
+        self.file.codes.push(code);
     }
 }
 

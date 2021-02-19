@@ -133,7 +133,7 @@ impl Default for ParamFlag {
 
 impl fmt::Display for ParamFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "");
+        write!(f, "")?;
         Ok(())
     }
 }
@@ -151,7 +151,7 @@ impl Default for LocalFlag {
 
 impl fmt::Display for LocalFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "");
+        write!(f, "")?;
         Ok(())
     }
 }

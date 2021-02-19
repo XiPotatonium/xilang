@@ -7,6 +7,7 @@ use super::var::{Arg, Locals};
 use super::xi_crate::Crate;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
+use crate::ir::path::IModPath;
 use crate::ir::ty::RValType;
 
 use std::cell::RefCell;
@@ -107,7 +108,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                 LValType::Field(class_name, field_name) => {
                     let class_rc = ctx
                         .mgr
-                        .class_table
+                        .class_tbl
                         .get(class_name)
                         .unwrap()
                         .upgrade()
@@ -136,7 +137,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                 LValType::Field(class_name, field_name) => {
                     let class_rc = ctx
                         .mgr
-                        .class_table
+                        .class_tbl
                         .get(class_name)
                         .unwrap()
                         .upgrade()
@@ -191,8 +192,8 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
             }
 
             // module or class
-            let class_in_cur_module = format!("{}/{}", ctx.module.fullname, id);
-            if ctx.mgr.class_table.contains_key(&class_in_cur_module) {
+            let class_in_cur_module = format!("{}/{}", ctx.module.mod_path.as_str(), id);
+            if ctx.mgr.class_tbl.contains_key(&class_in_cur_module) {
                 // a class in current module
                 LValType::Class(class_in_cur_module)
             } else {
@@ -205,7 +206,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
             match lhs {
                 RValType::Obj(name) => {
                     // Access a non-static method or non-static field in class
-                    let class_rc = ctx.mgr.class_table.get(&name).unwrap().upgrade().unwrap();
+                    let class_rc = ctx.mgr.class_tbl.get(&name).unwrap().upgrade().unwrap();
                     let class_ref = class_rc.borrow();
                     if expect_method {
                         if let Some(m) = class_ref.methods.get(rhs) {
@@ -241,7 +242,7 @@ fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> LValType {
                 }
                 LValType::Class(name) => {
                     // Access a static method or static field in class
-                    let class_rc = ctx.mgr.class_table.get(&name).unwrap().upgrade().unwrap();
+                    let class_rc = ctx.mgr.class_tbl.get(&name).unwrap().upgrade().unwrap();
                     let class_ref = class_rc.borrow();
                     if expect_method {
                         if let Some(m) = class_ref.methods.get(rhs) {
@@ -373,7 +374,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
             // TODO priavte and public
 
             // Find method
-            let class_rc = ctx.mgr.class_table.get(class).unwrap().upgrade().unwrap();
+            let class_rc = ctx.mgr.class_tbl.get(class).unwrap().upgrade().unwrap();
             let class_ref = class_rc.borrow();
             let m = class_ref.methods.get(name).unwrap();
 
@@ -408,7 +409,7 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
         RValType::Obj(class_name) => {
             let class = ctx
                 .mgr
-                .class_table
+                .class_tbl
                 .get(class_name)
                 .unwrap()
                 .upgrade()
@@ -501,7 +502,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         }
         LValType::Field(class, name) => {
             // TODO private and public
-            let class_rc = ctx.mgr.class_table.get(&class).unwrap().upgrade().unwrap();
+            let class_rc = ctx.mgr.class_tbl.get(&class).unwrap().upgrade().unwrap();
             let class_ref = class_rc.borrow();
             let field = class_ref.fields.get(&name).unwrap();
             let field_ty = field.ty.clone();

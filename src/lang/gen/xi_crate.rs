@@ -1,5 +1,7 @@
+use super::super::XicCfg;
 use super::class::Class;
 use super::module::Module;
+use crate::ir::path::ModPath;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,22 +11,34 @@ use std::rc::{Rc, Weak};
 
 pub struct Crate {
     pub root: Rc<Module>,
+    pub name: String,
 
-    pub class_table: HashMap<String, Weak<RefCell<Class>>>,
+    pub class_tbl: HashMap<String, Weak<RefCell<Class>>>,
     // TODO Dependencies
 }
 
 impl Crate {
-    pub fn new(root_path: &Path, exts: &Vec<String>, show_ast: bool) -> Crate {
-        let root_name = root_path.file_stem().unwrap().to_str().unwrap().to_owned();
+    pub fn new(cfg: &XicCfg) -> Crate {
+        let mut mod_path: ModPath = ModPath::new();
+        mod_path.push(&cfg.crate_name);
 
         // TODO external module paths
-        println!("External module paths: {}", exts.join(";"));
-        let mut class_tbl: HashMap<String, Weak<RefCell<Class>>> = HashMap::new();
+        println!("External module paths: {}", cfg.ext_paths.join(";"));
+
+        let mut class_tbl = HashMap::new();
+        let root = Module::new(
+            mod_path,
+            &cfg.root_path,
+            true,
+            false,
+            &mut class_tbl,
+            cfg.verbose >= 2,
+        );
 
         Crate {
-            root: Module::new(vec![root_name], &root_path, false, &mut class_tbl, show_ast),
-            class_table: class_tbl,
+            name: cfg.crate_name.to_owned(),
+            root,
+            class_tbl,
         }
     }
 

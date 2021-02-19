@@ -1,11 +1,12 @@
 use crate::ir::flag::*;
+use crate::ir::path::ModPath;
 
 pub enum AST {
     /// mods, uses, classes: Vec<AST>
     File(Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
 
     /// path, as
-    Use(Vec<String>, Option<String>),
+    Use(ModPath, Option<String>),
 
     /// id, flag, methods: Vec<Func>, fields: Vec<Var>, static-init
     Class(String, TypeFlag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
@@ -72,7 +73,7 @@ pub enum AST {
     /// type, dim
     TypeArr(Box<AST>, Box<AST>),
     /// class names
-    TypeClass(Vec<String>),
+    TypeClass(ModPath),
 
     /// Literal
     Null,

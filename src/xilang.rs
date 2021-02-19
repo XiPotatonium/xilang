@@ -1,25 +1,25 @@
 extern crate clap;
 
+mod ir;
+mod vm;
+
 use clap::{App, Arg};
 
 use std::path::PathBuf;
 
-struct Config {
-    module_dir: PathBuf,
-    ext_paths: Vec<String>,
-    diagnose: bool,
-}
+use vm::mem::Mem;
+use vm::VMCfg;
+use vm::loader::load;
 
 fn main() {
-    let cfg: Config;
-    {
+    let cfg = {
         let matches = App::new("xilang")
             .version("0.1.0")
             .author("Xi")
             .about("Hello world! This is xilang")
             .arg(
                 Arg::with_name("entry")
-                    .help("Entry of executable")
+                    .help("Entry module of executable")
                     .required(true)
                     .index(1),
             )
@@ -42,23 +42,17 @@ fn main() {
         let entry = matches.value_of("entry").unwrap();
         let ext_paths = matches.value_of("ext").unwrap_or("");
 
-        cfg = Config {
-            module_dir: PathBuf::from(entry),
+        VMCfg {
+            entry: PathBuf::from(entry),
             ext_paths: ext_paths
                 .split(';')
                 .map(|x| x.to_owned())
-                .collect::<Vec<String>>(), // TODO: 暂时没有cp
+                .collect::<Vec<String>>(),
             diagnose: matches.is_present("diagnose"),
-        };
-    }
+        }
+    };
 
-    println!("Module path: {}", cfg.module_dir.to_str().unwrap());
-    println!("External module paths:");
-    for cp in cfg.ext_paths.iter() {
-        println!("    {}", cp);
-    }
-    println!(
-        "Use diagnose: {}",
-        if cfg.diagnose { "true" } else { "false" }
-    );
+    let mut m = Mem::new();
+
+    load(&cfg, &mut m);
 }

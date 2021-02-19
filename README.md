@@ -20,10 +20,28 @@ FLAGS:
 
 OPTIONS:
     -i, --import <ext>       External module paths
+    -O <optim>               Optimization level: 0 | 1
     -o, --output <output>    Output directory. Default to be <root> if not specified
 
 ARGS:
-    <root>    Input root directory
+    <root>    Root path
+```
+
+
+```
+USAGE:
+    xilang.exe [FLAGS] [OPTIONS] <entry>
+
+FLAGS:
+    -d, --diagnose    Run diagnose or not
+    -h, --help        Prints help information
+    -V, --version     Prints version information
+
+OPTIONS:
+    -i, --import <ext>    External module paths
+
+ARGS:
+    <entry>    Entry of executable
 ```
 
 ## 3 Grammar

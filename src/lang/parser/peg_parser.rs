@@ -1,5 +1,6 @@
 use super::super::ast::ast::AST;
 use crate::ir::flag::*;
+use crate::ir::path::ModPath;
 
 use std::fs;
 use std::path::Path;
@@ -142,15 +143,17 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
     Box::new(AST::Method(id, flag, ret_type, ps, build_block(sub)))
 }
 
-fn build_pathexpr(tree: Pair<Rule>) -> Vec<String> {
-    tree.into_inner()
-        .map(|seg| match seg.as_rule() {
-            Rule::Id => String::from(seg.as_span().as_str().trim()),
-            Rule::KwCrate => String::from("crate"),
-            Rule::KwSuper => String::from("super"),
+fn build_pathexpr(tree: Pair<Rule>) -> ModPath {
+    let mut ret = ModPath::new();
+    for seg in tree.into_inner() {
+        ret.push(match seg.as_rule() {
+            Rule::Id => seg.as_span().as_str().trim(),
+            Rule::KwCrate => "crate",
+            Rule::KwSuper => "super",
             _ => unreachable!(),
-        })
-        .collect()
+        });
+    }
+    ret
 }
 
 fn build_type(tree: Pair<Rule>) -> Box<AST> {
@@ -160,7 +163,11 @@ fn build_type(tree: Pair<Rule>) -> Box<AST> {
         Rule::KwChar => AST::TypeChar,
         Rule::KwI32 => AST::TypeI32,
         Rule::KwF64 => AST::TypeF64,
-        Rule::KwUSelf => AST::TypeClass(vec![String::from("Self")]),
+        Rule::KwUSelf => AST::TypeClass({
+            let mut path = ModPath::new();
+            path.push("Self");
+            path
+        }),
         Rule::PathExpr => AST::TypeClass(build_pathexpr(tree)),
         Rule::TupleType => AST::TypeTuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {

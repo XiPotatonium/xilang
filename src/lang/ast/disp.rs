@@ -1,4 +1,5 @@
 use super::ast::AST;
+use crate::ir::path::IModPath;
 
 use std::fmt;
 
@@ -39,7 +40,7 @@ impl fmt::Display for AST {
             Self::Use(path, as_id) => write!(
                 f,
                 "{{\"name\":\"(use)\",\"path\":\"{}\",\"as\":\"{}\"}}",
-                path.join("::"),
+                path.as_str(),
                 if let Some(as_id) = as_id { as_id } else { "" }
             ),
             Self::Class(id, flag, funcs, fields, init) => write!(
@@ -241,7 +242,7 @@ impl fmt::Display for AST {
                 "{{\"name\":\"(ArrType)\",\"dtype\":{},\"dim\":{}}}",
                 dtype, dim
             ),
-            Self::TypeClass(names) => write!(f, "{{\"name\":\"(ClassType){}\"}}", names.join("::")),
+            Self::TypeClass(names) => write!(f, "{{\"name\":\"(ClassType){}\"}}", names.as_str()),
             Self::Null => write!(f, "{{\"name\":\"null\" }}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
             Self::Int(val) => write!(f, "{{\"name\":\"(int){}\"}}", val),

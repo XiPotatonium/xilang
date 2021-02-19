@@ -4,46 +4,58 @@ use std::mem::transmute;
 use super::inst::Inst;
 use super::ir_file::*;
 
-impl ModuleFile {
+impl IrFile {
     pub fn to_binary(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
 
         self.minor_version.serialize(&mut buf);
         self.major_version.serialize(&mut buf);
-        self.module_name.serialize(&mut buf);
+
         self.constant_pool.serialize(&mut buf);
-        self.sub_mods.serialize(&mut buf);
-        self.imports.serialize(&mut buf);
-        self.classes.serialize(&mut buf);
-        self.fields.serialize(&mut buf);
-        self.methods.serialize(&mut buf);
+
+        self.crate_tbl.serialize(&mut buf);
+        self.mod_tbl.serialize(&mut buf);
+
+        self.class_tbl.serialize(&mut buf);
+        self.field_tbl.serialize(&mut buf);
+        self.method_tbl.serialize(&mut buf);
+
+        self.codes.serialize(&mut buf);
 
         buf
     }
 
-    pub fn from_binary(stream: Box<dyn Read>) -> ModuleFile {
+    pub fn from_binary(stream: Box<dyn Read>) -> IrFile {
         let mut buf = Deserializer::new(Box::new(stream.bytes().map(|r| r.unwrap())));
 
         let minor_version = u16::deserialize(&mut buf);
         let major_version = u16::deserialize(&mut buf);
-        let module_name = u32::deserialize(&mut buf);
+
         let constant_pool = Vec::deserialize(&mut buf);
-        let sub_mods = Vec::deserialize(&mut buf);
-        let imports = Vec::deserialize(&mut buf);
+
+        let crate_tbl = Vec::deserialize(&mut buf);
+        let mod_tbl = Vec::deserialize(&mut buf);
+
         let classes = Vec::deserialize(&mut buf);
         let fields = Vec::deserialize(&mut buf);
         let methods = Vec::deserialize(&mut buf);
 
-        ModuleFile {
+        let codes = Vec::deserialize(&mut buf);
+
+        IrFile {
             minor_version,
             major_version,
-            module_name,
+
             constant_pool,
-            sub_mods,
-            imports,
-            classes,
-            fields,
-            methods,
+
+            crate_tbl,
+            mod_tbl,
+
+            class_tbl: classes,
+            field_tbl: fields,
+            method_tbl: methods,
+
+            codes,
         }
     }
 }
@@ -172,28 +184,28 @@ impl Serializable for String {
 
 impl Serializable for Vec<u8> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
+        (self.len() as u32).serialize(buf);
         for b in self.iter() {
             b.serialize(buf);
         }
     }
 
     fn deserialize(buf: &mut Deserializer) -> Vec<u8> {
-        let len = u32::deserialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
+        let len = u32::deserialize(buf);
         buf.take_bytes(len)
     }
 }
 
 impl Serializable for Vec<u32> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
+        (self.len() as u32).serialize(buf);
         for val in self.iter() {
             val.serialize(buf);
         }
     }
 
     fn deserialize(buf: &mut Deserializer) -> Vec<u32> {
-        let len = u32::deserialize(buf); // byte vectors use a 4-byte length prefix, not 2-byte
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
             .map(|_| u32::deserialize(buf))
@@ -203,14 +215,14 @@ impl Serializable for Vec<u32> {
 
 impl Serializable for Vec<Constant> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u16).serialize(buf);
+        (self.len() as u32).serialize(buf);
         for constant in self.iter() {
             constant.serialize(buf);
         }
     }
 
     fn deserialize(buf: &mut Deserializer) -> Vec<Constant> {
-        let len = u16::deserialize(buf);
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
             .map(|_| Constant::deserialize(buf))
@@ -220,14 +232,14 @@ impl Serializable for Vec<Constant> {
 
 impl Serializable for Vec<IrClass> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u16).serialize(buf);
+        (self.len() as u32).serialize(buf);
         for cls in self.iter() {
             cls.serialize(buf);
         }
     }
 
     fn deserialize(buf: &mut Deserializer) -> Vec<IrClass> {
-        let len = u16::deserialize(buf);
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
             .map(|_| IrClass::deserialize(buf))
@@ -237,14 +249,14 @@ impl Serializable for Vec<IrClass> {
 
 impl Serializable for Vec<IrField> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u16).serialize(buf);
+        (self.len() as u32).serialize(buf);
         for f in self.iter() {
             f.serialize(buf);
         }
     }
 
     fn deserialize(buf: &mut Deserializer) -> Vec<IrField> {
-        let len = u16::deserialize(buf);
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
             .map(|_| IrField::deserialize(buf))
@@ -254,14 +266,14 @@ impl Serializable for Vec<IrField> {
 
 impl Serializable for Vec<IrMethod> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u16).serialize(buf);
+        (self.len() as u32).serialize(buf);
         for m in self.iter() {
             m.serialize(buf);
         }
     }
 
     fn deserialize(buf: &mut Deserializer) -> Vec<IrMethod> {
-        let len = u16::deserialize(buf);
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
             .map(|_| IrMethod::deserialize(buf))
@@ -269,36 +281,36 @@ impl Serializable for Vec<IrMethod> {
     }
 }
 
-impl Serializable for Vec<ExceptionTableEntry> {
+impl Serializable for Vec<IrCrate> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u16).serialize(buf);
-        for e in self.iter() {
-            e.serialize(buf);
+        (self.len() as u32).serialize(buf);
+        for m in self.iter() {
+            m.serialize(buf);
         }
     }
 
-    fn deserialize(buf: &mut Deserializer) -> Vec<ExceptionTableEntry> {
-        let len = u16::deserialize(buf);
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
-            .map(|_| ExceptionTableEntry::deserialize(buf))
+            .map(|_| IrCrate::deserialize(buf))
             .collect()
     }
 }
 
-impl Serializable for Vec<LineNumberTableEntry> {
+impl Serializable for Vec<IrMod> {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u16).serialize(buf);
-        for l in self.iter() {
-            l.serialize(buf);
+        (self.len() as u32).serialize(buf);
+        for m in self.iter() {
+            m.serialize(buf);
         }
     }
 
-    fn deserialize(buf: &mut Deserializer) -> Vec<LineNumberTableEntry> {
-        let len = u16::deserialize(buf);
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
-            .map(|_| LineNumberTableEntry::deserialize(buf))
+            .map(|_| IrMod::deserialize(buf))
             .collect()
     }
 }
@@ -319,6 +331,27 @@ impl Serializable for Vec<Inst> {
         let mut out = vec![];
         while code_buf.bytes_taken < code_len {
             out.push(Inst::deserialize(&mut code_buf));
+        }
+        out
+    }
+}
+
+impl Serializable for Vec<Vec<Inst>> {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        let mut code = vec![];
+        for inst in self.iter() {
+            inst.serialize(&mut code);
+        }
+        code.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let code: Vec<u8> = Vec::deserialize(buf);
+        let code_len = code.len() as u32;
+        let mut code_buf = Deserializer::new(Box::new(code.into_iter()));
+        let mut out = vec![];
+        while code_buf.bytes_taken < code_len {
+            out.push(Vec::deserialize(&mut code_buf));
         }
         out
     }
@@ -373,95 +406,95 @@ impl Serializable for Constant {
 
 impl Serializable for IrClass {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        self.name_idx.serialize(buf);
+        self.name.serialize(buf);
         self.flag.serialize(buf);
+
+        self.fields.serialize(buf);
+        self.methods.serialize(buf);
     }
 
     fn deserialize(buf: &mut Deserializer) -> IrClass {
-        let name_idx = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
         let flag = u32::deserialize(buf);
-        IrClass { name_idx, flag }
+        let fields = u32::deserialize(buf);
+        let methods = u32::deserialize(buf);
+        IrClass {
+            name,
+            flag,
+            fields,
+            methods,
+        }
     }
 }
 
 impl Serializable for IrField {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        self.class_idx.serialize(buf);
         self.flag.serialize(buf);
-        self.name_idx.serialize(buf);
-        self.descriptor_idx.serialize(buf);
+        self.name.serialize(buf);
+        self.descriptor.serialize(buf);
     }
 
     fn deserialize(buf: &mut Deserializer) -> IrField {
-        let class_idx = u16::deserialize(buf);
         let flag = u16::deserialize(buf);
-        let name_idx = u32::deserialize(buf);
-        let descriptor_idx = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let descriptor = u32::deserialize(buf);
 
         IrField {
-            class_idx,
             flag,
-            name_idx,
-            descriptor_idx,
+            name,
+            descriptor,
         }
     }
 }
 
 impl Serializable for IrMethod {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        self.class_idx.serialize(buf);
+        self.name.serialize(buf);
+        self.descriptor.serialize(buf);
 
         self.flag.serialize(buf);
-        self.name_idx.serialize(buf);
-        self.descriptor_idx.serialize(buf);
 
         self.locals.serialize(buf);
-        self.insts.serialize(buf);
-        self.exception.serialize(buf);
     }
 
     fn deserialize(buf: &mut Deserializer) -> IrMethod {
-        let class_idx = u16::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let descriptor = u32::deserialize(buf);
+
         let flag = u16::deserialize(buf);
-        let name_idx = u32::deserialize(buf);
-        let descriptor_idx = u32::deserialize(buf);
+
         let locals = u16::deserialize(buf);
-        let insts: Vec<Inst> = Vec::deserialize(buf);
-        let exception: Vec<ExceptionTableEntry> = Vec::deserialize(buf);
 
         IrMethod {
-            class_idx,
             flag,
-            name_idx,
-            descriptor_idx,
+            name,
+            descriptor,
             locals,
-            insts,
-            exception,
         }
     }
 }
 
-impl Serializable for ExceptionTableEntry {
-    fn serialize(&self, _buf: &mut Vec<u8>) {
-        unimplemented!();
-    }
-
-    fn deserialize(_buf: &mut Deserializer) -> ExceptionTableEntry {
-        unimplemented!();
-    }
-}
-
-impl Serializable for LineNumberTableEntry {
+impl Serializable for IrCrate {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        self.start_pc.serialize(buf);
-        self.line_number.serialize(buf);
+        self.name.serialize(buf);
+        self.entrypoint.serialize(buf)
     }
 
-    fn deserialize(buf: &mut Deserializer) -> LineNumberTableEntry {
-        LineNumberTableEntry {
-            start_pc: u16::deserialize(buf),
-            line_number: u16::deserialize(buf),
-        }
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let name = u32::deserialize(buf);
+        let entrypoint = u32::deserialize(buf);
+        IrCrate { name, entrypoint }
+    }
+}
+
+impl Serializable for IrMod {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.name.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let name = u32::deserialize(buf);
+        IrMod { name }
     }
 }
 
