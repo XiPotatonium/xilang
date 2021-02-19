@@ -147,7 +147,7 @@ impl Module {
 
                 let mut sub_dir_mod_path = dir.join(&sub_mod_name);
                 let has_sub_dir_mod = sub_dir_mod_path.exists() && sub_dir_mod_path.is_dir() && {
-                    sub_dir_mod_path.push("Mod.xi");
+                    sub_dir_mod_path.push("mod.xi");
                     sub_dir_mod_path.exists() && sub_dir_mod_path.is_file()
                 };
                 let sub_mod_path = dir.join(format!("{}.xi", sub_mod_name));
