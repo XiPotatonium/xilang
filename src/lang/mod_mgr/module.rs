@@ -67,7 +67,7 @@ impl Module {
         let output_dir = cfg.out_dir.join(rel_dir);
         let mod_self_name = mod_path.get_self_name().unwrap();
 
-        let mut builder = Builder::new(mod_self_name);
+        let builder = Builder::new(mod_self_name);
 
         // Parse source file
         let ast = parser::peg_parse(fpath).unwrap();
@@ -226,7 +226,7 @@ impl Module {
             // generate all classes
             let mut class_map: HashMap<String, Rc<RefCell<Class>>> = HashMap::new();
             for class in classes.iter() {
-                if let AST::Class(id, flag, _, _, _) = class.as_ref() {
+                if let AST::Class(id, _, _, _, _) = class.as_ref() {
                     if sub_mods.contains_key(id) {
                         panic!(
                             "Ambiguous name {} in module {}. Both a sub-module and a class",
@@ -234,8 +234,7 @@ impl Module {
                         );
                     }
 
-                    let idx = builder.add_class(id, flag);
-                    let class = Rc::new(RefCell::new(Class::new(id.to_owned(), idx)));
+                    let class = Rc::new(RefCell::new(Class::new(id.to_owned(), 0)));
                     class_map.insert(id.to_owned(), class);
                 } else {
                     unreachable!();
@@ -355,10 +354,12 @@ impl Module {
     pub fn member_pass(&self, c: &ModMgr) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
-                if let AST::Class(class_id, _, ast_methods, ast_fields, static_init) =
+                if let AST::Class(class_id, class_flag, ast_methods, ast_fields, static_init) =
                     class.as_ref()
                 {
                     let mut class_mut = self.classes.get(class_id).unwrap().borrow_mut();
+                    class_mut.idx = self.builder.borrow_mut().add_class(class_id, class_flag);
+
                     // Add static init
                     match static_init.as_ref() {
                         AST::Block(_) => {
@@ -425,7 +426,8 @@ impl Module {
                                     && m.flag.is(MethodFlagTag::Static)
                                 {
                                     // pub Program::main()
-                                    self.builder.borrow_mut().file.entrypoint = m.method_idx;
+                                    self.builder.borrow_mut().file.mod_tbl[0].entrypoint =
+                                        m.method_idx;
                                 }
                             }
                         }

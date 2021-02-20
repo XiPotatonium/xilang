@@ -31,7 +31,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                     let f = class_ref.fields.get(field_name).unwrap();
 
                     let ret = f.ty.clone();
-                    let field_idx = ctx.module.builder.borrow_mut().add_const_fieldref(
+                    let field_idx = ctx.module.builder.borrow_mut().add_const_member(
                         mod_name,
                         class_name,
                         field_name,
@@ -55,7 +55,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                     let f = class_ref.fields.get(field_name).unwrap();
 
                     let ret = f.ty.clone();
-                    let field_idx = ctx.module.builder.borrow_mut().add_const_fieldref(
+                    let field_idx = ctx.module.builder.borrow_mut().add_const_member(
                         mod_name,
                         class_name,
                         field_name,
@@ -183,7 +183,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> IrValType {
             let m = class_ref.methods.get(name).unwrap();
 
             // Add to class file
-            let m_idx = ctx.module.builder.borrow_mut().add_const_methodref(
+            let m_idx = ctx.module.builder.borrow_mut().add_const_member(
                 mod_name,
                 class,
                 name,
@@ -317,7 +317,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
                 );
             }
 
-            let f_idx = ctx.module.builder.borrow_mut().add_const_fieldref(
+            let f_idx = ctx.module.builder.borrow_mut().add_const_member(
                 &mod_name,
                 &class_name,
                 &name,

@@ -13,9 +13,15 @@ pub fn load(mem: &mut SharedMem, cfg: &VMCfg) -> (Vec<Rc<VMMethod>>, Rc<VMMethod
     let f = IrFile::from_binary(Box::new(f));
 
     let root_name = f.mod_name().unwrap().to_owned();
-    if f.entrypoint == 0 {
-        panic!("Module {} has no entrypoint", root_name);
-    }
+    let entrypoint = if let Some(m) = f.mod_tbl.first() {
+        if m.entrypoint == 0 {
+            panic!("{} has no entrypoint", cfg.entry.display());
+        } else {
+            m.entrypoint as usize
+        }
+    } else {
+        panic!("{} is not a module", cfg.entry.display());
+    };
 
     let mut loader = Loader {
         root_name,
@@ -26,10 +32,7 @@ pub fn load(mem: &mut SharedMem, cfg: &VMCfg) -> (Vec<Rc<VMMethod>>, Rc<VMMethod
 
     let root = loader.load(&f);
 
-    (
-        loader.static_inits,
-        root.methods[f.entrypoint as usize - 1].clone(),
-    )
+    (loader.static_inits, root.methods[entrypoint - 1].clone())
 }
 
 struct Loader<'c> {
@@ -51,26 +54,11 @@ impl<'c> Loader<'c> {
         let mut methods: Vec<VMMethod> = Vec::new();
         let mut fields: Vec<VMField> = Vec::new();
 
-        for class in file.class_tbl.iter() {}
+        for ty in file.type_tbl.iter() {}
 
         for method in file.method_tbl.iter() {}
 
         for field in file.field_tbl.iter() {}
-
-        for constant in file.constant_pool.iter() {
-            vm_constant.push(match constant {
-                Constant::Utf8(s) => VMConstant::Utf8(self.mem.add_const_str(s.to_owned())),
-                Constant::String(_) => unimplemented!(),
-                Constant::Mod(name) => {
-                    if *name != file.mod_name {
-                        // external mod
-                        ext_mod_set.insert(*name);
-                    }
-                    VMConstant::None
-                }
-                _ => VMConstant::None,
-            });
-        }
 
         unimplemented!();
     }

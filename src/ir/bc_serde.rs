@@ -11,14 +11,18 @@ impl IrFile {
         self.minor_version.serialize(&mut buf);
         self.major_version.serialize(&mut buf);
 
-        self.mod_name.serialize(&mut buf);
-        self.entrypoint.serialize(&mut buf);
+        self.mod_tbl.serialize(&mut buf);
+        self.modref_tbl.serialize(&mut buf);
 
-        self.constant_pool.serialize(&mut buf);
+        self.type_tbl.serialize(&mut buf);
+        self.typeref_tbl.serialize(&mut buf);
 
-        self.class_tbl.serialize(&mut buf);
         self.field_tbl.serialize(&mut buf);
         self.method_tbl.serialize(&mut buf);
+
+        self.memberref_tbl.serialize(&mut buf);
+
+        self.str_heap.serialize(&mut buf);
 
         self.codes.serialize(&mut buf);
 
@@ -38,14 +42,17 @@ impl IrFile {
             );
         }
 
-        let mod_name = u32::deserialize(&mut buf);
-        let entrypoint = u32::deserialize(&mut buf);
+        let mod_tbl = Vec::deserialize(&mut buf);
+        let modref_tbl = Vec::deserialize(&mut buf);
 
-        let constant_pool = Vec::deserialize(&mut buf);
+        let type_tbl = Vec::deserialize(&mut buf);
+        let typeref_tbl = Vec::deserialize(&mut buf);
 
-        let classes = Vec::deserialize(&mut buf);
-        let fields = Vec::deserialize(&mut buf);
-        let methods = Vec::deserialize(&mut buf);
+        let field_tbl = Vec::deserialize(&mut buf);
+        let method_tbl = Vec::deserialize(&mut buf);
+        let memberref_tbl = Vec::deserialize(&mut buf);
+
+        let str_heap = Vec::deserialize(&mut buf);
 
         let codes = Vec::deserialize(&mut buf);
 
@@ -53,14 +60,17 @@ impl IrFile {
             minor_version,
             major_version,
 
-            mod_name,
-            entrypoint,
+            mod_tbl,
+            modref_tbl,
 
-            constant_pool,
+            type_tbl,
+            typeref_tbl,
 
-            class_tbl: classes,
-            field_tbl: fields,
-            method_tbl: methods,
+            field_tbl,
+            method_tbl,
+            memberref_tbl,
+
+            str_heap,
 
             codes,
         }
@@ -220,79 +230,11 @@ impl Serializable for Vec<u32> {
     }
 }
 
-impl Serializable for Vec<Constant> {
+impl Serializable for Vec<String> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u32).serialize(buf);
-        for constant in self.iter() {
-            constant.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Vec<Constant> {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| Constant::deserialize(buf))
-            .collect()
-    }
-}
-
-impl Serializable for Vec<IrClass> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for cls in self.iter() {
-            cls.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Vec<IrClass> {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| IrClass::deserialize(buf))
-            .collect()
-    }
-}
-
-impl Serializable for Vec<IrField> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for f in self.iter() {
-            f.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Vec<IrField> {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| IrField::deserialize(buf))
-            .collect()
-    }
-}
-
-impl Serializable for Vec<IrMethod> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for m in self.iter() {
-            m.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Vec<IrMethod> {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| IrMethod::deserialize(buf))
-            .collect()
-    }
-}
-
-impl Serializable for Vec<IrMod> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for m in self.iter() {
-            m.serialize(buf);
+        for b in self.iter() {
+            b.serialize(buf);
         }
     }
 
@@ -300,10 +242,36 @@ impl Serializable for Vec<IrMod> {
         let len = u32::deserialize(buf);
         (0..len)
             .into_iter()
-            .map(|_| IrMod::deserialize(buf))
+            .map(|_| String::deserialize(buf))
             .collect()
     }
 }
+
+macro_rules! impl_vec_serde {
+    ($t: ident) => {
+        impl Serializable for Vec<$t> {
+            fn serialize(&self, buf: &mut Vec<u8>) {
+                (self.len() as u32).serialize(buf);
+                for v in self.iter() {
+                    v.serialize(buf);
+                }
+            }
+
+            fn deserialize(buf: &mut Deserializer) -> Self {
+                let len = u32::deserialize(buf);
+                (0..len).into_iter().map(|_| $t::deserialize(buf)).collect()
+            }
+        }
+    };
+}
+
+impl_vec_serde!(IrMod);
+impl_vec_serde!(IrModRef);
+impl_vec_serde!(IrType);
+impl_vec_serde!(IrTypeRef);
+impl_vec_serde!(IrField);
+impl_vec_serde!(IrMethod);
+impl_vec_serde!(IrMemberRef);
 
 impl Serializable for Vec<Inst> {
     fn serialize(&self, buf: &mut Vec<u8>) {
@@ -347,76 +315,7 @@ impl Serializable for Vec<Vec<Inst>> {
     }
 }
 
-impl Serializable for Constant {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        match self {
-            Constant::Utf8(string) => {
-                0x01u8.serialize(buf);
-                string.serialize(buf);
-            }
-            Constant::Class(mod_idx, name_index) => {
-                0x07u8.serialize(buf);
-                mod_idx.serialize(buf);
-                name_index.serialize(buf);
-            }
-            Constant::String(string_index) => {
-                0x8u8.serialize(buf);
-                string_index.serialize(buf);
-            }
-            Constant::Fieldref(class_index, name_and_type_index) => {
-                0x09u8.serialize(buf);
-                class_index.serialize(buf);
-                name_and_type_index.serialize(buf);
-            }
-            Constant::Methodref(class_index, name_and_type_index) => {
-                0x0Au8.serialize(buf);
-                class_index.serialize(buf);
-                name_and_type_index.serialize(buf);
-            }
-            Constant::NameAndType(name_index, descriptor_index) => {
-                0x0Cu8.serialize(buf);
-                name_index.serialize(buf);
-                descriptor_index.serialize(buf);
-            }
-            Constant::Mod(name_idx) => {
-                0x13u8.serialize(buf);
-                name_idx.serialize(buf);
-            }
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Constant {
-        let code = u8::deserialize(buf);
-        match code {
-            0x01 => Constant::Utf8(String::deserialize(buf)),
-            0x07 => {
-                let mod_idx = u32::deserialize(buf);
-                let name_idx = u32::deserialize(buf);
-                Constant::Class(mod_idx, name_idx)
-            }
-            0x08 => Constant::String(u32::deserialize(buf)),
-            0x09 => {
-                let class_idx = u32::deserialize(buf);
-                let name_and_type_idx = u32::deserialize(buf);
-                Constant::Fieldref(class_idx, name_and_type_idx)
-            }
-            0x0A => {
-                let class_idx = u32::deserialize(buf);
-                let name_and_type_idx = u32::deserialize(buf);
-                Constant::Methodref(class_idx, name_and_type_idx)
-            }
-            0x0C => {
-                let name = u32::deserialize(buf);
-                let ty = u32::deserialize(buf);
-                Constant::Class(name, ty)
-            }
-            0x13 => Constant::Mod(u32::deserialize(buf)),
-            _ => panic!("Don't know how to deserialize Constant of type: {}", code),
-        }
-    }
-}
-
-impl Serializable for IrClass {
+impl Serializable for IrType {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.flag.serialize(buf);
@@ -425,17 +324,31 @@ impl Serializable for IrClass {
         self.methods.serialize(buf);
     }
 
-    fn deserialize(buf: &mut Deserializer) -> IrClass {
+    fn deserialize(buf: &mut Deserializer) -> IrType {
         let name = u32::deserialize(buf);
         let flag = u32::deserialize(buf);
         let fields = u32::deserialize(buf);
         let methods = u32::deserialize(buf);
-        IrClass {
+        IrType {
             name,
             flag,
             fields,
             methods,
         }
+    }
+}
+
+impl Serializable for IrTypeRef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.parent.serialize(buf);
+        self.name.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let parent = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+
+        IrTypeRef { parent, name }
     }
 }
 
@@ -486,6 +399,25 @@ impl Serializable for IrMethod {
     }
 }
 
+impl Serializable for IrMemberRef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.parent.serialize(buf);
+        self.name.serialize(buf);
+        self.descriptor.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let parent = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let descriptor = u32::deserialize(buf);
+        IrMemberRef {
+            parent,
+            name,
+            descriptor,
+        }
+    }
+}
+
 impl Serializable for IrMod {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
@@ -496,6 +428,17 @@ impl Serializable for IrMod {
         let name = u32::deserialize(buf);
         let entrypoint = u32::deserialize(buf);
         IrMod { name, entrypoint }
+    }
+}
+
+impl Serializable for IrModRef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.name.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let name = u32::deserialize(buf);
+        IrModRef { name }
     }
 }
 

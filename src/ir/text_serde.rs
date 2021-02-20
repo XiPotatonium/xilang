@@ -5,42 +5,88 @@ use super::ir_file::*;
 use std::fmt;
 
 impl IrFile {
-    fn get_str(&self, idx: u32) -> &str {
-        match &self[idx] {
-            Constant::Mod(name) => self.get_str(*name),
-            Constant::Utf8(s) => s,
-            Constant::String(utf8_idx) => self.get_str(*utf8_idx),
-            _ => unimplemented!(),
-        }
-    }
-
     fn get_string(&self, idx: u32) -> String {
-        match &self[idx] {
-            Constant::Utf8(s) => s.to_owned(),
-            // TODO restore escape chars
-            Constant::String(utf8_idx) => format!("\"{}\"", self.get_str(*utf8_idx)),
-            Constant::Fieldref(class_idx, name_and_ty) => format!(
-                "{}::{}",
-                self.get_string(*class_idx),
-                self.get_string(*name_and_ty)
-            ),
-            Constant::Methodref(class_idx, name_and_ty) => format!(
-                "{}::{}",
-                self.get_string(*class_idx),
-                self.get_string(*name_and_ty)
-            ),
-            Constant::Class(mod_idx, name_idx) => {
-                format!("{}/{}", self.get_str(*mod_idx), self.get_str(*name_idx))
+        match self.get_tbl_entry(idx) {
+            TblValue::Mod(IrMod { name, .. }) => format!("{}", self.get_str(*name),),
+            TblValue::ModRef(IrModRef { name }) => format!("{}", self.get_str(*name),),
+            TblValue::Type(IrType { name, .. }) => {
+                format!("{}/{}", self.mod_name().unwrap(), self.get_str(*name))
             }
-            Constant::NameAndType(name, ty) => {
-                format!("{}: {}", self.get_str(*name), self.get_str(*ty))
+            TblValue::TypeRef(IrTypeRef { parent, name }) => {
+                format!("{}/{}", self.get_str(*parent), self.get_str(*name))
             }
-            Constant::Mod(name) => self.get_string(*name),
-        }
-    }
+            TblValue::Field(IrField {
+                name, descriptor, ..
+            }) => {
+                let self_idx = idx & !TBL_TAG_MASK;
 
-    pub fn from_text(text: &str) -> IrFile {
-        unimplemented!();
+                if self.type_tbl.is_empty() || self_idx < self.type_tbl[0].fields {
+                    // field has no parent
+                    format!(
+                        "{}::{}: {}",
+                        self.mod_name().unwrap(),
+                        self.get_str(*name),
+                        self.get_str(*descriptor)
+                    )
+                } else {
+                    let mut ty_idx = 0;
+                    while ty_idx < self.type_tbl.len() {
+                        if self.type_tbl[ty_idx].fields < self_idx {
+                            break;
+                        }
+                        ty_idx += 1;
+                    }
+
+                    format!(
+                        "{}::{}: {}",
+                        self.get_string(ty_idx as u32 | TBL_TYPE_TAG),
+                        self.get_str(*name),
+                        self.get_str(*descriptor)
+                    )
+                }
+            }
+            TblValue::Method(IrMethod {
+                name, descriptor, ..
+            }) => {
+                let self_idx = idx & !TBL_TAG_MASK;
+
+                if self.type_tbl.len() == 0 || self_idx < self.type_tbl[0].methods {
+                    // method has no parent
+                    format!(
+                        "{}::{}: {}",
+                        self.mod_name().unwrap(),
+                        self.get_str(*name),
+                        self.get_str(*descriptor)
+                    )
+                } else {
+                    let mut ty_idx = 0;
+                    while ty_idx < self.type_tbl.len() {
+                        if self.type_tbl[ty_idx].methods > self_idx {
+                            break;
+                        }
+                        ty_idx += 1;
+                    }
+
+                    format!(
+                        "{}::{}: {}",
+                        self.get_string(ty_idx as u32 | TBL_TYPE_TAG),
+                        self.get_str(*name),
+                        self.get_str(*descriptor)
+                    )
+                }
+            }
+            TblValue::MemberRef(IrMemberRef {
+                parent,
+                name,
+                descriptor,
+            }) => format!(
+                "{}::{}: {}",
+                self.get_string(*parent),
+                self.get_str(*name),
+                self.get_str(*descriptor)
+            ),
+            TblValue::None => String::new(),
+        }
     }
 
     pub fn write_field(
@@ -54,7 +100,7 @@ impl IrFile {
         write!(
             f,
             "\n{}.field {} {} {}",
-            " ".repeat(indent * 2),
+            " ".repeat(indent * 4),
             flag,
             self.get_str(field.name),
             self.get_str(field.descriptor)
@@ -101,14 +147,19 @@ impl fmt::Display for IrFile {
             ".version {}.{}\n",
             self.major_version, self.minor_version
         )?;
-        write!(f, ".mod {}\n", self.get_str(self.mod_name))?;
+        let entrypoint = if let Some(m) = self.mod_tbl.first() {
+            write!(f, ".mod {}", self.get_str(m.name))?;
+            m.entrypoint & !TBL_TAG_MASK
+        } else {
+            0
+        };
 
-        let mut field_lim = if let Some(c0) = self.class_tbl.first() {
+        let mut field_lim = if let Some(c0) = self.type_tbl.first() {
             c0.fields as usize
         } else {
             self.field_tbl.len()
         };
-        let mut method_lim = if let Some(c0) = self.class_tbl.first() {
+        let mut method_lim = if let Some(c0) = self.type_tbl.first() {
             c0.methods as usize
         } else {
             self.method_tbl.len()
@@ -122,18 +173,21 @@ impl fmt::Display for IrFile {
         }
 
         while method_i < method_lim {
-            self.write_method(f, 0, method_i, method_i == self.entrypoint as usize)?;
+            self.write_method(f, 0, method_i, method_i as u32 == entrypoint)?;
             method_i += 1;
         }
 
-        for class_i in (0..self.class_tbl.len()).into_iter() {
-            if class_i + 1 >= self.class_tbl.len() {
+        for class_i in (0..self.type_tbl.len()).into_iter() {
+            if class_i + 1 >= self.type_tbl.len() {
                 // last class
                 field_lim = self.field_tbl.len();
                 method_lim = self.method_tbl.len();
+            } else {
+                field_lim = self.type_tbl[class_i + 1].fields as usize;
+                method_lim = self.type_tbl[class_i + 1].methods as usize;
             }
 
-            let class = &self.class_tbl[class_i];
+            let class = &self.type_tbl[class_i];
             let flag = TypeFlag::new(class.flag);
             write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name))?;
 
@@ -143,7 +197,7 @@ impl fmt::Display for IrFile {
             }
 
             while method_i < method_lim {
-                self.write_method(f, 1, method_i, method_i == self.entrypoint as usize)?;
+                self.write_method(f, 1, method_i, method_i as u32 == entrypoint)?;
                 method_i += 1;
             }
         }

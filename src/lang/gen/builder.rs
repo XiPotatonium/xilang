@@ -122,19 +122,23 @@ impl MethodBuilder {
 
 pub struct Builder {
     // use const map to avoid redeclaration
-    // str -> utf8 idx
-    utf8_map: HashMap<String, u32>,
-    // utf8 idx -> String idx
-    str_map: HashMap<u32, u32>,
-    // <mod, name> -> Class idx
-    class_map: HashMap<(u32, u32), u32>,
-    mod_map: HashMap<u32, u32>,
-    // (Class idx, NameAndType idx) -> Field idx
-    field_map: HashMap<(u32, u32), u32>,
-    // (Class idx, NameAndType idx) -> Field idx
-    method_map: HashMap<(u32, u32), u32>,
-    // (utf8 name idx, utf8 ty idx) -> NameAndType idx
-    name_and_type_map: HashMap<(u32, u32), u32>,
+    mod_name_idx: u32,
+    mod_tbl_idx: u32,
+    /// <name> -> tbl idx
+    modref_map: HashMap<u32, u32>,
+
+    /// <name> -> tbl idx
+    type_map: HashMap<u32, u32>,
+    /// <mod>, <name> -> tbl idx
+    typeref_map: HashMap<(u32, u32), u32>,
+
+    /// <class> <name> <desc> -> tbl idx
+    member_map: HashMap<(u32, u32, u32), u32>,
+    /// <class> <name> <des> -> tbl idx
+    memberref_map: HashMap<(u32, u32, u32), u32>,
+
+    /// str -> utf8 idx
+    str_map: HashMap<String, u32>,
 
     pub file: IrFile,
 }
@@ -142,54 +146,88 @@ pub struct Builder {
 impl Builder {
     pub fn new(name: &str) -> Builder {
         let mut builder = Builder {
-            utf8_map: HashMap::new(),
+            mod_name_idx: 0,
+            mod_tbl_idx: 0,
+            modref_map: HashMap::new(),
+
+            type_map: HashMap::new(),
+            typeref_map: HashMap::new(),
+
+            member_map: HashMap::new(),
+            memberref_map: HashMap::new(),
+
             str_map: HashMap::new(),
-            class_map: HashMap::new(),
-            mod_map: HashMap::new(),
-            field_map: HashMap::new(),
-            method_map: HashMap::new(),
-            name_and_type_map: HashMap::new(),
+
             file: IrFile::new(),
         };
-        let mod_name = builder.add_const_utf8(name);
-        builder.file.mod_name = mod_name;
+        let name = builder.add_const_str(name);
+        builder.file.mod_tbl.push(IrMod {
+            name,
+            entrypoint: 0,
+        });
+        builder.mod_name_idx = name;
+        builder.mod_tbl_idx = builder.file.mod_tbl.len() as u32 | TBL_MOD_TAG;
         builder
     }
 
     pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u32 {
-        let name = self.add_const_utf8(name);
-        self.file.class_tbl.push(IrClass {
+        let name = self.add_const_str(name);
+        self.file.type_tbl.push(IrType {
             name,
             flag: flag.flag,
-            fields: 0,
-            methods: 0,
+            fields: (self.file.field_tbl.len() + 1) as u32,
+            methods: (self.file.method_tbl.len() + 1) as u32,
         });
-        self.file.class_tbl.len() as u32
+        let ret = self.file.type_tbl.len() as u32 | TBL_TYPE_TAG;
+        self.type_map.insert(name, ret);
+        ret
     }
 
     /// Add a field of this class
+    ///
+    /// Field parent is the newly added class or none if no class has been added
     pub fn add_field(&mut self, name: &str, ty: &str, flag: &FieldFlag) -> u32 {
-        let name = self.add_const_utf8(name);
-        let descriptor = self.add_const_utf8(ty);
+        let name = self.add_const_str(name);
+        let descriptor = self.add_const_str(ty);
         self.file.field_tbl.push(IrField {
             name,
             descriptor,
             flag: flag.flag,
         });
-        self.file.field_tbl.len() as u32
+        let ret = self.file.field_tbl.len() as u32 | TBL_FIELD_TAG;
+        self.member_map.insert(
+            (
+                self.file.type_tbl.len() as u32 | TBL_TYPE_TAG,
+                name,
+                descriptor,
+            ),
+            ret,
+        );
+        ret
     }
 
-    /// Add a field of this class
+    /// Add a method of this class
+    ///
+    /// Method parent is the newly added class or none if no class has been added
     pub fn add_method(&mut self, name: &str, ty: &str, flag: &MethodFlag) -> u32 {
-        let name = self.add_const_utf8(name);
-        let descriptor = self.add_const_utf8(ty);
+        let name = self.add_const_str(name);
+        let descriptor = self.add_const_str(ty);
         self.file.method_tbl.push(IrMethod {
             flag: flag.flag,
             name,
             descriptor,
             locals: 0,
         });
-        self.file.method_tbl.len() as u32
+        let ret = self.file.method_tbl.len() as u32 | TBL_METHOD_TAG;
+        self.member_map.insert(
+            (
+                self.file.type_tbl.len() as u32 | TBL_TYPE_TAG,
+                name,
+                descriptor,
+            ),
+            ret,
+        );
+        ret
     }
 
     /// Post-Process
@@ -197,7 +235,7 @@ impl Builder {
     /// Fill all jump instructions, concat all basic blocks
     ///
     pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals_stack: u16) {
-        let ir_method = &mut self.file.method_tbl[(method_idx - 1) as usize];
+        let ir_method = &mut self.file.method_tbl[((method_idx & !TBL_TAG_MASK) - 1) as usize];
         // fill jump instructions
 
         // concat basic blocks
@@ -212,112 +250,72 @@ impl Builder {
 
 // Const values
 impl Builder {
-    pub fn add_const_string(&mut self, v: &str) -> u32 {
-        let utf8 = self.add_const_utf8(v);
-        if let Some(ret) = self.str_map.get(&utf8) {
+    pub fn add_const_str(&mut self, v: &str) -> u32 {
+        if let Some(ret) = self.str_map.get(v) {
             *ret
         } else {
-            self.file.constant_pool.push(Constant::String(utf8));
-            let ret = self.file.constant_pool.len() as u32;
-            self.str_map.insert(utf8, ret);
-            ret
-        }
-    }
-
-    pub fn add_const_utf8(&mut self, v: &str) -> u32 {
-        if let Some(ret) = self.utf8_map.get(v) {
-            *ret
-        } else {
-            self.file
-                .constant_pool
-                .push(Constant::Utf8(String::from(v)));
-            let ret = self.file.constant_pool.len() as u32;
-            self.utf8_map.insert(String::from(v), ret);
+            let ret = self.file.str_heap.len() as u32;
+            self.file.str_heap.push(v.to_owned());
+            self.str_map.insert(v.to_owned(), ret);
             ret
         }
     }
 
     pub fn add_const_mod(&mut self, name: &str) -> u32 {
-        let name = self.add_const_utf8(name);
-        if let Some(ret) = self.mod_map.get(&name) {
+        let name = self.add_const_str(name);
+        if name == self.mod_name_idx {
+            // this module
+            self.mod_tbl_idx
+        } else if let Some(ret) = self.modref_map.get(&name) {
             *ret
         } else {
-            self.file.constant_pool.push(Constant::Mod(name));
-            let ret = self.file.constant_pool.len() as u32;
-            self.mod_map.insert(name, ret);
+            self.file.modref_tbl.push(IrModRef { name });
+            let ret = (self.file.modref_tbl.len() as u32) | TBL_MODREF_TAG;
+            self.modref_map.insert(name, ret);
             ret
         }
     }
 
     pub fn add_const_class(&mut self, mod_name: &str, name: &str) -> u32 {
-        let mod_idx = self.add_const_mod(mod_name);
-        let name = self.add_const_utf8(name);
-        if let Some(ret) = self.class_map.get(&(mod_idx, name)) {
+        let parent = self.add_const_mod(mod_name);
+        let name = self.add_const_str(name);
+        if parent == self.mod_tbl_idx {
+            // class in this module
+            *self.type_map.get(&name).unwrap()
+        } else if let Some(ret) = self.typeref_map.get(&(parent, name)) {
             *ret
         } else {
-            self.file.constant_pool.push(Constant::Class(mod_idx, name));
-            let ret = self.file.constant_pool.len() as u32;
-            self.class_map.insert((mod_idx, name), ret);
+            self.file.typeref_tbl.push(IrTypeRef { parent, name });
+            let ret = self.file.typeref_tbl.len() as u32 | TBL_TYPEREF_TAG;
+            self.typeref_map.insert((parent, name), ret);
             ret
         }
     }
 
-    fn add_const_name_and_type(&mut self, name: &str, ty: &str) -> u32 {
-        let name = self.add_const_utf8(name);
-        let ty = self.add_const_utf8(ty);
-
-        if let Some(ret) = self.name_and_type_map.get(&(name, ty)) {
-            *ret
-        } else {
-            self.file
-                .constant_pool
-                .push(Constant::NameAndType(name, ty));
-            let ret = self.file.constant_pool.len() as u32;
-            self.name_and_type_map.insert((name, ty), ret);
-            ret
-        }
-    }
-
-    pub fn add_const_fieldref(
+    pub fn add_const_member(
         &mut self,
         mod_name: &str,
         class_name: &str,
         name: &str,
         ty: &str,
     ) -> u32 {
-        let class = self.add_const_class(mod_name, class_name);
-        let name_and_type = self.add_const_name_and_type(name, ty);
+        let parent = self.add_const_class(mod_name, class_name);
+        let name = self.add_const_str(name);
+        let descriptor = self.add_const_str(ty);
 
-        if let Some(ret) = self.field_map.get(&(class, name_and_type)) {
+        if parent & TBL_TAG_MASK == TBL_TYPE_TAG {
+            // class in this module
+            *self.member_map.get(&(parent, name, descriptor)).unwrap()
+        } else if let Some(ret) = self.memberref_map.get(&(parent, name, descriptor)) {
             *ret
         } else {
-            self.file
-                .constant_pool
-                .push(Constant::Fieldref(class, name_and_type));
-            let ret = self.file.constant_pool.len() as u32;
-            self.field_map.insert((class, name_and_type), ret);
-            ret
-        }
-    }
-
-    pub fn add_const_methodref(
-        &mut self,
-        mod_name: &str,
-        class_name: &str,
-        name: &str,
-        ty: &str,
-    ) -> u32 {
-        let class = self.add_const_class(mod_name, class_name);
-        let name_and_type = self.add_const_name_and_type(name, ty);
-
-        if let Some(ret) = self.method_map.get(&(class, name_and_type)) {
-            *ret
-        } else {
-            self.file
-                .constant_pool
-                .push(Constant::Methodref(class, name_and_type));
-            let ret = self.file.constant_pool.len() as u32;
-            self.method_map.insert((class, name_and_type), ret);
+            self.file.memberref_tbl.push(IrMemberRef {
+                parent,
+                name,
+                descriptor,
+            });
+            let ret = self.file.memberref_tbl.len() as u32 | TBL_MEMBERREF_TAG;
+            self.memberref_map.insert((parent, name, descriptor), ret);
             ret
         }
     }
