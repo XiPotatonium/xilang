@@ -16,7 +16,7 @@ use super::super::ast::AST;
 use super::super::gen::{gen, Builder, CodeGenCtx, MethodBuilder, ValType};
 use super::super::parser;
 use super::super::XicCfg;
-use super::{Arg, Class, Crate, Field, Locals, Method};
+use super::{Arg, Class, Field, Locals, Method, ModMgr};
 
 // use macro to avoid borrow mutable self twice, SB rust
 macro_rules! declare_method {
@@ -67,11 +67,7 @@ impl Module {
         let output_dir = cfg.out_dir.join(rel_dir);
         let mod_self_name = mod_path.get_self_name().unwrap();
 
-        let mut builder = Builder::new();
-        builder.set_mod(mod_self_name);
-        if mod_path.len() == 1 {
-            builder.set_crate(mod_self_name);
-        }
+        let mut builder = Builder::new(mod_self_name);
 
         // Parse source file
         let ast = parser::peg_parse(fpath).unwrap();
@@ -273,7 +269,7 @@ impl Module {
         self.mod_path.as_str()
     }
 
-    pub fn is_crate_root(&self) -> bool {
+    pub fn is_root(&self) -> bool {
         self.mod_path.len() == 1
     }
 
@@ -318,7 +314,7 @@ impl Module {
 }
 
 impl Module {
-    pub fn get_ty(&self, ast: &Box<AST>, c: &Crate) -> IrValType {
+    pub fn get_ty(&self, ast: &Box<AST>, c: &ModMgr) -> IrValType {
         match ast.as_ref() {
             AST::TypeI32 => IrValType::I32,
             AST::TypeF64 => IrValType::F64,
@@ -356,7 +352,7 @@ impl Module {
 
 // member pass
 impl Module {
-    pub fn member_pass(&self, c: &Crate) {
+    pub fn member_pass(&self, c: &ModMgr) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
                 if let AST::Class(class_id, _, ast_methods, ast_fields, static_init) =
@@ -421,7 +417,7 @@ impl Module {
                         }
                     }
 
-                    if self.is_crate_root() && class_id == "Program" {
+                    if self.is_root() && class_id == "Program" {
                         if let Some(m) = class_mut.methods.get("main") {
                             if let IrValType::Void = m.ret_ty {
                                 if m.ps_ty.len() == 0
@@ -429,8 +425,7 @@ impl Module {
                                     && m.flag.is(MethodFlagTag::Static)
                                 {
                                     // pub Program::main()
-                                    self.builder.borrow_mut().file.crate_tbl[0].entrypoint =
-                                        m.method_idx;
+                                    self.builder.borrow_mut().file.entrypoint = m.method_idx;
                                 }
                             }
                         }
@@ -452,7 +447,7 @@ impl Module {
 impl Module {
     fn code_gen_method(
         &self,
-        c: &Crate,
+        c: &ModMgr,
         class: &Class,
         m: &Method,
         ps: &Vec<Box<AST>>,
@@ -513,7 +508,7 @@ impl Module {
         ctx.done();
     }
 
-    pub fn code_gen(&self, c: &Crate) {
+    pub fn code_gen(&self, c: &ModMgr) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
                 if let AST::Class(id, _, ast_methods, _, ast_init) = class.as_ref() {

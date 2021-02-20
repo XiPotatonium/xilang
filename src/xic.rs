@@ -8,7 +8,7 @@ extern crate regex;
 mod ir;
 mod lang;
 
-use lang::xi_crate::Crate;
+use lang::mod_mgr::ModMgr;
 use lang::XicCfg;
 
 use clap::{App, Arg};
@@ -98,7 +98,7 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    let mut module_mgr = Crate::new(&cfg);
+    let mut module_mgr = ModMgr::new(&cfg);
     if cfg.verbose >= 1 {
         println!(
             "Parsing finished in {} seconds",

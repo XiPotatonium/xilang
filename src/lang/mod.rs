@@ -1,6 +1,6 @@
 pub mod ast;
+pub mod mod_mgr;
 pub mod parser;
-pub mod xi_crate;
 
 mod gen;
 

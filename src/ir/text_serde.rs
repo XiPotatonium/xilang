@@ -101,16 +101,7 @@ impl fmt::Display for IrFile {
             ".version {}.{}\n",
             self.major_version, self.minor_version
         )?;
-
-        let mut entrypoint = 0usize;
-        if let Some(c) = self.crate_tbl.first() {
-            write!(f, ".crate {}\n", self.get_str(c.name))?;
-            entrypoint = c.entrypoint as usize;
-        }
-
-        if let Some(m) = self.mod_tbl.first() {
-            write!(f, ".mod {}\n", self.get_str(m.name))?;
-        }
+        write!(f, ".mod {}\n", self.get_str(self.mod_name))?;
 
         let mut field_lim = if let Some(c0) = self.class_tbl.first() {
             c0.fields as usize
@@ -131,7 +122,7 @@ impl fmt::Display for IrFile {
         }
 
         while method_i < method_lim {
-            self.write_method(f, 0, method_i, method_i == entrypoint)?;
+            self.write_method(f, 0, method_i, method_i == self.entrypoint as usize)?;
             method_i += 1;
         }
 
@@ -152,7 +143,7 @@ impl fmt::Display for IrFile {
             }
 
             while method_i < method_lim {
-                self.write_method(f, 1, method_i, method_i == entrypoint)?;
+                self.write_method(f, 1, method_i, method_i == self.entrypoint as usize)?;
                 method_i += 1;
             }
         }

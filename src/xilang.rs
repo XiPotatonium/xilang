@@ -7,9 +7,9 @@ use clap::{App, Arg};
 
 use std::path::PathBuf;
 
-use vm::loader::load;
-use vm::mem::Mem;
+use vm::mem::SharedMem;
 use vm::VMCfg;
+use vm::{executor::TExecutor, loader::load};
 
 fn main() {
     let cfg = {
@@ -52,7 +52,16 @@ fn main() {
         }
     };
 
-    let mut m = Mem::new();
+    let mut m = SharedMem::new();
 
-    load(&cfg, &mut m);
+    let (static_inits, entry) = load(&mut m, &cfg);
+
+    // static inits
+    for static_init in static_inits.iter() {
+        let mut executor = TExecutor::new();
+        executor.run(&static_init, &mut m);
+    }
+
+    let mut executor = TExecutor::new();
+    executor.run(&entry, &mut m);
 }

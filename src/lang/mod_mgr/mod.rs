@@ -17,7 +17,7 @@ use std::fs;
 use std::rc::{Rc, Weak};
 use std::{collections::HashMap, path::PathBuf};
 
-pub struct Crate {
+pub struct ModMgr {
     pub root: Rc<Module>,
     pub name: String,
 
@@ -25,8 +25,8 @@ pub struct Crate {
     // TODO Dependencies
 }
 
-impl Crate {
-    pub fn new(cfg: &XicCfg) -> Crate {
+impl ModMgr {
+    pub fn new(cfg: &XicCfg) -> ModMgr {
         let mut mod_path: ModPath = ModPath::new();
         mod_path.push(&cfg.crate_name);
 
@@ -56,7 +56,7 @@ impl Crate {
         );
         mod_tbl.insert(cfg.crate_name.to_owned(), Rc::downgrade(&root));
 
-        Crate {
+        ModMgr {
             name: cfg.crate_name.to_owned(),
             root,
             mod_tbl,

@@ -11,10 +11,10 @@ impl IrFile {
         self.minor_version.serialize(&mut buf);
         self.major_version.serialize(&mut buf);
 
-        self.constant_pool.serialize(&mut buf);
+        self.mod_name.serialize(&mut buf);
+        self.entrypoint.serialize(&mut buf);
 
-        self.crate_tbl.serialize(&mut buf);
-        self.mod_tbl.serialize(&mut buf);
+        self.constant_pool.serialize(&mut buf);
 
         self.class_tbl.serialize(&mut buf);
         self.field_tbl.serialize(&mut buf);
@@ -31,10 +31,17 @@ impl IrFile {
         let minor_version = u16::deserialize(&mut buf);
         let major_version = u16::deserialize(&mut buf);
 
-        let constant_pool = Vec::deserialize(&mut buf);
+        if major_version != MAJOR_VERSION || minor_version != MINOR_VERSION {
+            println!(
+                "Warning: Incompatible file version {}.{}  VM version: {}.{}",
+                major_version, minor_version, MAJOR_VERSION, MINOR_VERSION
+            );
+        }
 
-        let crate_tbl = Vec::deserialize(&mut buf);
-        let mod_tbl = Vec::deserialize(&mut buf);
+        let mod_name = u32::deserialize(&mut buf);
+        let entrypoint = u32::deserialize(&mut buf);
+
+        let constant_pool = Vec::deserialize(&mut buf);
 
         let classes = Vec::deserialize(&mut buf);
         let fields = Vec::deserialize(&mut buf);
@@ -46,10 +53,10 @@ impl IrFile {
             minor_version,
             major_version,
 
-            constant_pool,
+            mod_name,
+            entrypoint,
 
-            crate_tbl,
-            mod_tbl,
+            constant_pool,
 
             class_tbl: classes,
             field_tbl: fields,
@@ -281,23 +288,6 @@ impl Serializable for Vec<IrMethod> {
     }
 }
 
-impl Serializable for Vec<IrCrate> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for m in self.iter() {
-            m.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Self {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| IrCrate::deserialize(buf))
-            .collect()
-    }
-}
-
 impl Serializable for Vec<IrMod> {
     fn serialize(&self, buf: &mut Vec<u8>) {
         (self.len() as u32).serialize(buf);
@@ -496,7 +486,7 @@ impl Serializable for IrMethod {
     }
 }
 
-impl Serializable for IrCrate {
+impl Serializable for IrMod {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.entrypoint.serialize(buf)
@@ -505,18 +495,7 @@ impl Serializable for IrCrate {
     fn deserialize(buf: &mut Deserializer) -> Self {
         let name = u32::deserialize(buf);
         let entrypoint = u32::deserialize(buf);
-        IrCrate { name, entrypoint }
-    }
-}
-
-impl Serializable for IrMod {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        self.name.serialize(buf);
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Self {
-        let name = u32::deserialize(buf);
-        IrMod { name }
+        IrMod { name, entrypoint }
     }
 }
 

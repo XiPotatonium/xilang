@@ -6,14 +6,14 @@ pub use self::builder::{Builder, MethodBuilder};
 pub use self::gen::gen;
 
 use super::ast::AST;
-use super::xi_crate::{Arg, Class, Crate, Locals, Method, Module};
+use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
 use crate::ir::ty::IrValType;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub struct CodeGenCtx<'mgr> {
-    pub mgr: &'mgr Crate,
+    pub mgr: &'mgr ModMgr,
     pub module: &'mgr Module,
     pub class: &'mgr Class,
     pub method: &'mgr Method,

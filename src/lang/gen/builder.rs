@@ -140,8 +140,8 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new() -> Builder {
-        Builder {
+    pub fn new(name: &str) -> Builder {
+        let mut builder = Builder {
             utf8_map: HashMap::new(),
             str_map: HashMap::new(),
             class_map: HashMap::new(),
@@ -150,20 +150,10 @@ impl Builder {
             method_map: HashMap::new(),
             name_and_type_map: HashMap::new(),
             file: IrFile::new(),
-        }
-    }
-
-    pub fn set_crate(&mut self, name: &str) {
-        let name = self.add_const_utf8(name);
-        self.file.crate_tbl.push(IrCrate {
-            name,
-            entrypoint: 0,
-        });
-    }
-
-    pub fn set_mod(&mut self, name: &str) {
-        let name = self.add_const_utf8(name);
-        self.file.mod_tbl.push(IrMod { name });
+        };
+        let mod_name = builder.add_const_utf8(name);
+        builder.file.mod_name = mod_name;
+        builder
     }
 
     pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u32 {
