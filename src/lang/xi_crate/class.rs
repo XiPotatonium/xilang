@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use super::field::Field;
-use super::method::Method;
+use super::Field;
+use super::Method;
 
 pub struct Class {
-    pub fullname: String,
+    pub name: String,
 
     /// index in module file
     pub idx: u32,
@@ -16,9 +16,9 @@ pub struct Class {
 }
 
 impl Class {
-    pub fn new(fullname: String, idx: u32) -> Class {
+    pub fn new(name: String, idx: u32) -> Class {
         Class {
-            fullname,
+            name,
             idx,
             non_static_fields: Vec::new(),
             fields: HashMap::new(),

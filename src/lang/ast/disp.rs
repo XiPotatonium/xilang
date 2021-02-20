@@ -1,4 +1,4 @@
-use super::ast::AST;
+use super::AST;
 use crate::ir::path::IModPath;
 
 use std::fmt;

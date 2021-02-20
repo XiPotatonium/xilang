@@ -8,7 +8,7 @@ extern crate regex;
 mod ir;
 mod lang;
 
-use lang::gen::xi_crate::Crate;
+use lang::xi_crate::Crate;
 use lang::XicCfg;
 
 use clap::{App, Arg};
@@ -73,10 +73,10 @@ fn main() {
         }
         let root_dir = root_path.parent().unwrap().to_owned();
         let crate_name = root_dir.file_name().unwrap().to_str().unwrap().to_owned();
-        let root_file_name = root_path.file_name().unwrap().to_str().unwrap().to_owned();
+        let root_fname = root_path.file_name().unwrap().to_str().unwrap().to_owned();
 
-        if !NAME_RULE.is_match(&root_file_name) {
-            panic!("Invalid root file name {}", root_file_name);
+        if !NAME_RULE.is_match(&root_fname) {
+            panic!("Invalid root file name {}", root_fname);
         }
 
         cfg = XicCfg {
@@ -84,6 +84,7 @@ fn main() {
                 .split(';')
                 .map(|x| x.to_owned())
                 .collect::<Vec<String>>(),
+            root_dir: root_dir.clone(),
             crate_name,
             root_path,
             out_dir: if let Some(output_dir) = output_dir {
@@ -126,7 +127,7 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    module_mgr.dump(&cfg.out_dir);
+    module_mgr.dump(&cfg);
     if cfg.verbose >= 1 {
         println!(
             "Dump finished in {} seconds",

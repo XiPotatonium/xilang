@@ -7,9 +7,9 @@ use clap::{App, Arg};
 
 use std::path::PathBuf;
 
+use vm::loader::load;
 use vm::mem::Mem;
 use vm::VMCfg;
-use vm::loader::load;
 
 fn main() {
     let cfg = {

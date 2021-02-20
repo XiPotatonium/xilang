@@ -126,8 +126,9 @@ pub struct Builder {
     utf8_map: HashMap<String, u32>,
     // utf8 idx -> String idx
     str_map: HashMap<u32, u32>,
-    // utf8 idx -> Class idx
-    class_map: HashMap<u32, u32>,
+    // <mod, name> -> Class idx
+    class_map: HashMap<(u32, u32), u32>,
+    mod_map: HashMap<u32, u32>,
     // (Class idx, NameAndType idx) -> Field idx
     field_map: HashMap<(u32, u32), u32>,
     // (Class idx, NameAndType idx) -> Field idx
@@ -144,6 +145,7 @@ impl Builder {
             utf8_map: HashMap::new(),
             str_map: HashMap::new(),
             class_map: HashMap::new(),
+            mod_map: HashMap::new(),
             field_map: HashMap::new(),
             method_map: HashMap::new(),
             name_and_type_map: HashMap::new(),
@@ -245,16 +247,27 @@ impl Builder {
         }
     }
 
-    pub fn add_const_class(&mut self, class_name: &str) -> u32 {
-        let class_name_idx = self.add_const_utf8(class_name);
-        if let Some(ret) = self.class_map.get(&class_name_idx) {
+    pub fn add_const_mod(&mut self, name: &str) -> u32 {
+        let name = self.add_const_utf8(name);
+        if let Some(ret) = self.mod_map.get(&name) {
             *ret
         } else {
-            self.file
-                .constant_pool
-                .push(Constant::Class(class_name_idx));
+            self.file.constant_pool.push(Constant::Mod(name));
             let ret = self.file.constant_pool.len() as u32;
-            self.class_map.insert(class_name_idx, ret);
+            self.mod_map.insert(name, ret);
+            ret
+        }
+    }
+
+    pub fn add_const_class(&mut self, mod_name: &str, name: &str) -> u32 {
+        let mod_idx = self.add_const_mod(mod_name);
+        let name = self.add_const_utf8(name);
+        if let Some(ret) = self.class_map.get(&(mod_idx, name)) {
+            *ret
+        } else {
+            self.file.constant_pool.push(Constant::Class(mod_idx, name));
+            let ret = self.file.constant_pool.len() as u32;
+            self.class_map.insert((mod_idx, name), ret);
             ret
         }
     }
@@ -275,8 +288,14 @@ impl Builder {
         }
     }
 
-    pub fn add_const_fieldref(&mut self, class_name: &str, name: &str, ty: &str) -> u32 {
-        let class = self.add_const_class(class_name);
+    pub fn add_const_fieldref(
+        &mut self,
+        mod_name: &str,
+        class_name: &str,
+        name: &str,
+        ty: &str,
+    ) -> u32 {
+        let class = self.add_const_class(mod_name, class_name);
         let name_and_type = self.add_const_name_and_type(name, ty);
 
         if let Some(ret) = self.field_map.get(&(class, name_and_type)) {
@@ -291,8 +310,14 @@ impl Builder {
         }
     }
 
-    pub fn add_const_methodref(&mut self, class_name: &str, name: &str, ty: &str) -> u32 {
-        let class = self.add_const_class(class_name);
+    pub fn add_const_methodref(
+        &mut self,
+        mod_name: &str,
+        class_name: &str,
+        name: &str,
+        ty: &str,
+    ) -> u32 {
+        let class = self.add_const_class(mod_name, class_name);
         let name_and_type = self.add_const_name_and_type(name, ty);
 
         if let Some(ret) = self.method_map.get(&(class, name_and_type)) {

@@ -8,4 +8,3 @@ impl Mem {
         Mem {}
     }
 }
-

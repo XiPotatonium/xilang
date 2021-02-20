@@ -1,4 +1,4 @@
-use super::ast::AST;
+use super::AST;
 
 impl AST {
     pub fn is_constant(&self) -> bool {

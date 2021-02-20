@@ -1,24 +1,24 @@
 use std::fmt;
 
 #[derive(Clone, Eq)]
-pub enum RValType {
+pub enum IrValType {
     Bool,
     U8,
     Char,
     I32,
     F64,
     Void,
-    /// class fullname
-    Obj(String),
-    Array(Box<RValType>),
+    /// mod fullname, class name
+    Obj(String, String),
+    Array(Box<IrValType>),
 }
 
-impl RValType {
+impl IrValType {
     pub fn size(&self) -> u16 {
         match self {
             Self::U8 => 1,
             Self::Char => 2,
-            Self::I32 | Self::Bool | Self::Obj(_) | Self::Array(_) => 4,
+            Self::I32 | Self::Bool | Self::Obj(_, _) | Self::Array(_) => 4,
             Self::F64 => 8,
             Self::Void => 0,
         }
@@ -29,7 +29,7 @@ impl RValType {
     }
 }
 
-impl PartialEq for RValType {
+impl PartialEq for IrValType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Bool, Self::Bool)
@@ -38,13 +38,13 @@ impl PartialEq for RValType {
             | (Self::I32, Self::I32)
             | (Self::F64, Self::F64)
             | (Self::Void, Self::Void) => true,
-            (Self::Obj(class0), Self::Obj(class1)) => class0 == class1,
+            (Self::Obj(mod0, class0), Self::Obj(mod1, class1)) => mod0 == mod1 && class0 == class1,
             _ => false,
         }
     }
 }
 
-impl fmt::Display for RValType {
+impl fmt::Display for IrValType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Bool => write!(f, "Z"),
@@ -53,13 +53,13 @@ impl fmt::Display for RValType {
             Self::I32 => write!(f, "I"),
             Self::F64 => write!(f, "D"),
             Self::Void => write!(f, "V"),
-            Self::Obj(s) => write!(f, "L{};", s),
+            Self::Obj(m, s) => write!(f, "L{}/{};", m, s),
             Self::Array(t) => write!(f, "[{}", t),
         }
     }
 }
 
-pub fn fn_descriptor(ret_ty: &RValType, ps: &Vec<RValType>) -> String {
+pub fn fn_descriptor(ret_ty: &IrValType, ps: &Vec<IrValType>) -> String {
     format!(
         "({}){}",
         ps.iter().map(|t| format!("{}", t)).collect::<String>(),

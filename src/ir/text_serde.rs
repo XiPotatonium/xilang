@@ -7,31 +7,35 @@ use std::fmt;
 impl IrFile {
     fn get_str(&self, idx: u32) -> &str {
         match &self[idx] {
-            Constant::Class(name_idx) => self.get_str(*name_idx),
+            Constant::Mod(name) => self.get_str(*name),
             Constant::Utf8(s) => s,
+            Constant::String(utf8_idx) => self.get_str(*utf8_idx),
             _ => unimplemented!(),
         }
     }
 
-    fn get_ir_str(&self, idx: u32) -> String {
+    fn get_string(&self, idx: u32) -> String {
         match &self[idx] {
+            Constant::Utf8(s) => s.to_owned(),
             // TODO restore escape chars
             Constant::String(utf8_idx) => format!("\"{}\"", self.get_str(*utf8_idx)),
             Constant::Fieldref(class_idx, name_and_ty) => format!(
                 "{}::{}",
-                self.get_ir_str(*class_idx),
-                self.get_ir_str(*name_and_ty)
+                self.get_string(*class_idx),
+                self.get_string(*name_and_ty)
             ),
             Constant::Methodref(class_idx, name_and_ty) => format!(
                 "{}::{}",
-                self.get_ir_str(*class_idx),
-                self.get_ir_str(*name_and_ty)
+                self.get_string(*class_idx),
+                self.get_string(*name_and_ty)
             ),
-            Constant::Class(class_idx) => format!("{}", self.get_str(*class_idx)),
+            Constant::Class(mod_idx, name_idx) => {
+                format!("{}/{}", self.get_str(*mod_idx), self.get_str(*name_idx))
+            }
             Constant::NameAndType(name, ty) => {
                 format!("{}: {}", self.get_str(*name), self.get_str(*ty))
             }
-            _ => unimplemented!(),
+            Constant::Mod(name) => self.get_string(*name),
         }
     }
 
@@ -200,17 +204,17 @@ impl Inst {
             Inst::Dup => write!(f, "dup"),
             Inst::Pop => write!(f, "pop"),
 
-            Inst::Call(idx) => write!(f, "call {}", c.get_ir_str(*idx)),
+            Inst::Call(idx) => write!(f, "call {}", c.get_string(*idx)),
             Inst::Ret => write!(f, "ret"),
 
             Inst::Add => write!(f, "add"),
 
-            Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_ir_str(*idx)),
-            Inst::New(idx) => write!(f, "new {}", c.get_ir_str(*idx)),
-            Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_ir_str(*idx)),
-            Inst::StFld(idx) => write!(f, "stfld {}", c.get_ir_str(*idx)),
-            Inst::LdSFld(idx) => write!(f, "ldsfld {}", c.get_ir_str(*idx)),
-            Inst::StSFld(idx) => write!(f, "stsfld {}", c.get_ir_str(*idx)),
+            Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_string(*idx)),
+            Inst::New(idx) => write!(f, "new {}", c.get_string(*idx)),
+            Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_string(*idx)),
+            Inst::StFld(idx) => write!(f, "stfld {}", c.get_string(*idx)),
+            Inst::LdSFld(idx) => write!(f, "ldsfld {}", c.get_string(*idx)),
+            Inst::StSFld(idx) => write!(f, "stsfld {}", c.get_string(*idx)),
         }
     }
 }

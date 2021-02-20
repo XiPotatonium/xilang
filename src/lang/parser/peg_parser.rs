@@ -1,4 +1,4 @@
-use super::super::ast::ast::AST;
+use super::super::ast::AST;
 use crate::ir::flag::*;
 use crate::ir::path::ModPath;
 

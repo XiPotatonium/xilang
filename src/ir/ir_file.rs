@@ -25,12 +25,20 @@ pub struct IrFile {
 
 #[derive(Debug)]
 pub enum Constant {
-    Utf8(String),          // 1
-    Class(u32),            // 7
-    String(u32),           // 8
-    Fieldref(u32, u32),    // 9
-    Methodref(u32, u32),   // 10
-    NameAndType(u32, u32), // 12
+    /// 0x01
+    Utf8(String),
+    /// 0x07
+    Class(u32, u32),
+    /// 0x08 <utf8>
+    String(u32),
+    /// 0x09 <class | mod> <name_and_type>
+    Fieldref(u32, u32),
+    /// 0x0A <class | mod> <name_and_type>
+    Methodref(u32, u32),
+    /// 0x0C <name> <descriptor>
+    NameAndType(u32, u32),
+    /// 0x13 <name>
+    Mod(u32),
 }
 
 #[derive(Debug)]

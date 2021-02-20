@@ -1,6 +1,8 @@
 .vscode
 /target
 
+./examples-build
+
 *.ast.json
 *.xibc
 *.xir

@@ -361,31 +361,36 @@ impl Serializable for Constant {
     fn serialize(&self, buf: &mut Vec<u8>) {
         match self {
             Constant::Utf8(string) => {
-                1u8.serialize(buf);
+                0x01u8.serialize(buf);
                 string.serialize(buf);
             }
-            Constant::Class(name_index) => {
-                7u8.serialize(buf);
+            Constant::Class(mod_idx, name_index) => {
+                0x07u8.serialize(buf);
+                mod_idx.serialize(buf);
                 name_index.serialize(buf);
             }
             Constant::String(string_index) => {
-                8u8.serialize(buf);
+                0x8u8.serialize(buf);
                 string_index.serialize(buf);
             }
             Constant::Fieldref(class_index, name_and_type_index) => {
-                9u8.serialize(buf);
+                0x09u8.serialize(buf);
                 class_index.serialize(buf);
                 name_and_type_index.serialize(buf);
             }
             Constant::Methodref(class_index, name_and_type_index) => {
-                10u8.serialize(buf);
+                0x0Au8.serialize(buf);
                 class_index.serialize(buf);
                 name_and_type_index.serialize(buf);
             }
             Constant::NameAndType(name_index, descriptor_index) => {
-                12u8.serialize(buf);
+                0x0Cu8.serialize(buf);
                 name_index.serialize(buf);
                 descriptor_index.serialize(buf);
+            }
+            Constant::Mod(name_idx) => {
+                0x13u8.serialize(buf);
+                name_idx.serialize(buf);
             }
         }
     }
@@ -393,12 +398,29 @@ impl Serializable for Constant {
     fn deserialize(buf: &mut Deserializer) -> Constant {
         let code = u8::deserialize(buf);
         match code {
-            1 => Constant::Utf8(String::deserialize(buf)),
-            7 => Constant::Class(u32::deserialize(buf)),
-            8 => Constant::String(u32::deserialize(buf)),
-            9 => Constant::Fieldref(u32::deserialize(buf), u32::deserialize(buf)),
-            10 => Constant::Methodref(u32::deserialize(buf), u32::deserialize(buf)),
-            12 => Constant::NameAndType(u32::deserialize(buf), u32::deserialize(buf)),
+            0x01 => Constant::Utf8(String::deserialize(buf)),
+            0x07 => {
+                let mod_idx = u32::deserialize(buf);
+                let name_idx = u32::deserialize(buf);
+                Constant::Class(mod_idx, name_idx)
+            }
+            0x08 => Constant::String(u32::deserialize(buf)),
+            0x09 => {
+                let class_idx = u32::deserialize(buf);
+                let name_and_type_idx = u32::deserialize(buf);
+                Constant::Fieldref(class_idx, name_and_type_idx)
+            }
+            0x0A => {
+                let class_idx = u32::deserialize(buf);
+                let name_and_type_idx = u32::deserialize(buf);
+                Constant::Methodref(class_idx, name_and_type_idx)
+            }
+            0x0C => {
+                let name = u32::deserialize(buf);
+                let ty = u32::deserialize(buf);
+                Constant::Class(name, ty)
+            }
+            0x13 => Constant::Mod(u32::deserialize(buf)),
             _ => panic!("Don't know how to deserialize Constant of type: {}", code),
         }
     }
