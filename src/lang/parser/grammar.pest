@@ -107,7 +107,17 @@ KwSuper = { "super" }
 KwCrate = { "crate" }
 KwBool = { "bool" }
 KwChar = { "char" }
+KwU8 = { "u8" }
+KwI8 = { "i8" }
+KwU16 = { "u16" }
+KwI16 = { "i16" }
+KwU32 = { "u32" }
 KwI32 = { "i32" }
+KwU64 = { "u64" }
+KwI64 = { "i64" }
+KwUSize = { "usize" }
+KwISize = { "isize" }
+KwF32 = { "f32" }
 KwF64 = { "f64" }
 KwTrue = { "true" }
 KwFalse = { "false" }
@@ -117,7 +127,7 @@ KeyWord = @{
     | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
     | KwLSelf | KwUSelf | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
-    | KwBool | KwChar | KwI32 | KwF64
+    | KwBool | KwChar | KwU8 | KwI8 | KwU16 | KwI16 | KwU32 | KwI32 | KwU64 | KwI64 | KwUSize | KwISize | KwF32 | KwF64
     | KwFalse | KwTrue | KwNull
     | "yield" | "typeof"
 }
