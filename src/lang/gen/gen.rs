@@ -1,9 +1,10 @@
 use super::super::ast::AST;
-use super::lval::gen_lval;
-use super::{CodeGenCtx, LValType, ValType};
+use super::lval::{gen_lval, gen_path_lval};
+use super::{CodeGenCtx, RValType, ValType};
+
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
-use crate::ir::ty::IrValType;
+use crate::ir::path::IModPath;
 
 pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
     /*
@@ -25,18 +26,18 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
         AST::OpObjAccess(_, _) => {
             let lval = gen_lval(ctx, ast, false);
             match &lval {
-                LValType::Field(mod_name, class_name, field_name) => {
+                ValType::Field(mod_name, class_name, field_name) => {
                     let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
                     let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
                     let f = class_ref.fields.get(field_name).unwrap();
 
                     let ret = f.ty.clone();
-                    let field_idx = ctx.module.builder.borrow_mut().add_const_member(
-                        mod_name,
-                        class_name,
-                        field_name,
-                        &ret.descriptor(),
-                    );
+                    let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
+                    let field_idx = ctx
+                        .module
+                        .builder
+                        .borrow_mut()
+                        .add_const_member(mod_name, class_name, field_name, sig);
                     ctx.method_builder
                         .borrow_mut()
                         .add_inst(Inst::LdFld(field_idx));
@@ -47,36 +48,48 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
             }
         }
         AST::OpStaticAccess(_, _) => {
-            let lval = gen_lval(ctx, ast, false);
-            match &lval {
-                LValType::Field(mod_name, class_name, field_name) => {
-                    let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
-                    let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
-                    let f = class_ref.fields.get(field_name).unwrap();
-
-                    let ret = f.ty.clone();
-                    let field_idx = ctx.module.builder.borrow_mut().add_const_member(
-                        mod_name,
-                        class_name,
-                        field_name,
-                        &ret.descriptor(),
-                    );
-                    ctx.method_builder
-                        .borrow_mut()
-                        .add_inst(Inst::LdSFld(field_idx));
-
-                    ValType::RVal(ret)
-                }
-                _ => unreachable!(),
+            let v = gen_lval(ctx, ast, false);
+            gen_static_access(ctx, v)
+        }
+        AST::Path(p) => {
+            if p.len() == 1 {
+                ValType::RVal(gen_id_rval(ctx, p.as_str()))
+            } else {
+                let v = gen_path_lval(ctx, p.as_slice(), false);
+                gen_static_access(ctx, v)
             }
         }
         AST::Id(id) => ValType::RVal(gen_id_rval(ctx, id)),
         AST::Int(val) => {
             ctx.method_builder.borrow_mut().add_inst_ldc(*val);
-            ValType::RVal(IrValType::I32)
+            ValType::RVal(RValType::I32)
         }
-        AST::None => ValType::RVal(IrValType::Void),
+        AST::None => ValType::RVal(RValType::Void),
         _ => unimplemented!("{}", ast),
+    }
+}
+
+fn gen_static_access(ctx: &CodeGenCtx, v: ValType) -> ValType {
+    match &v {
+        ValType::Field(mod_name, class_name, field_name) => {
+            let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
+            let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
+            let f = class_ref.fields.get(field_name).unwrap();
+
+            let ret = f.ty.clone();
+            let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
+            let field_idx = ctx
+                .module
+                .builder
+                .borrow_mut()
+                .add_const_member(mod_name, class_name, field_name, sig);
+            ctx.method_builder
+                .borrow_mut()
+                .add_inst(Inst::LdSFld(field_idx));
+
+            ValType::RVal(ret)
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -84,7 +97,7 @@ fn gen_block(ctx: &CodeGenCtx, children: &Vec<Box<AST>>) -> ValType {
     // Push Symbol table
     ctx.locals.borrow_mut().push();
 
-    let mut ret = ValType::RVal(IrValType::Void);
+    let mut ret = ValType::RVal(RValType::Void);
     for stmt in children.iter() {
         ret = gen(ctx, stmt);
     }
@@ -100,13 +113,13 @@ fn gen_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
         ValType::RVal(ty) => {
             // pop from stack
             match ty {
-                IrValType::Void => (),
+                RValType::Void => (),
                 _ => ctx.method_builder.borrow_mut().add_inst(Inst::Pop),
             };
-            ValType::RVal(IrValType::Void)
+            ValType::RVal(RValType::Void)
         }
         ValType::Ret(_) => ret,
-        ValType::LVal(_) => unreachable!(),
+        _ => unreachable!(),
     }
 }
 
@@ -116,7 +129,7 @@ fn gen_let(
     flag: &LocalFlag,
     ty: &Box<AST>,
     init: &Box<AST>,
-) -> IrValType {
+) -> RValType {
     match pattern.as_ref() {
         AST::Id(id) => {
             if let AST::None = init.as_ref() {
@@ -155,11 +168,11 @@ fn gen_let(
         _ => unreachable!(),
     };
 
-    IrValType::Void
+    RValType::Void
 }
 
-fn build_args(ctx: &CodeGenCtx, ps: &Vec<IrValType>, args: &Vec<Box<AST>>) {
-    let args_ty: Vec<IrValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
+fn build_args(ctx: &CodeGenCtx, ps: &Vec<RValType>, args: &Vec<Box<AST>>) {
+    let args_ty: Vec<RValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
 
     for (i, (p_ty, arg_ty)) in ps.iter().zip(args_ty.iter()).enumerate() {
         if p_ty != arg_ty {
@@ -171,10 +184,10 @@ fn build_args(ctx: &CodeGenCtx, ps: &Vec<IrValType>, args: &Vec<Box<AST>>) {
     }
 }
 
-fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> IrValType {
+fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
     let lval = gen_lval(ctx, f, true);
     let (inst, ret) = match &lval {
-        LValType::Method(mod_name, class, name) => {
+        ValType::Method(mod_name, class, name) => {
             // TODO priavte and public
 
             // Find method
@@ -183,12 +196,16 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> IrValType {
             let m = class_ref.methods.get(name).unwrap();
 
             // Add to class file
-            let m_idx = ctx.module.builder.borrow_mut().add_const_member(
-                mod_name,
-                class,
-                name,
-                &m.descriptor(),
-            );
+            let sig = ctx
+                .module
+                .builder
+                .borrow_mut()
+                .add_const_fn_blob(&m.ps_ty, &m.ret_ty);
+            let m_idx = ctx
+                .module
+                .builder
+                .borrow_mut()
+                .add_const_member(mod_name, class, name, sig);
             let inst = if m.flag.is(MethodFlagTag::Static) {
                 Inst::Call(m_idx)
             } else {
@@ -198,8 +215,8 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> IrValType {
             build_args(ctx, &m.ps_ty, args);
             (inst, m.ret_ty.clone())
         }
-        LValType::Module(_) => panic!(),
-        LValType::Class(_, _) => panic!(),
+        ValType::Module(_) => panic!(),
+        ValType::Class(_, _) => panic!(),
         _ => unreachable!(),
     };
 
@@ -208,10 +225,10 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> IrValType {
     ret
 }
 
-fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> IrValType {
+fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.get_ty(ty);
     match &ret {
-        IrValType::Obj(mod_name, class_name) => {
+        RValType::Obj(mod_name, class_name) => {
             let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
             let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
 
@@ -268,18 +285,18 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> IrValType
                 .borrow_mut()
                 .add_inst(Inst::New(class_idx));
         }
-        IrValType::Array(_) => unimplemented!(),
+        RValType::Array(_) => unimplemented!(),
         _ => panic!("Invalid new expression, only new class or array is allowed"),
     }
     ret
 }
 
-fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
+fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     let lval = gen_lval(ctx, lhs, false);
     let v_ty = gen(ctx, rhs).expect_rval();
 
     match lval {
-        LValType::Local(name) => {
+        ValType::Local(name) => {
             let locals = ctx.locals.borrow();
             let local = locals.get(&name).unwrap();
             let local_ty = local.ty.clone();
@@ -292,7 +309,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
 
             local_ty
         }
-        LValType::Arg(name) => {
+        ValType::Arg(name) => {
             let arg = ctx.args_map.get(&name).unwrap();
 
             if arg.ty != v_ty {
@@ -303,7 +320,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
 
             arg.ty.clone()
         }
-        LValType::Field(mod_name, class_name, name) => {
+        ValType::Field(mod_name, class_name, name) => {
             // TODO private and public
             let mod_rc = ctx.mgr.mod_tbl.get(&mod_name).unwrap().upgrade().unwrap();
             let class_ref = mod_rc.classes.get(&class_name).unwrap().borrow();
@@ -317,11 +334,12 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
                 );
             }
 
+            let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&field_ty);
             let f_idx = ctx.module.builder.borrow_mut().add_const_member(
                 &mod_name,
                 &class_name,
                 &name,
-                &field_ty.descriptor(),
+                sig,
             );
             let inst = if field.flag.is(FieldFlagTag::Static) {
                 Inst::StSFld(f_idx)
@@ -332,13 +350,13 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
             ctx.method_builder.borrow_mut().add_inst(inst);
             field_ty
         }
-        LValType::Module(_) => panic!(),
-        LValType::Class(_, _) => panic!(),
+        ValType::Module(_) => panic!(),
+        ValType::Class(_, _) => panic!(),
         _ => unreachable!(),
     }
 }
 
-fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
+fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     let lty = gen(ctx, lhs).expect_rval();
     let rty = gen(ctx, rhs).expect_rval();
 
@@ -350,7 +368,7 @@ fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> IrValType {
     lty
 }
 
-fn gen_id_rval(ctx: &CodeGenCtx, id: &String) -> IrValType {
+fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {
     // try search locals
     {
         let locals = ctx.locals.borrow();

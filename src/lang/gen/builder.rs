@@ -5,6 +5,8 @@ use crate::ir::util::linkedlist::LinkedList;
 
 use std::collections::HashMap;
 
+use super::{fn_descriptor, RValType};
+
 struct BasicBlock {
     insts: Vec<Inst>,
 }
@@ -137,8 +139,10 @@ pub struct Builder {
     /// <class> <name> <des> -> tbl idx
     memberref_map: HashMap<(u32, u32, u32), u32>,
 
-    /// str -> utf8 idx
+    /// str -> str idx
     str_map: HashMap<String, u32>,
+    /// descriptor -> blobl idx
+    blob_map: HashMap<String, u32>,
 
     pub file: IrFile,
 }
@@ -157,6 +161,7 @@ impl Builder {
             memberref_map: HashMap::new(),
 
             str_map: HashMap::new(),
+            blob_map: HashMap::new(),
 
             file: IrFile::new(),
         };
@@ -172,13 +177,13 @@ impl Builder {
 
     pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u32 {
         let name = self.add_const_str(name);
-        self.file.type_tbl.push(IrType {
+        self.file.class_tbl.push(IrClass {
             name,
             flag: flag.flag,
             fields: (self.file.field_tbl.len() + 1) as u32,
             methods: (self.file.method_tbl.len() + 1) as u32,
         });
-        let ret = self.file.type_tbl.len() as u32 | TBL_TYPE_TAG;
+        let ret = self.file.class_tbl.len() as u32 | TBL_CLASS_TAG;
         self.type_map.insert(name, ret);
         ret
     }
@@ -186,21 +191,17 @@ impl Builder {
     /// Add a field of this class
     ///
     /// Field parent is the newly added class or none if no class has been added
-    pub fn add_field(&mut self, name: &str, ty: &str, flag: &FieldFlag) -> u32 {
+    pub fn add_field(&mut self, name: &str, ty: &RValType, flag: &FieldFlag) -> u32 {
         let name = self.add_const_str(name);
-        let descriptor = self.add_const_str(ty);
+        let sig = self.add_const_ty_blob(ty);
         self.file.field_tbl.push(IrField {
             name,
-            descriptor,
+            signature: sig,
             flag: flag.flag,
         });
         let ret = self.file.field_tbl.len() as u32 | TBL_FIELD_TAG;
         self.member_map.insert(
-            (
-                self.file.type_tbl.len() as u32 | TBL_TYPE_TAG,
-                name,
-                descriptor,
-            ),
+            (self.file.class_tbl.len() as u32 | TBL_CLASS_TAG, name, sig),
             ret,
         );
         ret
@@ -209,22 +210,24 @@ impl Builder {
     /// Add a method of this class
     ///
     /// Method parent is the newly added class or none if no class has been added
-    pub fn add_method(&mut self, name: &str, ty: &str, flag: &MethodFlag) -> u32 {
+    pub fn add_method(
+        &mut self,
+        name: &str,
+        ps: &Vec<RValType>,
+        ret_ty: &RValType,
+        flag: &MethodFlag,
+    ) -> u32 {
         let name = self.add_const_str(name);
-        let descriptor = self.add_const_str(ty);
+        let sig = self.add_const_fn_blob(ps, ret_ty);
         self.file.method_tbl.push(IrMethod {
             flag: flag.flag,
             name,
-            descriptor,
+            signature: sig,
             locals: 0,
         });
         let ret = self.file.method_tbl.len() as u32 | TBL_METHOD_TAG;
         self.member_map.insert(
-            (
-                self.file.type_tbl.len() as u32 | TBL_TYPE_TAG,
-                name,
-                descriptor,
-            ),
+            (self.file.class_tbl.len() as u32 | TBL_CLASS_TAG, name, sig),
             ret,
         );
         ret
@@ -261,6 +264,46 @@ impl Builder {
         }
     }
 
+    fn to_blob(&mut self, ty: &RValType) -> IrBlob {
+        match ty {
+            RValType::Bool => IrBlob::Bool,
+            RValType::U8 => IrBlob::U8,
+            RValType::Char => IrBlob::Char,
+            RValType::I32 => IrBlob::I32,
+            RValType::F64 => IrBlob::F64,
+            RValType::Void => IrBlob::Void,
+            RValType::Obj(mod_name, name) => IrBlob::Obj(self.add_const_class(mod_name, name)),
+            RValType::Array(inner) => IrBlob::Array(self.add_const_ty_blob(&inner)),
+        }
+    }
+
+    pub fn add_const_ty_blob(&mut self, ty: &RValType) -> u32 {
+        let desc = ty.descriptor();
+        if let Some(ret) = self.blob_map.get(&desc) {
+            *ret
+        } else {
+            let ty = self.to_blob(ty);
+            let ret = self.file.blob_heap.len() as u32;
+            self.file.blob_heap.push(ty);
+            self.blob_map.insert(desc, ret);
+            ret
+        }
+    }
+
+    pub fn add_const_fn_blob(&mut self, ps: &Vec<RValType>, ret_ty: &RValType) -> u32 {
+        let desc = fn_descriptor(ret_ty, ps);
+        if let Some(ret) = self.blob_map.get(&desc) {
+            *ret
+        } else {
+            let ps: Vec<u32> = ps.iter().map(|p| self.add_const_ty_blob(p)).collect();
+            let ret_ty = self.add_const_ty_blob(ret_ty);
+            let ret = self.file.blob_heap.len() as u32;
+            self.file.blob_heap.push(IrBlob::Func(ps, ret_ty));
+            self.blob_map.insert(desc, ret);
+            ret
+        }
+    }
+
     pub fn add_const_mod(&mut self, name: &str) -> u32 {
         let name = self.add_const_str(name);
         if name == self.mod_name_idx {
@@ -285,8 +328,8 @@ impl Builder {
         } else if let Some(ret) = self.typeref_map.get(&(parent, name)) {
             *ret
         } else {
-            self.file.typeref_tbl.push(IrTypeRef { parent, name });
-            let ret = self.file.typeref_tbl.len() as u32 | TBL_TYPEREF_TAG;
+            self.file.classref_tbl.push(IrClassRef { parent, name });
+            let ret = self.file.classref_tbl.len() as u32 | TBL_CLASSREF_TAG;
             self.typeref_map.insert((parent, name), ret);
             ret
         }
@@ -297,25 +340,24 @@ impl Builder {
         mod_name: &str,
         class_name: &str,
         name: &str,
-        ty: &str,
+        sig: u32,
     ) -> u32 {
         let parent = self.add_const_class(mod_name, class_name);
         let name = self.add_const_str(name);
-        let descriptor = self.add_const_str(ty);
 
-        if parent & TBL_TAG_MASK == TBL_TYPE_TAG {
+        if parent & TBL_TAG_MASK == TBL_CLASS_TAG {
             // class in this module
-            *self.member_map.get(&(parent, name, descriptor)).unwrap()
-        } else if let Some(ret) = self.memberref_map.get(&(parent, name, descriptor)) {
+            *self.member_map.get(&(parent, name, sig)).unwrap()
+        } else if let Some(ret) = self.memberref_map.get(&(parent, name, sig)) {
             *ret
         } else {
             self.file.memberref_tbl.push(IrMemberRef {
                 parent,
                 name,
-                descriptor,
+                signature: sig,
             });
             let ret = self.file.memberref_tbl.len() as u32 | TBL_MEMBERREF_TAG;
-            self.memberref_map.insert((parent, name, descriptor), ret);
+            self.memberref_map.insert((parent, name, sig), ret);
             ret
         }
     }

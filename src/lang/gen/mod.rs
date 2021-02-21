@@ -7,10 +7,10 @@ pub use self::gen::gen;
 
 use super::ast::AST;
 use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
-use crate::ir::ty::IrValType;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 
 pub struct CodeGenCtx<'mgr> {
     pub mgr: &'mgr ModMgr,
@@ -23,7 +23,7 @@ pub struct CodeGenCtx<'mgr> {
 }
 
 impl<'mgr> CodeGenCtx<'mgr> {
-    fn get_ty(&self, ast: &Box<AST>) -> IrValType {
+    fn get_ty(&self, ast: &Box<AST>) -> RValType {
         self.module.get_ty(ast, self.mgr)
     }
 
@@ -44,12 +44,9 @@ impl<'mgr> CodeGenCtx<'mgr> {
 }
 
 pub enum ValType {
-    LVal(LValType),
-    RVal(IrValType),
-    Ret(IrValType),
-}
+    RVal(RValType),
+    Ret(RValType),
 
-pub enum LValType {
     // mod fullname, class name, method name
     Method(String, String, String),
     // mod fullname, class name, field name
@@ -64,22 +61,81 @@ pub enum LValType {
     Arg(String),
 }
 
-impl std::fmt::Display for ValType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+#[derive(Clone, Eq)]
+pub enum RValType {
+    Bool,
+    U8,
+    Char,
+    I32,
+    F64,
+    Void,
+    /// mod fullname, class name
+    Obj(String, String),
+    Array(Box<RValType>),
+}
+
+impl RValType {
+    pub fn descriptor(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl PartialEq for RValType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool, Self::Bool)
+            | (Self::U8, Self::U8)
+            | (Self::Char, Self::Char)
+            | (Self::I32, Self::I32)
+            | (Self::F64, Self::F64)
+            | (Self::Void, Self::Void) => true,
+            (Self::Obj(mod0, class0), Self::Obj(mod1, class1)) => mod0 == mod1 && class0 == class1,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for RValType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::LVal(_) => unimplemented!(),
+            Self::Bool => write!(f, "Z"),
+            Self::U8 => write!(f, "B"),
+            Self::Char => write!(f, "C"),
+            Self::I32 => write!(f, "I"),
+            Self::F64 => write!(f, "D"),
+            Self::Void => write!(f, "V"),
+            Self::Obj(m, s) => write!(f, "L{}/{};", m, s),
+            Self::Array(t) => write!(f, "[{}", t),
+        }
+    }
+}
+
+pub fn fn_descriptor(ret_ty: &RValType, ps: &Vec<RValType>) -> String {
+    format!(
+        "({}){}",
+        ps.iter().map(|t| format!("{}", t)).collect::<String>(),
+        ret_ty
+    )
+}
+
+pub enum LValType {}
+
+impl fmt::Display for ValType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
             Self::RVal(rval) => write!(f, "{} (RVal)", rval),
             Self::Ret(retv) => write!(f, "{} (Ret)", retv),
+            _ => unimplemented!(),
         }
     }
 }
 
 impl ValType {
-    pub fn expect_rval(self) -> IrValType {
+    pub fn expect_rval(self) -> RValType {
         match self {
-            Self::LVal(_) => panic!("Expect rval but found lval"),
             Self::Ret(_) => panic!("Expect rval but found return value"),
             Self::RVal(val) => val,
+            _ => panic!("Expect rval but found lval"),
         }
     }
 }

@@ -76,7 +76,7 @@ pub enum AST {
     /// type, dim
     TypeArr(Box<AST>, Box<AST>),
     /// class names
-    TypeClass(ModPath),
+    Path(ModPath),
 
     /// Literal
     Null,

@@ -1,12 +1,13 @@
 use crate::ir::flag::*;
-use crate::ir::ty::{fn_descriptor, IrValType};
+
+use super::super::gen::{fn_descriptor, RValType};
 
 pub struct Method {
     pub flag: MethodFlag,
-    pub ret_ty: IrValType,
+    pub ret_ty: RValType,
     pub ps_flag: Vec<ParamFlag>,
     /// self is not included
-    pub ps_ty: Vec<IrValType>,
+    pub ps_ty: Vec<RValType>,
     /// method idx in class file
     pub method_idx: u32,
 }

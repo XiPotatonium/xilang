@@ -5,97 +5,13 @@ use super::ir_file::*;
 use std::fmt;
 
 impl IrFile {
-    fn get_string(&self, idx: u32) -> String {
-        match self.get_tbl_entry(idx) {
-            TblValue::Mod(IrMod { name, .. }) => format!("{}", self.get_str(*name),),
-            TblValue::ModRef(IrModRef { name }) => format!("{}", self.get_str(*name),),
-            TblValue::Type(IrType { name, .. }) => {
-                format!("{}/{}", self.mod_name().unwrap(), self.get_str(*name))
-            }
-            TblValue::TypeRef(IrTypeRef { parent, name }) => {
-                format!("{}/{}", self.get_str(*parent), self.get_str(*name))
-            }
-            TblValue::Field(IrField {
-                name, descriptor, ..
-            }) => {
-                let self_idx = idx & !TBL_TAG_MASK;
-
-                if self.type_tbl.is_empty() || self_idx < self.type_tbl[0].fields {
-                    // field has no parent
-                    format!(
-                        "{}::{}: {}",
-                        self.mod_name().unwrap(),
-                        self.get_str(*name),
-                        self.get_str(*descriptor)
-                    )
-                } else {
-                    let mut ty_idx = 0;
-                    while ty_idx < self.type_tbl.len() {
-                        if self.type_tbl[ty_idx].fields < self_idx {
-                            break;
-                        }
-                        ty_idx += 1;
-                    }
-
-                    format!(
-                        "{}::{}: {}",
-                        self.get_string(ty_idx as u32 | TBL_TYPE_TAG),
-                        self.get_str(*name),
-                        self.get_str(*descriptor)
-                    )
-                }
-            }
-            TblValue::Method(IrMethod {
-                name, descriptor, ..
-            }) => {
-                let self_idx = idx & !TBL_TAG_MASK;
-
-                if self.type_tbl.len() == 0 || self_idx < self.type_tbl[0].methods {
-                    // method has no parent
-                    format!(
-                        "{}::{}: {}",
-                        self.mod_name().unwrap(),
-                        self.get_str(*name),
-                        self.get_str(*descriptor)
-                    )
-                } else {
-                    let mut ty_idx = 0;
-                    while ty_idx < self.type_tbl.len() {
-                        if self.type_tbl[ty_idx].methods > self_idx {
-                            break;
-                        }
-                        ty_idx += 1;
-                    }
-
-                    format!(
-                        "{}::{}: {}",
-                        self.get_string(ty_idx as u32 | TBL_TYPE_TAG),
-                        self.get_str(*name),
-                        self.get_str(*descriptor)
-                    )
-                }
-            }
-            TblValue::MemberRef(IrMemberRef {
-                parent,
-                name,
-                descriptor,
-            }) => format!(
-                "{}::{}: {}",
-                self.get_string(*parent),
-                self.get_str(*name),
-                self.get_str(*descriptor)
-            ),
-            TblValue::None => String::new(),
-        }
-    }
-
     pub fn write_field(
         &self,
         f: &mut fmt::Formatter<'_>,
         indent: usize,
         field_i: usize,
     ) -> fmt::Result {
-        let field = &self.field_tbl[field_i - 1];
+        let field = &self.field_tbl[field_i];
         let flag = FieldFlag::new(field.flag);
         write!(
             f,
@@ -103,7 +19,7 @@ impl IrFile {
             " ".repeat(indent * 4),
             flag,
             self.get_str(field.name),
-            self.get_str(field.descriptor)
+            self.get_blob_repr(field.signature)
         )
     }
 
@@ -114,8 +30,8 @@ impl IrFile {
         method_i: usize,
         is_entrypoint: bool,
     ) -> fmt::Result {
-        let method = &self.method_tbl[method_i - 1];
-        let code = &self.codes[method_i - 1];
+        let method = &self.method_tbl[method_i];
+        let code = &self.codes[method_i];
         let flag = MethodFlag::new(method.flag);
         write!(
             f,
@@ -123,7 +39,7 @@ impl IrFile {
             " ".repeat(indent * 4),
             flag,
             self.get_str(method.name),
-            self.get_str(method.descriptor)
+            self.get_blob_repr(method.signature)
         )?;
 
         write!(f, "{}.locals\t{}", " ".repeat(indent * 8), method.locals)?;
@@ -154,40 +70,29 @@ impl fmt::Display for IrFile {
             0
         };
 
-        let mut field_lim = if let Some(c0) = self.type_tbl.first() {
-            c0.fields as usize
+        let (mut field_i, mut method_i) = if let Some(c0) = self.class_tbl.first() {
+            (c0.fields as usize - 1, c0.methods as usize - 1)
         } else {
-            self.field_tbl.len()
+            (self.field_tbl.len(), self.method_tbl.len())
         };
-        let mut method_lim = if let Some(c0) = self.type_tbl.first() {
-            c0.methods as usize
-        } else {
-            self.method_tbl.len()
-        };
-        let mut field_i = 1;
-        let mut method_i = 1;
 
-        while field_i < field_lim {
-            self.write_field(f, 0, field_i)?;
-            field_i += 1;
+        for i in (0..field_i).into_iter() {
+            self.write_field(f, 0, i)?;
         }
 
-        while method_i < method_lim {
-            self.write_method(f, 0, method_i, method_i as u32 == entrypoint)?;
-            method_i += 1;
+        for i in (0..method_i).into_iter() {
+            self.write_method(f, 0, i, i as u32 + 1 == entrypoint)?;
         }
 
-        for class_i in (0..self.type_tbl.len()).into_iter() {
-            if class_i + 1 >= self.type_tbl.len() {
+        for (class_i, class) in self.class_tbl.iter().enumerate() {
+            let (field_lim, method_lim) = if class_i + 1 >= self.class_tbl.len() {
                 // last class
-                field_lim = self.field_tbl.len();
-                method_lim = self.method_tbl.len();
+                (self.field_tbl.len(), self.method_tbl.len())
             } else {
-                field_lim = self.type_tbl[class_i + 1].fields as usize;
-                method_lim = self.type_tbl[class_i + 1].methods as usize;
-            }
+                let next_class = &self.class_tbl[class_i + 1];
+                (next_class.fields as usize, next_class.methods as usize)
+            };
 
-            let class = &self.type_tbl[class_i];
             let flag = TypeFlag::new(class.flag);
             write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name))?;
 
@@ -197,7 +102,7 @@ impl fmt::Display for IrFile {
             }
 
             while method_i < method_lim {
-                self.write_method(f, 1, method_i, method_i as u32 == entrypoint)?;
+                self.write_method(f, 1, method_i, method_i as u32 + 1 == entrypoint)?;
                 method_i += 1;
             }
         }
@@ -249,17 +154,17 @@ impl Inst {
             Inst::Dup => write!(f, "dup"),
             Inst::Pop => write!(f, "pop"),
 
-            Inst::Call(idx) => write!(f, "call {}", c.get_string(*idx)),
+            Inst::Call(idx) => write!(f, "call {}", c.get_tbl_entry_repr(*idx)),
             Inst::Ret => write!(f, "ret"),
 
             Inst::Add => write!(f, "add"),
 
-            Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_string(*idx)),
-            Inst::New(idx) => write!(f, "new {}", c.get_string(*idx)),
-            Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_string(*idx)),
-            Inst::StFld(idx) => write!(f, "stfld {}", c.get_string(*idx)),
-            Inst::LdSFld(idx) => write!(f, "ldsfld {}", c.get_string(*idx)),
-            Inst::StSFld(idx) => write!(f, "stsfld {}", c.get_string(*idx)),
+            Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_tbl_entry_repr(*idx)),
+            Inst::New(idx) => write!(f, "new {}", c.get_tbl_entry_repr(*idx)),
+            Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_tbl_entry_repr(*idx)),
+            Inst::StFld(idx) => write!(f, "stfld {}", c.get_tbl_entry_repr(*idx)),
+            Inst::LdSFld(idx) => write!(f, "ldsfld {}", c.get_tbl_entry_repr(*idx)),
+            Inst::StSFld(idx) => write!(f, "stsfld {}", c.get_tbl_entry_repr(*idx)),
         }
     }
 }

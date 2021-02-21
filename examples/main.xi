@@ -6,7 +6,7 @@ mod demo;
 
 class Program {
     fn main() {
-        let d = Demo::new(1, 100);
+        let d = crate::Demo::new(1, 100);
         d.foo(16);
     }
 }

@@ -22,7 +22,7 @@ impl AST {
             | Self::TypeI32
             | Self::TypeF64
             | Self::TypeTuple(_)
-            | Self::TypeClass(_)
+            | Self::Path(_)
             | Self::TypeArr(_, _) => false,
             Self::Stmt(stmt) => stmt.is_constant(),
             Self::Block(children) => {

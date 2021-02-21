@@ -7,6 +7,7 @@ use regex::Regex;
 lazy_static! {
     // Same as identifier
     static ref SEG_RULE : Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*").unwrap();
+    static ref PATH_RULE: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(/^[_a-zA-Z][_a-zA-Z0-9]*)*").unwrap();
 }
 
 pub trait IModPath {
@@ -32,11 +33,34 @@ pub struct ModPathSlice<'p> {
     tail: usize,
 }
 
+// FIXME: UTF-8
 impl ModPath {
     pub fn new() -> ModPath {
         ModPath {
             path: String::new(),
             seg_tails: Vec::new(),
+        }
+    }
+
+    pub fn from_str(p: &str) -> ModPath {
+        if !PATH_RULE.is_match(p) {
+            panic!("Invalid path literal {}", p);
+        }
+
+        if p.len() == 0 {
+            ModPath::new()
+        } else {
+            let path = p.to_owned();
+            let mut seg_tails = Vec::new();
+
+            for (i, c) in path.char_indices() {
+                if c == '/' {
+                    seg_tails.push(i);
+                }
+            }
+            seg_tails.push(path.len());
+
+            ModPath { path, seg_tails }
         }
     }
 
@@ -196,12 +220,12 @@ impl Index<usize> for ModPath {
     type Output = str;
 
     fn index(&self, idx: usize) -> &Self::Output {
-        let start = if idx == 1 {
+        let start = if idx == 0 {
             0
         } else {
-            self.seg_tails[idx - 2] + 1
+            self.seg_tails[idx - 1] + 1
         };
-        let tail = self.seg_tails[idx - 1];
+        let tail = self.seg_tails[idx];
         &self.path[start..tail]
     }
 }
@@ -262,7 +286,7 @@ impl<'p> IModPath for ModPathSlice<'p> {
         } else {
             self.path.seg_tails[self.root - 1] + 1
         };
-        let end = self.path.seg_tails[self.tail - 2];
+        let end = self.path.seg_tails[self.tail - 1];
         &self.path.path[start..end]
     }
 

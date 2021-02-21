@@ -7,7 +7,7 @@ mod data;
 use std::path::PathBuf;
 
 pub struct VMCfg {
-    pub entry: PathBuf,
-    pub ext_paths: Vec<String>,
+    pub entry_root: PathBuf,
+    pub ext_paths: Vec<PathBuf>,
     pub diagnose: bool,
 }

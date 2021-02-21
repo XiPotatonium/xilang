@@ -48,7 +48,7 @@ BreakExpr = { "break" ~ Expr? }
 ReturnExpr = { "return" ~ Expr? }
 
 GroupedExpr = { "(" ~ Expr ~ ")" }
-PrimaryExpr = { LiteralExpr | Id | KwLSelf | GroupedExpr | ExprWithBlock | BasicType }
+PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | Type }
 ArgsExpr = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
 ObjAccessExpr = { "." ~ Id }
 PathAccessExpr = { "::" ~ Id }

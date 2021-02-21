@@ -163,12 +163,12 @@ fn build_type(tree: Pair<Rule>) -> Box<AST> {
         Rule::KwChar => AST::TypeChar,
         Rule::KwI32 => AST::TypeI32,
         Rule::KwF64 => AST::TypeF64,
-        Rule::KwUSelf => AST::TypeClass({
+        Rule::KwUSelf => AST::Path({
             let mut path = ModPath::new();
             path.push("Self");
             path
         }),
-        Rule::PathExpr => AST::TypeClass(build_pathexpr(tree)),
+        Rule::PathExpr => AST::Path(build_pathexpr(tree)),
         Rule::TupleType => AST::TypeTuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {
             let mut iter = tree.into_inner();
@@ -465,9 +465,8 @@ fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
 fn build_primary_expr(tree: Pair<Rule>) -> Box<AST> {
     let tree = tree.into_inner().next().unwrap();
     match tree.as_rule() {
-        Rule::Id => Box::new(AST::Id(build_id(tree))),
-        Rule::GroupedExpr => build_expr(tree.into_inner().next().unwrap()),
         Rule::Type => build_type(tree),
+        Rule::GroupedExpr => build_expr(tree.into_inner().next().unwrap()),
         Rule::LiteralExpr => build_literal(tree),
         Rule::KwLSelf => Box::new(AST::Id(String::from("self"))),
         // Actually only expr with block

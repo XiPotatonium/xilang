@@ -1,18 +1,19 @@
 use crate::ir::flag::*;
-use crate::ir::ty::IrValType;
+
+use super::super::gen::RValType;
 
 use std::collections::HashMap;
 
 pub struct Var {
     pub id: String,
     pub flag: LocalFlag,
-    pub ty: IrValType,
+    pub ty: RValType,
     pub offset: u16,
     pub initialized: bool,
 }
 
 impl Var {
-    pub fn new(id: &str, flag: LocalFlag, ty: IrValType, offset: u16, initialized: bool) -> Var {
+    pub fn new(id: &str, flag: LocalFlag, ty: RValType, offset: u16, initialized: bool) -> Var {
         Var {
             id: id.to_owned(),
             flag,
@@ -25,12 +26,12 @@ impl Var {
 
 pub struct Arg {
     pub flag: ParamFlag,
-    pub ty: IrValType,
+    pub ty: RValType,
     pub offset: u16,
 }
 
 impl Arg {
-    pub fn new(flag: ParamFlag, ty: IrValType, offset: u16) -> Arg {
+    pub fn new(flag: ParamFlag, ty: RValType, offset: u16) -> Arg {
         Arg { flag, ty, offset }
     }
 }
@@ -56,7 +57,7 @@ impl Locals {
         self.sym_tbl.pop().expect("Cannot pop empty stack");
     }
 
-    pub fn add(&mut self, id: &str, ty: IrValType, flag: LocalFlag, initialized: bool) -> u16 {
+    pub fn add(&mut self, id: &str, ty: RValType, flag: LocalFlag, initialized: bool) -> u16 {
         let last_frame = self.sym_tbl.last_mut().unwrap();
         if last_frame.contains_key(id) {
             // Overwrite old value

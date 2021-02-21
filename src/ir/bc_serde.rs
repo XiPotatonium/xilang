@@ -14,8 +14,8 @@ impl IrFile {
         self.mod_tbl.serialize(&mut buf);
         self.modref_tbl.serialize(&mut buf);
 
-        self.type_tbl.serialize(&mut buf);
-        self.typeref_tbl.serialize(&mut buf);
+        self.class_tbl.serialize(&mut buf);
+        self.classref_tbl.serialize(&mut buf);
 
         self.field_tbl.serialize(&mut buf);
         self.method_tbl.serialize(&mut buf);
@@ -23,6 +23,7 @@ impl IrFile {
         self.memberref_tbl.serialize(&mut buf);
 
         self.str_heap.serialize(&mut buf);
+        self.blob_heap.serialize(&mut buf);
 
         self.codes.serialize(&mut buf);
 
@@ -53,6 +54,7 @@ impl IrFile {
         let memberref_tbl = Vec::deserialize(&mut buf);
 
         let str_heap = Vec::deserialize(&mut buf);
+        let blob_heap = Vec::deserialize(&mut buf);
 
         let codes = Vec::deserialize(&mut buf);
 
@@ -63,14 +65,15 @@ impl IrFile {
             mod_tbl,
             modref_tbl,
 
-            type_tbl,
-            typeref_tbl,
+            class_tbl: type_tbl,
+            classref_tbl: typeref_tbl,
 
             field_tbl,
             method_tbl,
             memberref_tbl,
 
             str_heap,
+            blob_heap,
 
             codes,
         }
@@ -213,40 +216,6 @@ impl Serializable for Vec<u8> {
     }
 }
 
-impl Serializable for Vec<u32> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for val in self.iter() {
-            val.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Vec<u32> {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| u32::deserialize(buf))
-            .collect()
-    }
-}
-
-impl Serializable for Vec<String> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        (self.len() as u32).serialize(buf);
-        for b in self.iter() {
-            b.serialize(buf);
-        }
-    }
-
-    fn deserialize(buf: &mut Deserializer) -> Self {
-        let len = u32::deserialize(buf);
-        (0..len)
-            .into_iter()
-            .map(|_| String::deserialize(buf))
-            .collect()
-    }
-}
-
 macro_rules! impl_vec_serde {
     ($t: ident) => {
         impl Serializable for Vec<$t> {
@@ -265,13 +234,16 @@ macro_rules! impl_vec_serde {
     };
 }
 
+impl_vec_serde!(String);
+impl_vec_serde!(u32);
 impl_vec_serde!(IrMod);
 impl_vec_serde!(IrModRef);
-impl_vec_serde!(IrType);
-impl_vec_serde!(IrTypeRef);
+impl_vec_serde!(IrClass);
+impl_vec_serde!(IrClassRef);
 impl_vec_serde!(IrField);
 impl_vec_serde!(IrMethod);
 impl_vec_serde!(IrMemberRef);
+impl_vec_serde!(IrBlob);
 
 impl Serializable for Vec<Inst> {
     fn serialize(&self, buf: &mut Vec<u8>) {
@@ -315,7 +287,7 @@ impl Serializable for Vec<Vec<Inst>> {
     }
 }
 
-impl Serializable for IrType {
+impl Serializable for IrClass {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.flag.serialize(buf);
@@ -324,12 +296,12 @@ impl Serializable for IrType {
         self.methods.serialize(buf);
     }
 
-    fn deserialize(buf: &mut Deserializer) -> IrType {
+    fn deserialize(buf: &mut Deserializer) -> IrClass {
         let name = u32::deserialize(buf);
         let flag = u32::deserialize(buf);
         let fields = u32::deserialize(buf);
         let methods = u32::deserialize(buf);
-        IrType {
+        IrClass {
             name,
             flag,
             fields,
@@ -338,7 +310,7 @@ impl Serializable for IrType {
     }
 }
 
-impl Serializable for IrTypeRef {
+impl Serializable for IrClassRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.parent.serialize(buf);
         self.name.serialize(buf);
@@ -348,7 +320,7 @@ impl Serializable for IrTypeRef {
         let parent = u32::deserialize(buf);
         let name = u32::deserialize(buf);
 
-        IrTypeRef { parent, name }
+        IrClassRef { parent, name }
     }
 }
 
@@ -356,7 +328,7 @@ impl Serializable for IrField {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.flag.serialize(buf);
         self.name.serialize(buf);
-        self.descriptor.serialize(buf);
+        self.signature.serialize(buf);
     }
 
     fn deserialize(buf: &mut Deserializer) -> IrField {
@@ -367,7 +339,7 @@ impl Serializable for IrField {
         IrField {
             flag,
             name,
-            descriptor,
+            signature: descriptor,
         }
     }
 }
@@ -375,7 +347,7 @@ impl Serializable for IrField {
 impl Serializable for IrMethod {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
-        self.descriptor.serialize(buf);
+        self.signature.serialize(buf);
 
         self.flag.serialize(buf);
 
@@ -393,7 +365,7 @@ impl Serializable for IrMethod {
         IrMethod {
             flag,
             name,
-            descriptor,
+            signature: descriptor,
             locals,
         }
     }
@@ -403,7 +375,7 @@ impl Serializable for IrMemberRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.parent.serialize(buf);
         self.name.serialize(buf);
-        self.descriptor.serialize(buf);
+        self.signature.serialize(buf);
     }
 
     fn deserialize(buf: &mut Deserializer) -> Self {
@@ -413,7 +385,7 @@ impl Serializable for IrMemberRef {
         IrMemberRef {
             parent,
             name,
-            descriptor,
+            signature: descriptor,
         }
     }
 }
@@ -439,6 +411,70 @@ impl Serializable for IrModRef {
     fn deserialize(buf: &mut Deserializer) -> Self {
         let name = u32::deserialize(buf);
         IrModRef { name }
+    }
+}
+
+impl Serializable for IrBlob {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        match self {
+            IrBlob::Void => 0x00u8.serialize(buf),
+            IrBlob::Bool => 0x01u8.serialize(buf),
+            IrBlob::Char => 0x02u8.serialize(buf),
+            IrBlob::U8 => 0x03u8.serialize(buf),
+            IrBlob::I8 => 0x04u8.serialize(buf),
+            IrBlob::U16 => 0x05u8.serialize(buf),
+            IrBlob::I16 => 0x06u8.serialize(buf),
+            IrBlob::U32 => 0x07u8.serialize(buf),
+            IrBlob::I32 => 0x08u8.serialize(buf),
+            IrBlob::U64 => 0x09u8.serialize(buf),
+            IrBlob::I64 => 0x0Au8.serialize(buf),
+            IrBlob::UNative => 0x0Bu8.serialize(buf),
+            IrBlob::INative => 0x0Cu8.serialize(buf),
+            IrBlob::F32 => 0x0Du8.serialize(buf),
+            IrBlob::F64 => 0x0Eu8.serialize(buf),
+            IrBlob::Obj(idx) => {
+                0x0Fu8.serialize(buf);
+                idx.serialize(buf);
+            }
+            IrBlob::Func(ps, ret) => {
+                0x10u8.serialize(buf);
+                ps.serialize(buf);
+                ret.serialize(buf);
+            }
+            IrBlob::Array(content) => {
+                0x11u8.serialize(buf);
+                content.serialize(buf);
+            }
+        }
+    }
+
+    fn deserialize(buf: &mut Deserializer) -> Self {
+        let code = u8::deserialize(buf);
+        match code {
+            0x00 => IrBlob::Void,
+            0x01 => IrBlob::Bool,
+            0x02 => IrBlob::Char,
+            0x03 => IrBlob::U8,
+            0x04 => IrBlob::I8,
+            0x05 => IrBlob::U16,
+            0x06 => IrBlob::I16,
+            0x07 => IrBlob::U32,
+            0x08 => IrBlob::I32,
+            0x09 => IrBlob::U64,
+            0x0A => IrBlob::I64,
+            0x0B => IrBlob::UNative,
+            0x0C => IrBlob::INative,
+            0x0D => IrBlob::F32,
+            0x0E => IrBlob::F64,
+            0x0F => IrBlob::Obj(u32::deserialize(buf)),
+            0x10 => {
+                let ps = Vec::deserialize(buf);
+                let ret = u32::deserialize(buf);
+                IrBlob::Func(ps, ret)
+            }
+            0x11 => IrBlob::Array(u32::deserialize(buf)),
+            _ => panic!("Cannot recognize blob with code {:0X}", code),
+        }
     }
 }
 

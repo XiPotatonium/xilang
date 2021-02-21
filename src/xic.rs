@@ -66,24 +66,34 @@ fn main() {
         let ext_paths = matches.value_of("ext").unwrap_or("");
         let root_path = matches.value_of("root").unwrap();
         let output_dir = matches.value_of("output");
-        let root_path =
-            fs::canonicalize(root_path).expect(&format!("Fail to canonicalize {}", root_path));
+        let root_path = fs::canonicalize(root_path).unwrap();
         if !root_path.is_file() {
             panic!("Root path {} is not a file", root_path.to_str().unwrap());
         }
         let root_dir = root_path.parent().unwrap().to_owned();
         let crate_name = root_dir.file_name().unwrap().to_str().unwrap().to_owned();
         let root_fname = root_path.file_name().unwrap().to_str().unwrap().to_owned();
+        let optim = if let Some(optim) = matches.value_of("optim") {
+            optim.parse::<usize>().unwrap()
+        } else {
+            0
+        };
 
         if !NAME_RULE.is_match(&root_fname) {
             panic!("Invalid root file name {}", root_fname);
         }
 
-        cfg = XicCfg {
-            ext_paths: ext_paths
+        let ext_paths = if ext_paths.len() == 0 {
+            Vec::new()
+        } else {
+            ext_paths
                 .split(';')
                 .map(|x| x.to_owned())
-                .collect::<Vec<String>>(),
+                .collect::<Vec<String>>()
+        };
+
+        cfg = XicCfg {
+            ext_paths,
             root_dir: root_dir.clone(),
             crate_name,
             root_path,
@@ -92,7 +102,7 @@ fn main() {
             } else {
                 root_dir
             },
-            optim: matches.value_of("optim").unwrap().parse::<usize>().unwrap(),
+            optim,
             verbose: matches.occurrences_of("v") as usize,
         };
     }

@@ -9,11 +9,10 @@ use std::rc::{Rc, Weak};
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::path::{IModPath, ModPath};
-use crate::ir::ty::{fn_descriptor, IrValType};
 use crate::ir::CLINIT_METHOD_NAME;
 
 use super::super::ast::AST;
-use super::super::gen::{gen, Builder, CodeGenCtx, MethodBuilder, ValType};
+use super::super::gen::{gen, Builder, CodeGenCtx, MethodBuilder, RValType, ValType};
 use super::super::parser;
 use super::super::XicCfg;
 use super::{Arg, Class, Field, Locals, Method, ModMgr};
@@ -21,10 +20,7 @@ use super::{Arg, Class, Field, Locals, Method, ModMgr};
 // use macro to avoid borrow mutable self twice, SB rust
 macro_rules! declare_method {
     ($class: expr, $builder: expr, $id: expr, $flag: expr, $ret_ty: expr, $ps: expr) => {
-        let method_idx =
-            $builder
-                .borrow_mut()
-                .add_method($id, &fn_descriptor(&$ret_ty, &$ps), $flag);
+        let method_idx = $builder.borrow_mut().add_method($id, &$ps, &$ret_ty, $flag);
 
         if let Some(_) = $class.methods.insert(
             $id.to_owned(),
@@ -67,7 +63,7 @@ impl Module {
         let output_dir = cfg.out_dir.join(rel_dir);
         let mod_self_name = mod_path.get_self_name().unwrap();
 
-        let builder = Builder::new(mod_self_name);
+        let builder = Builder::new(mod_path.as_str());
 
         // Parse source file
         let ast = parser::peg_parse(fpath).unwrap();
@@ -80,48 +76,7 @@ impl Module {
         }
 
         if let AST::File(mods, uses, classes) = *ast {
-            // process uses
             let mut use_map: HashMap<String, ModPath> = HashMap::new();
-            for use_ast in uses.iter() {
-                if let AST::Use(raw_path, as_id) = use_ast.as_ref() {
-                    let (path_has_crate, path_super_count, can_path) = raw_path.canonicalize();
-                    let use_path = if path_has_crate {
-                        let mut use_path = ModPath::new();
-                        use_path.push(mod_path.get_root_name().unwrap());
-                        for seg in can_path.range(1, can_path.len()).iter() {
-                            use_path.push(seg);
-                        }
-                        use_path
-                    } else if path_super_count != 0 {
-                        let mut root_path = mod_path.get_super();
-                        for _ in (0..path_super_count).into_iter() {
-                            root_path.to_super();
-                        }
-                        let mut use_path = root_path.to_owned();
-                        for seg in can_path.range(path_super_count, can_path.len()).iter() {
-                            use_path.push(seg);
-                        }
-                        use_path
-                    } else {
-                        can_path
-                    };
-
-                    let as_id = if let Some(as_id) = as_id {
-                        as_id.to_owned()
-                    } else {
-                        use_path.get_self_name().unwrap().to_owned()
-                    };
-
-                    if use_map.contains_key(&as_id) {
-                        panic!("Duplicated use as {}", as_id);
-                    } else {
-                        use_map.insert(as_id, use_path);
-                    }
-                } else {
-                    unreachable!();
-                }
-            }
-
             // process sub mods
             let mut sub_mods: HashMap<String, Rc<Module>> = HashMap::new();
             let sub_mod_rel_dir = if mod_path.len() == 1 || is_dir_mod {
@@ -139,14 +94,6 @@ impl Module {
             let sub_mod_output_dir = cfg.out_dir.join(&sub_mod_rel_dir);
 
             for sub_mod_name in mods.into_iter() {
-                // possible locations
-                // * input_root/sub_mod_rel_dir/sub_mod_name.xi
-                // * input_root/sub_mod_rel_dir/sub_mod_name/mod.xi
-                // * output_dir/sub_mod_rel_dir/sub_mod_name.xir
-                // * output_dir/sub_mod_rel_dir/sub_mod_name/sub_mod_name.xir
-                // * output_dir/sub_mod_rel_dir/sub_mod_name.xibc
-                // * output_dir/sub_mod_rel_dir/sub_mod_name/sub_mod_name.xibc
-
                 if sub_mods.contains_key(&sub_mod_name) {
                     panic!(
                         "Sub-module {} is defined multiple times in {}",
@@ -157,6 +104,22 @@ impl Module {
 
                 let mut sub_mod_path = mod_path.clone();
                 sub_mod_path.push(&sub_mod_name);
+
+                // sub mods will be use by default
+                if use_map.contains_key(&sub_mod_name) {
+                    panic!(
+                        "Ambiguous id {}. Both a sub module and a using token",
+                        sub_mod_name
+                    );
+                } else {
+                    use_map.insert(sub_mod_name.clone(), sub_mod_path.clone());
+                }
+
+                // possible locations
+                // * input_root/sub_mod_rel_dir/sub_mod_name.xi
+                // * input_root/sub_mod_rel_dir/sub_mod_name/mod.xi
+                // * input_root/sub_mod_rel_dir/sub_mod_name.xir
+                // * input_root/sub_mod_rel_dir/sub_mod_name/sub_mod_name.xir
 
                 // input_root/sub_mod_rel_dir/sub_mod_name.xi
                 let sub_mod_fpath = sub_mod_input_dir.join(format!("{}.xi", sub_mod_name));
@@ -241,6 +204,49 @@ impl Module {
                 }
             }
 
+            // process uses
+            for use_ast in uses.iter() {
+                if let AST::Use(raw_path, as_id) = use_ast.as_ref() {
+                    let (path_has_crate, path_super_count, can_path) = raw_path.canonicalize();
+                    let use_path = if path_has_crate {
+                        let mut use_path = ModPath::new();
+                        use_path.push(mod_path.get_root_name().unwrap());
+                        for seg in can_path.range(1, can_path.len()).iter() {
+                            use_path.push(seg);
+                        }
+                        use_path
+                    } else if path_super_count != 0 {
+                        let mut root_path = mod_path.get_super();
+                        for _ in (0..path_super_count).into_iter() {
+                            root_path.to_super();
+                        }
+                        let mut use_path = root_path.to_owned();
+                        for seg in can_path.range(path_super_count, can_path.len()).iter() {
+                            use_path.push(seg);
+                        }
+                        use_path
+                    } else {
+                        can_path
+                    };
+
+                    let as_id = if let Some(as_id) = as_id {
+                        as_id.to_owned()
+                    } else {
+                        use_path.get_self_name().unwrap().to_owned()
+                    };
+
+                    if use_map.contains_key(&as_id) {
+                        panic!("Duplicated use as {}", as_id);
+                    } else {
+                        use_map.insert(as_id, use_path);
+                    }
+
+                    todo!("TODO: Validate use path");
+                } else {
+                    unreachable!();
+                }
+            }
+
             Rc::new(Module {
                 sub_mods,
                 mod_path,
@@ -313,16 +319,16 @@ impl Module {
 }
 
 impl Module {
-    pub fn get_ty(&self, ast: &Box<AST>, c: &ModMgr) -> IrValType {
+    pub fn get_ty(&self, ast: &Box<AST>, c: &ModMgr) -> RValType {
         match ast.as_ref() {
-            AST::TypeI32 => IrValType::I32,
-            AST::TypeF64 => IrValType::F64,
-            AST::TypeBool => IrValType::Bool,
-            AST::None => IrValType::Void,
+            AST::TypeI32 => RValType::I32,
+            AST::TypeF64 => RValType::F64,
+            AST::TypeBool => RValType::Bool,
+            AST::None => RValType::Void,
             AST::TypeTuple(_) => {
                 unimplemented!();
             }
-            AST::TypeClass(class_path) => {
+            AST::Path(class_path) => {
                 // TODO: use
                 // Search in this module and global
                 let class_id = class_path.get_self_name().unwrap();
@@ -331,19 +337,19 @@ impl Module {
                 } else if class_path.len() == 1 {
                     // might be a class in this module
                     if self.classes.contains_key(class_id) {
-                        return IrValType::Obj(self.fullname().to_owned(), class_id.to_owned());
+                        return RValType::Obj(self.fullname().to_owned(), class_id.to_owned());
                     }
                 }
 
                 // Search in global
                 let mod_path = class_path.get_super();
                 if c.mod_tbl.contains_key(mod_path.as_str()) {
-                    IrValType::Obj(mod_path.as_str().to_owned(), class_id.to_owned())
+                    RValType::Obj(mod_path.as_str().to_owned(), class_id.to_owned())
                 } else {
                     panic!("Class {} not found", class_path.as_str());
                 }
             }
-            AST::TypeArr(dtype, _) => IrValType::Array(Box::new(self.get_ty(dtype, c))),
+            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, c))),
             _ => unreachable!(),
         }
     }
@@ -363,8 +369,8 @@ impl Module {
                     // Add static init
                     match static_init.as_ref() {
                         AST::Block(_) => {
-                            let ret_ty = IrValType::Void;
-                            let ps: Vec<IrValType> = vec![];
+                            let ret_ty = RValType::Void;
+                            let ps: Vec<RValType> = vec![];
                             let mut flag = MethodFlag::default();
                             flag.set(MethodFlagTag::Static);
                             declare_method!(
@@ -403,9 +409,7 @@ impl Module {
                             let field = Box::new(Field::new(id, *flag, self.get_ty(ty, c)));
 
                             // Build Field in class file
-                            self.builder
-                                .borrow_mut()
-                                .add_field(id, &field.ty.descriptor(), flag);
+                            self.builder.borrow_mut().add_field(id, &field.ty, flag);
 
                             if !flag.is(FieldFlagTag::Static) {
                                 // non-static field
@@ -420,7 +424,7 @@ impl Module {
 
                     if self.is_root() && class_id == "Program" {
                         if let Some(m) = class_mut.methods.get("main") {
-                            if let IrValType::Void = m.ret_ty {
+                            if let RValType::Void = m.ret_ty {
                                 if m.ps_ty.len() == 0
                                     && m.flag.is(MethodFlagTag::Pub)
                                     && m.flag.is(MethodFlagTag::Static)
@@ -462,7 +466,7 @@ impl Module {
                 String::from("self"),
                 Arg::new(
                     Default::default(),
-                    IrValType::Obj(self.fullname().to_owned(), class.name.clone()),
+                    RValType::Obj(self.fullname().to_owned(), class.name.clone()),
                     args_map.len() as u16,
                 ),
             );

@@ -11,22 +11,24 @@ pub use self::static_area::StaticArea;
 use super::data::VMModule;
 
 use std::collections::HashMap;
+use std::u32;
 
 pub struct SharedMem {
     pub heap: Heap,
     pub static_area: StaticArea,
 
-    pub mods: HashMap<u32, VMModule>,
+    pub mods: HashMap<u32, Box<VMModule>>,
 
     pub str_pool: Vec<String>,
 }
 
 impl SharedMem {
     pub fn new() -> SharedMem {
-        unimplemented!();
-    }
-
-    pub fn add_const_str(&mut self, s: String) -> u32 {
-        unimplemented!();
+        SharedMem {
+            heap: Heap::new(),
+            static_area: StaticArea::new(),
+            mods: HashMap::new(),
+            str_pool: Vec::new(),
+        }
     }
 }

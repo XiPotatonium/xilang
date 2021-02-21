@@ -1,11 +1,11 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::{VMClasse, VMConstant, VMField, VMMethod};
+use super::{VMClass, VMField, VMMethod};
 
 pub struct VMModule {
-    pub constant_map: Vec<VMConstant>,
-
-    pub classes: Vec<Rc<VMClasse>>,
+    pub class_map: HashMap<u32, usize>,
+    pub classes: Vec<Rc<VMClass>>,
     pub methods: Vec<Rc<VMMethod>>,
     pub fields: Vec<Rc<VMField>>,
 }

@@ -242,7 +242,7 @@ impl fmt::Display for AST {
                 "{{\"name\":\"(ArrType)\",\"dtype\":{},\"dim\":{}}}",
                 dtype, dim
             ),
-            Self::TypeClass(names) => write!(f, "{{\"name\":\"(ClassType){}\"}}", names.as_str()),
+            Self::Path(names) => write!(f, "{{\"name\":\"(Path){}\"}}", names.as_str()),
             Self::Null => write!(f, "{{\"name\":\"null\" }}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
             Self::Int(val) => write!(f, "{{\"name\":\"(int){}\"}}", val),
