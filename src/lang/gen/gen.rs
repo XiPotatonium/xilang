@@ -311,8 +311,6 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             }
 
             ctx.method_builder.borrow_mut().add_inst_stloc(local.offset);
-
-            local_ty
         }
         ValType::Arg(name) => {
             let arg = ctx.args_map.get(&name).unwrap();
@@ -322,8 +320,6 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             }
 
             ctx.method_builder.borrow_mut().add_inst_starg(arg.offset);
-
-            arg.ty.clone()
         }
         ValType::Field(mod_name, class_name, name) => {
             // TODO private and public
@@ -353,12 +349,14 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             };
 
             ctx.method_builder.borrow_mut().add_inst(inst);
-            field_ty
         }
         ValType::Module(_) => panic!(),
         ValType::Class(_, _) => panic!(),
         _ => unreachable!(),
     }
+
+    // assign op has no value left on evaluation stack
+    RValType::Void
 }
 
 fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {

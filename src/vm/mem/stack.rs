@@ -9,10 +9,6 @@ impl Stack {
         Stack { data: Vec::new() }
     }
 
-    pub fn clone_top(&self, n: usize) -> Vec<Slot> {
-        self.data[self.data.len() - n..].to_vec()
-    }
-
     pub fn peek(&self) -> &Slot {
         self.data.last().unwrap()
     }
@@ -27,6 +23,14 @@ impl Stack {
 
     pub fn pop(&mut self) -> Slot {
         self.data.pop().unwrap()
+    }
+
+    pub fn pop_n(&mut self, n: usize) -> Vec<Slot> {
+        let ret = self.data[self.data.len() - n..].to_vec();
+        (0..n).into_iter().for_each(|_| {
+            self.data.pop();
+        });
+        ret
     }
 
     pub fn push(&mut self, v: Slot) {

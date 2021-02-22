@@ -10,5 +10,6 @@ pub struct VMClass {
     pub methods: Vec<*const VMMethod>,
     pub fields: Vec<*const VMField>,
 
+    pub vtbl_addr: usize,
     pub obj_size: usize,
 }

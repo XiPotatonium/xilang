@@ -6,7 +6,7 @@ mod static_area;
 pub use self::heap::Heap;
 pub use self::slot::{Slot, SlotData, SlotTag};
 pub use self::stack::Stack;
-pub use self::static_area::StaticArea;
+pub use self::static_area::{StaticArea, VTblEntry};
 
 use super::data::VMModule;
 

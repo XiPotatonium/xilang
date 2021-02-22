@@ -1,5 +1,7 @@
 use std::mem::size_of;
 
+use super::super::data::VMClass;
+
 pub struct Heap {
     next_obj_offset: usize,
     data: Vec<u8>,
@@ -16,9 +18,19 @@ impl Heap {
     /// New obj
     ///
     /// [header: usize] [vtbl: *VTbl] [content...]
-    pub fn new_obj(&mut self, n: usize) -> usize {
+    pub unsafe fn new_obj(&mut self, class: *const VMClass) -> usize {
+        let class = class.as_ref().unwrap();
+
+        if class.obj_size + size_of::<usize>() * 2 + self.next_obj_offset >= self.data.len() {
+            // GC
+            unimplemented!("GC");
+        }
+
+        let pvtbl =
+            &mut self.data[self.next_obj_offset + size_of::<usize>()] as *mut u8 as *mut usize;
+        *pvtbl = class.vtbl_addr;
         let ret = self.next_obj_offset + size_of::<usize>() * 2;
-        self.next_obj_offset = ret + n;
+        self.next_obj_offset = ret + class.obj_size;
         ret
     }
 

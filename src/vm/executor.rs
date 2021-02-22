@@ -1,9 +1,7 @@
-use super::data::{VMField, VMMethod, VMType};
+use super::data::{VMMethod, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 use crate::ir::inst::Inst;
-use crate::ir::ir_file::{
-    TBL_CLASSREF_TAG, TBL_CLASS_TAG, TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK,
-};
+use crate::ir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
 
 struct MethodState<'m> {
     ip: usize,
@@ -181,7 +179,8 @@ impl<'m> TExecutor<'m> {
                         _ => unreachable!(),
                     };
 
-                    self.call(self.states.last().unwrap().stack.clone_top(arg_len), callee);
+                    let args = self.states.last_mut().unwrap().stack.pop_n(arg_len);
+                    self.call(args, callee);
                 }
                 Inst::Ret => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -260,24 +259,38 @@ impl<'m> TExecutor<'m> {
                         unimplemented!("Calling a virtual method is not implemented");
                     }
 
-                    self.call(self.states.last().unwrap().stack.clone_top(arg_len), callee);
+                    let args = self.states.last_mut().unwrap().stack.pop_n(arg_len + 1);
+                    self.call(args, callee);
                 }
                 Inst::NewObj(idx) => {
                     let tag = *idx & TBL_TAG_MASK;
                     let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
-                    let cur_state = self.states.last_mut().unwrap();
+                    let ctx = self.states.last().unwrap().method.ctx.as_ref().unwrap();
 
-                    let c = match tag {
-                        TBL_CLASS_TAG => {
-                            cur_state.method.ctx.as_ref().unwrap().classes[idx].as_ref()
+                    let (arg_len, callee) = match tag {
+                        TBL_METHOD_TAG => (
+                            ctx.methods[idx].ps_ty.len(),
+                            ctx.methods[idx].as_ref() as *const VMMethod,
+                        ),
+                        TBL_MEMBERREF_TAG => {
+                            let callee = ctx.memberref[idx].expect_method();
+                            (callee.as_ref().unwrap().ps_ty.len(), callee)
                         }
-                        TBL_CLASSREF_TAG => cur_state.method.ctx.as_ref().unwrap().classref[idx]
-                            .as_ref()
-                            .unwrap(),
                         _ => unreachable!(),
                     };
 
-                    let offset = mem.heap.new_obj(c.obj_size);
+                    let cur_state = self.states.last_mut().unwrap();
+                    let mut args: Vec<Slot> = Vec::new();
+                    if let VMType::Obj(class) = &callee.as_ref().unwrap().ps_ty[0] {
+                        let offset = mem.heap.new_obj(*class);
+                        args.push(Slot::new_ref(MemTag::HeapMem, offset));
+                        args.append(&mut cur_state.stack.pop_n(arg_len - 1));
+                        cur_state.stack.push(Slot::new_ref(MemTag::HeapMem, offset));
+                    } else {
+                        panic!("Creator's first param is not a class type");
+                    }
+
+                    self.call(args, callee);
                 }
                 Inst::LdFld(idx) => {
                     let tag = *idx & TBL_TAG_MASK;

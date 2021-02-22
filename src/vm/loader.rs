@@ -1,5 +1,5 @@
 use super::data::*;
-use super::mem::SharedMem;
+use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
 use super::VMCfg;
 
 use crate::ir::blob::IrBlob;
@@ -181,34 +181,7 @@ impl<'c> Loader<'c> {
 
             let mut static_field_offset: usize = 0;
             let mut non_static_field_offset: usize = 0;
-
-            while field_i < field_lim {
-                let field_entry = &file.field_tbl[field_i];
-
-                let flag = FieldFlag::new(field_entry.flag);
-                let field_size = blob_size(&file.blob_heap[field_entry.signature as usize]);
-                // TODO alignment
-                let offset = if flag.is(FieldFlagTag::Static) {
-                    static_field_offset += field_size;
-                    static_field_offset - field_size
-                } else {
-                    non_static_field_offset += field_size;
-                    non_static_field_offset - field_size
-                };
-
-                let field = Box::new(VMField {
-                    name: str_heap[field_entry.name as usize],
-                    flag,
-                    // fill in link stage
-                    ty: VMType::Unk,
-                    // link in link stage
-                    addr: offset,
-                });
-                class_fields.push(field.as_ref() as *const VMField);
-                fields.push(field);
-
-                field_i += 1;
-            }
+            let vtbl_size = size_of::<VTblEntry>();
 
             while method_i < method_lim {
                 let method_entry = &file.method_tbl[method_i];
@@ -220,12 +193,12 @@ impl<'c> Loader<'c> {
                     ctx: null(),
                     name: str_heap[method_entry.name as usize],
                     flag,
-                    // fill in link stage
-                    ret_ty: VMType::Unk,
-                    ps_ty: Vec::new(),
                     offset: 0,
                     locals: method_entry.locals as usize,
                     insts: codes_iter.next().unwrap(),
+                    // fill in link stage
+                    ret_ty: VMType::Unk,
+                    ps_ty: Vec::new(),
                 });
 
                 if method.name == self.cctor_name {
@@ -238,14 +211,70 @@ impl<'c> Loader<'c> {
                 method_i += 1;
             }
 
-            classes.push(Box::new(VMClass {
+            while field_i < field_lim {
+                let field_entry = &file.field_tbl[field_i];
+
+                let flag = FieldFlag::new(field_entry.flag);
+                let field_size = blob_size(&file.blob_heap[field_entry.signature as usize]);
+                // TODO alignment
+                let offset = if flag.is(FieldFlagTag::Static) {
+                    static_field_offset += field_size;
+                    static_field_offset
+                } else {
+                    non_static_field_offset += field_size;
+                    non_static_field_offset
+                } - field_size;
+
+                let field = Box::new(VMField {
+                    name: str_heap[field_entry.name as usize],
+                    flag,
+                    // fill in link stage
+                    ty: VMType::Unk,
+                    addr: offset,
+                });
+                class_fields.push(field.as_ref() as *const VMField);
+                fields.push(field);
+
+                field_i += 1;
+            }
+
+            let mut class = Box::new(VMClass {
                 name: class_name,
                 flag: class_flag,
                 fields: class_fields,
                 methods: class_methods,
-                // fill at link stage
-                obj_size: 0,
-            }));
+                obj_size: non_static_field_offset,
+                vtbl_addr: 0,
+            });
+
+            let addr = unsafe {
+                to_absolute(
+                    MemTag::StaticMem,
+                    self.mem.static_area.add_class(
+                        VTblEntry {
+                            class: class.as_ref() as *const VMClass,
+                            num_virt: 0,
+                            num_interface: 0,
+                        },
+                        vec![],
+                        vec![],
+                        static_field_offset,
+                    ),
+                )
+            };
+            class.vtbl_addr = addr;
+
+            let fields_len = fields.len();
+            for i in (0..class.fields.len())
+                .into_iter()
+                .map(|i| fields_len - i - 1)
+            {
+                if fields[i].flag.is(FieldFlagTag::Static) {
+                    fields[i].addr += addr + vtbl_size;
+                }
+            }
+
+            classes.push(class);
         }
 
         let mod_name_addr = str_heap[file.mod_tbl[0].name as usize];
@@ -399,6 +428,9 @@ impl<'c> Loader<'c> {
                     panic!();
                 }
             }
+
+            // class inheritance is not implemented
+            for class in this_mod.as_mut().unwrap().classes.iter_mut() {}
         }
 
         mod_name_addr
