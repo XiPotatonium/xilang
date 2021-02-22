@@ -5,7 +5,13 @@ A toy programming language that runs on a simple virtual machine.
 ## 1 TODO
 
 * more expressions
-* xivm
+    * arithmatic: -, *, /, %
+    * unary: -
+* more statements:
+    * if
+    * loop
+* Constant folding
+* GC
 
 ## 2 Usage
 

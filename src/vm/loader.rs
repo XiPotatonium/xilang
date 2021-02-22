@@ -5,6 +5,7 @@ use super::VMCfg;
 use crate::ir::blob::IrBlob;
 use crate::ir::flag::*;
 use crate::ir::ir_file::*;
+use crate::ir::path::{IModPath, ModPath};
 use crate::ir::CCTOR_NAME;
 
 use std::collections::HashMap;
@@ -41,15 +42,16 @@ pub fn load(
     mem: &mut SharedMem,
     cfg: &VMCfg,
 ) -> (Vec<*const VMMethod>, *const VMMethod) {
-    let f = fs::File::open(&entry).unwrap();
-    let f = IrFile::from_binary(Box::new(f));
+    let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
+    let root_name = f.mod_name().unwrap().to_owned();
     let entrypoint = (f.mod_tbl[0].entrypoint & !TBL_TAG_MASK) as usize;
     if entrypoint == 0 {
         panic!("{} has no entrypoint", entry.display());
     }
 
     let mut loader = Loader {
+        root_name,
         mem,
         cfg,
         str_map: HashMap::new(),
@@ -67,6 +69,7 @@ pub fn load(
 }
 
 struct Loader<'c> {
+    root_name: String,
     cfg: &'c VMCfg,
     mem: &'c mut SharedMem,
     str_map: HashMap<String, u32>,
@@ -299,24 +302,75 @@ impl<'c> Loader<'c> {
         }
 
         // 2. Recursive load dependencies
-        for _ in external_mods.iter() {
-            for _ in self.cfg.ext_paths.iter() {
-                unimplemented!();
+        for external_mod_path in external_mods.iter() {
+            let path = ModPath::from_str(external_mod_path);
+            if path.get_root_name().unwrap() == self.root_name {
+                // a sub module
+                let mut sub_mod_path = self.cfg.entry_root.clone();
+                for seg in path.iter().skip(1).take(path.len() - 1) {
+                    sub_mod_path.push(seg);
+                    if !sub_mod_path.is_dir() {
+                        panic!(
+                            "Cannot found sub module {}: {} is not dir",
+                            external_mod_path,
+                            sub_mod_path.display()
+                        );
+                    }
+                }
+
+                let mod_name = path.get_self_name().unwrap();
+                sub_mod_path.push(format!("{}.xibc", mod_name));
+                if sub_mod_path.is_file() {
+                    self.load(IrFile::from_binary(Box::new(
+                        fs::File::open(&sub_mod_path).unwrap(),
+                    )));
+                } else {
+                    sub_mod_path.set_file_name(mod_name);
+                    if sub_mod_path.is_dir() {
+                        sub_mod_path.push(format!("{}.xibc", mod_name));
+                        if sub_mod_path.is_file() {
+                            self.load(IrFile::from_binary(Box::new(
+                                fs::File::open(&sub_mod_path).unwrap(),
+                            )));
+                        } else {
+                            panic!(
+                                "Cannot found sub module {}: {} is not file",
+                                external_mod_path,
+                                sub_mod_path.display()
+                            );
+                        }
+                    } else {
+                        panic!(
+                            "Cannot found sub module {}: {} is not dir",
+                            external_mod_path,
+                            sub_mod_path.display()
+                        );
+                    }
+                }
+            } else {
+                // external module
+                let found = false;
+                for _ in self.cfg.ext_paths.iter() {
+                    unimplemented!("External path is not implemented");
+                }
+                if !found {
+                    panic!("Cannot found external module {}", external_mod_path);
+                }
             }
-            unimplemented!("Dependency is not implemented");
         }
 
         // 3. Link extenal symbols
-
         let this_mod = self.mem.mods.get_mut(&mod_name_addr).unwrap().as_mut() as *mut VMModule;
         unsafe {
             {
+                // 3.1 Link modref
                 let mod_modref = &mut this_mod.as_mut().unwrap().modref;
                 for modref in file.modref_tbl.iter() {
                     let name = str_heap[modref.name as usize];
                     mod_modref.push(self.mem.mods.get(&name).unwrap().as_ref() as *const VMModule);
                 }
 
+                // 3.2 link classref
                 let mod_classref = &mut this_mod.as_mut().unwrap().classref;
                 for classref in file.classref_tbl.iter() {
                     let name = str_heap[classref.name as usize];
@@ -331,6 +385,7 @@ impl<'c> Loader<'c> {
                     }
                 }
 
+                // 3.3 link member ref
                 let mod_memberref = &mut this_mod.as_mut().unwrap().memberref;
                 for memberref in file.memberref_tbl.iter() {
                     let name = str_heap[memberref.name as usize];
@@ -377,13 +432,38 @@ impl<'c> Loader<'c> {
                                 }
                             }
                             TBL_MODREF_TAG => {
-                                unimplemented!();
+                                unimplemented!(
+                                    "Member that has no class parent is not implemented"
+                                );
                             }
                             _ => unreachable!(),
                         }
                     } else {
                         // this member ref is a field
-                        unimplemented!();
+                        let sig = self.to_vm_ty(
+                            &file.blob_heap,
+                            this_mod.as_ref().unwrap(),
+                            memberref.signature,
+                        );
+                        match memberref.parent & TBL_TAG_MASK {
+                            TBL_CLASSREF_TAG => {
+                                for f in mod_classref[parent_idx].as_ref().unwrap().fields.iter() {
+                                    let f_ref = f.as_ref().unwrap();
+                                    if f_ref.name == name && sig == f_ref.ty {
+                                        // field found
+                                        mod_memberref.push(VMMemberRef::Field(*f));
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            TBL_MODREF_TAG => {
+                                unimplemented!(
+                                    "Member that has no class parent is not implemented"
+                                );
+                            }
+                            _ => unreachable!(),
+                        }
                     }
 
                     if !found {
@@ -392,6 +472,7 @@ impl<'c> Loader<'c> {
                 }
             }
 
+            // 3.4 fill field type info
             for (field, field_entry) in this_mod
                 .as_mut()
                 .unwrap()
@@ -406,6 +487,7 @@ impl<'c> Loader<'c> {
                 );
             }
 
+            // 3.5 fill method type info
             for (method, method_entry) in this_mod
                 .as_mut()
                 .unwrap()
@@ -428,9 +510,6 @@ impl<'c> Loader<'c> {
                     panic!();
                 }
             }
-
-            // class inheritance is not implemented
-            for class in this_mod.as_mut().unwrap().classes.iter_mut() {}
         }
 
         mod_name_addr
