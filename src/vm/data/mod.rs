@@ -6,10 +6,9 @@ mod module;
 pub use self::class::VMClass;
 pub use self::field::VMField;
 pub use self::method::VMMethod;
-pub use self::module::VMModule;
+pub use self::module::{VMMemberRef, VMModule};
 
-use std::rc::Rc;
-
+#[derive(PartialEq, Eq)]
 pub enum VMType {
     Void,
     Bool,
@@ -26,7 +25,7 @@ pub enum VMType {
     INative,
     F32,
     F64,
-    Obj(Rc<VMClass>),
+    Obj(*const VMClass),
     Array(Box<VMType>),
     /// to be filled
     Unk,

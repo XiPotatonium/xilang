@@ -163,7 +163,7 @@ impl Inst {
             Inst::Add => write!(f, "add"),
 
             Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_tbl_entry_repr(*idx)),
-            Inst::New(idx) => write!(f, "new {}", c.get_tbl_entry_repr(*idx)),
+            Inst::NewObj(idx) => write!(f, "newobj {}", c.get_tbl_entry_repr(*idx)),
             Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_tbl_entry_repr(*idx)),
             Inst::StFld(idx) => write!(f, "stfld {}", c.get_tbl_entry_repr(*idx)),
             Inst::LdSFld(idx) => write!(f, "ldsfld {}", c.get_tbl_entry_repr(*idx)),

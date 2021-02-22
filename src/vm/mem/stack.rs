@@ -9,6 +9,10 @@ impl Stack {
         Stack { data: Vec::new() }
     }
 
+    pub fn clone_top(&self, n: usize) -> Vec<Slot> {
+        self.data[self.data.len() - n..].to_vec()
+    }
+
     pub fn peek(&self) -> &Slot {
         self.data.last().unwrap()
     }

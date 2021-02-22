@@ -1,3 +1,4 @@
+use crate::ir::blob::IrBlob;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::ir_file::*;
@@ -237,7 +238,7 @@ impl Builder {
     ///
     /// Fill all jump instructions, concat all basic blocks
     ///
-    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals_stack: u16) {
+    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals: u16) {
         let ir_method = &mut self.file.method_tbl[((method_idx & !TBL_TAG_MASK) - 1) as usize];
         // fill jump instructions
 
@@ -246,7 +247,7 @@ impl Builder {
         for bb in m.codes.iter_mut() {
             code.append(&mut bb.insts);
         }
-        ir_method.locals = locals_stack;
+        ir_method.locals = locals;
         self.file.codes.push(code);
     }
 }

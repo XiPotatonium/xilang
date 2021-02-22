@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::mem::transmute;
 
+use super::blob::IrBlob;
 use super::inst::Inst;
 use super::ir_file::*;
 
@@ -556,6 +557,10 @@ impl Serializable for Inst {
                 0x6Fu8.serialize(buf);
                 idx.serialize(buf);
             }
+            Inst::NewObj(idx) => {
+                0x73u8.serialize(buf);
+                idx.serialize(buf);
+            }
             Inst::LdFld(idx) => {
                 0x7Bu8.serialize(buf);
                 idx.serialize(buf);
@@ -570,11 +575,6 @@ impl Serializable for Inst {
             }
             Inst::StSFld(idx) => {
                 0x80u8.serialize(buf);
-                idx.serialize(buf);
-            }
-
-            Inst::New(idx) => {
-                0xF0u8.serialize(buf);
                 idx.serialize(buf);
             }
         }
@@ -628,12 +628,11 @@ impl Serializable for Inst {
             0x58 => Inst::Add,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
+            0x73 => Inst::NewObj(u32::deserialize(buf)),
             0x7B => Inst::LdFld(u32::deserialize(buf)),
             0x7D => Inst::StFld(u32::deserialize(buf)),
             0x7E => Inst::LdSFld(u32::deserialize(buf)),
             0x80 => Inst::StSFld(u32::deserialize(buf)),
-
-            0xF0 => Inst::New(u32::deserialize(buf)),
 
             0xFE => {
                 let inner_coder = u8::deserialize(buf);

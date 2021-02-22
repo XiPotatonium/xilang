@@ -9,7 +9,7 @@ use std::rc::{Rc, Weak};
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::path::{IModPath, ModPath};
-use crate::ir::CLINIT_METHOD_NAME;
+use crate::ir::{CCTOR_NAME, CTOR_NAME};
 
 use super::super::ast::AST;
 use super::super::gen::{gen, Builder, CodeGenCtx, MethodBuilder, RValType, ValType};
@@ -366,6 +366,27 @@ impl Module {
                     let mut class_mut = self.classes.get(class_id).unwrap().borrow_mut();
                     class_mut.idx = self.builder.borrow_mut().add_class(class_id, class_flag);
 
+                    for field in ast_fields.iter() {
+                        if let AST::Field(id, flag, ty) = field.as_ref() {
+                            // Field will have default initialization
+                            let ty = self.get_ty(ty, c);
+
+                            // Build Field in class file
+                            let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
+
+                            let field = Box::new(Field::new(id, *flag, ty, idx));
+
+                            if !flag.is(FieldFlagTag::Static) {
+                                // non-static field
+                                class_mut.non_static_fields.push(id.to_owned());
+                            }
+                            if let Some(_) = class_mut.fields.insert(id.to_owned(), field) {
+                                // TODO: use expect_none once it becomes stable
+                                panic!("Dulicated field {} in class {}", id, class_mut.name);
+                            }
+                        }
+                    }
+
                     // Add static init
                     match static_init.as_ref() {
                         AST::Block(_) => {
@@ -373,18 +394,26 @@ impl Module {
                             let ps: Vec<RValType> = vec![];
                             let mut flag = MethodFlag::default();
                             flag.set(MethodFlagTag::Static);
-                            declare_method!(
-                                class_mut,
-                                self.builder,
-                                CLINIT_METHOD_NAME,
-                                &flag,
-                                ret_ty,
-                                ps
-                            );
+                            declare_method!(class_mut, self.builder, CCTOR_NAME, &flag, ret_ty, ps);
                         }
                         AST::None => (),
                         _ => unreachable!("Parser error"),
                     };
+
+                    // Add default object creator
+                    {
+                        let ret_ty = RValType::Void;
+                        let mut ps: Vec<RValType> = vec![RValType::Obj(
+                            self.fullname().to_owned(),
+                            class_mut.name.clone(),
+                        )];
+                        for f in class_mut.non_static_fields.iter() {
+                            ps.push(class_mut.fields.get(f).unwrap().ty.clone());
+                        }
+                        let mut flag = MethodFlag::default();
+                        flag.set(MethodFlagTag::Static);
+                        declare_method!(class_mut, self.builder, CTOR_NAME, &flag, ret_ty, ps);
+                    }
 
                     for method in ast_methods.iter() {
                         if let AST::Method(id, flag, ty, ps, _) = method.as_ref() {
@@ -400,25 +429,6 @@ impl Module {
                                 .collect();
                             let ret_ty = self.get_ty(ty, c);
                             declare_method!(class_mut, self.builder, id, flag, ret_ty, ps);
-                        }
-                    }
-
-                    for field in ast_fields.iter() {
-                        if let AST::Field(id, flag, ty) = field.as_ref() {
-                            // Field will have default initialization
-                            let field = Box::new(Field::new(id, *flag, self.get_ty(ty, c)));
-
-                            // Build Field in class file
-                            self.builder.borrow_mut().add_field(id, &field.ty, flag);
-
-                            if !flag.is(FieldFlagTag::Static) {
-                                // non-static field
-                                class_mut.non_static_fields.push(id.to_owned());
-                            }
-                            if let Some(_) = class_mut.fields.insert(id.to_owned(), field) {
-                                // TODO: use expect_none once it becomes stable
-                                panic!("Dulicated field {} in class {}", id, class_mut.name);
-                            }
                         }
                     }
 
@@ -522,13 +532,49 @@ impl Module {
                     // gen static init
                     match ast_init.as_ref() {
                         AST::Block(_) => {
-                            let m = class_ref.methods.get(CLINIT_METHOD_NAME).unwrap();
+                            let m = class_ref.methods.get(CCTOR_NAME).unwrap();
                             let ps: Vec<Box<AST>> = vec![];
                             self.code_gen_method(c, &class_ref, m, &ps, ast_init);
                         }
                         AST::None => (),
                         _ => unreachable!("Parser error"),
                     };
+
+                    // gen default creator
+                    // ldarg.0
+                    // dup
+                    // ...
+                    // dup
+                    // ldarg.1
+                    // stfld <field0>
+                    // ldarg.2
+                    // stfld <field1>
+                    // ...
+                    {
+                        let m = class_ref.methods.get(CTOR_NAME).unwrap();
+                        let mut method_builder = MethodBuilder::new();
+                        if m.ps_ty.len() == 1 {
+                            // no field
+                        } else {
+                            method_builder.add_inst_ldarg(0);
+                            for _ in (2..m.ps_ty.len()).into_iter() {
+                                method_builder.add_inst(Inst::Dup);
+                            }
+                            for (i, f_id) in (1..m.ps_ty.len())
+                                .into_iter()
+                                .zip(class_ref.non_static_fields.iter())
+                            {
+                                method_builder.add_inst_ldarg(i as u16);
+                                method_builder.add_inst(Inst::StFld(
+                                    class_ref.fields.get(f_id).unwrap().field_idx,
+                                ));
+                            }
+                        }
+                        method_builder.add_inst(Inst::Ret);
+                        self.builder
+                            .borrow_mut()
+                            .done(&mut method_builder, m.method_idx, 0);
+                    }
 
                     for method_ast in ast_methods.iter() {
                         if let AST::Method(id, _, _, ps, block) = method_ast.as_ref() {

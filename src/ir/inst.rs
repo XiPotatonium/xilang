@@ -7,7 +7,7 @@ pub enum Inst {
     ///
     /// Load argument at index 0
     ///
-    /// ... -> ..., val
+    /// `... -> ..., val`
     LdArg0,
     /// 0x03, ldarg.1
     LdArg1,
@@ -22,14 +22,14 @@ pub enum Inst {
     ///
     /// Store argument to index <odx>
     ///
-    /// ..., val -> ...,
+    /// `..., val -> ...,`
     StArgS(u8),
 
     /// 0x06, ldloc.0
     ///
     /// Load local var 0 onto stack
     ///
-    /// ..., -> ..., val
+    /// `..., -> ..., val`
     LdLoc0,
     /// 0x07, ldloc.1
     LdLoc1,
@@ -46,7 +46,7 @@ pub enum Inst {
     ///
     /// Store val to local var 0
     ///
-    /// ... val -> ...
+    /// `... val -> ...`
     StLoc0,
     /// 0x0B, stloc.1
     StLoc1,
@@ -63,13 +63,13 @@ pub enum Inst {
     ///
     /// Push a null ref on the stack
     ///
-    /// ... -> ..., null
+    /// `... -> ..., null`
     LdNull,
     /// 0x15, ldc.i4.m1
     ///
     /// Push -1 onto the stack as i32
     ///
-    /// ... -> ..., num
+    /// `... -> ..., num`
     LdCM1,
     /// 0x16, ldc.i4.0
     LdC0,
@@ -98,71 +98,71 @@ pub enum Inst {
     ///
     /// Dup top stack value
     ///
-    /// ..., val -> ..., val, val
+    /// `..., val -> ..., val, val`
     Dup,
     /// 0x26, pop
     ///
     /// Pop top val from stack
     ///
-    /// ..., val -> ...
+    /// `..., val -> ...`
     Pop,
 
     /// 0x28, call <func>
     ///
     /// Call a func, See ECMA-335 page 368
     ///
-    /// ..., arg0, arg1 ... argN -> ..., retVal
+    /// `..., arg0, arg1 ... argN -> ..., retVal`
     Call(u32),
     /// 0x2A, ret
     ///
     /// return from current method
     ///
-    /// retVal -> ..., retVal
+    /// `retVal -> ..., retVal`
     Ret,
 
     /// 0x58, add
     ///
     /// Add two numeric values without overflow check
     ///
-    /// ..., val1, val2 -> ..., res
+    /// `..., val1, val2 -> ..., res`
     Add,
 
     /// 0x6F, callvirt <method>
     ///
     /// Call a virtual method associate with an obj
     ///
-    /// ..., obj, arg1, ..., argN -> ..., retVal
+    /// `..., obj, arg1, ..., argN -> ..., retVal`
     CallVirt(u32),
+    /// 0x73, new <ctor>
+    ///
+    /// Call a creator, return obj addr
+    ///
+    /// `..., arg0, ..., argN -> ..., obj`
+    NewObj(u32),
     /// 0x7B, ldfld <field>
     ///
     /// Load a field onto the stack
     ///
-    /// ..., obj -> ..., val
+    /// `..., obj -> ..., val`
     LdFld(u32),
     /// 0x7D, stfld <field>
     ///
     /// Store a value to field
     ///
-    /// ..., obj, val -> ...,
+    /// `..., obj, val -> ...,`
     StFld(u32),
     /// 0x7E, ldsfld <field>
     ///
     /// Load a static field onto the stack
     ///
-    /// ..., -> ..., val
+    /// `..., -> ..., val`
     LdSFld(u32),
     /// 0x80, stsfld <field>
     ///
     /// Store a value to field
     ///
-    /// ..., val -> ...,
+    /// `..., val -> ...,`
     StSFld(u32),
-    /// 0xF0, new <class>
-    ///
-    /// This is not CLR standard.
-    ///
-    /// ..., f0, ..., fN -> ..., obj
-    New(u32),
 }
 
 impl Inst {
@@ -214,11 +214,11 @@ impl Inst {
             Inst::Add => 1,
 
             Inst::CallVirt(_) => 5,
+            Inst::NewObj(_) => 5,
             Inst::LdFld(_) => 5,
             Inst::StFld(_) => 5,
             Inst::LdSFld(_) => 5,
             Inst::StSFld(_) => 5,
-            Inst::New(_) => 5,
         }
     }
 }

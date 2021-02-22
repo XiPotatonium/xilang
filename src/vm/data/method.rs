@@ -1,9 +1,11 @@
 use crate::ir::flag::MethodFlag;
 use crate::ir::inst::Inst;
 
-use super::VMType;
+use super::{VMModule, VMType};
 
 pub struct VMMethod {
+    pub ctx: *const VMModule,
+
     pub name: u32,
 
     pub flag: MethodFlag,

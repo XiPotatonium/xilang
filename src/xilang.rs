@@ -77,8 +77,10 @@ fn main() {
     // static inits
     let start_time = SystemTime::now();
     for static_init in static_inits.into_iter() {
-        let mut executor = TExecutor::new(&static_init);
-        executor.run(&mut m);
+        unsafe {
+            let mut executor = TExecutor::new(static_init);
+            executor.run(&mut m);
+        }
     }
     let static_exec_time = SystemTime::now()
         .duration_since(start_time)
@@ -86,8 +88,10 @@ fn main() {
         .as_secs_f32();
 
     let start_time = SystemTime::now();
-    let mut executor = TExecutor::new(&entry);
-    let ret = executor.run(&mut m);
+    let ret = unsafe {
+        let mut executor = TExecutor::new(entry);
+        executor.run(&mut m)
+    };
     let main_exec_time = SystemTime::now()
         .duration_since(start_time)
         .unwrap()

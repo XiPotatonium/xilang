@@ -1,3 +1,4 @@
+use super::blob::IrBlob;
 use super::inst::Inst;
 
 pub const MAJOR_VERSION: u16 = 1;
@@ -58,7 +59,7 @@ pub struct IrClass {
 
 #[derive(Debug)]
 pub struct IrClassRef {
-    /// index into mod/modref tbl
+    /// index into modref tbl
     pub parent: u32,
     /// index into str heap
     pub name: u32,
@@ -90,35 +91,12 @@ pub struct IrMethod {
 
 #[derive(Debug)]
 pub struct IrMemberRef {
-    /// index into mod/modref/type/typeref tbl
+    /// index into modref/classref tbl
     pub parent: u32,
     /// index into str heap
     pub name: u32,
     /// index into blob heap
     pub signature: u32,
-}
-
-/// None CLR standard
-#[derive(Debug)]
-pub enum IrBlob {
-    Void,
-    Bool,
-    Char,
-    U8,
-    I8,
-    U16,
-    I16,
-    U32,
-    I32,
-    U64,
-    I64,
-    UNative,
-    INative,
-    F32,
-    F64,
-    Obj(u32),
-    Func(Vec<u32>, u32),
-    Array(u32),
 }
 
 pub const TBL_TAG_MASK: u32 = 0xFF << 24;

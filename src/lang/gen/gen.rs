@@ -5,6 +5,7 @@ use super::{CodeGenCtx, RValType, ValType};
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::path::IModPath;
+use crate::ir::CTOR_NAME;
 
 pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
     /*
@@ -248,6 +249,11 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                     }
                 }
             }
+
+            let mut ctor_ps: Vec<RValType> = vec![RValType::Obj(
+                mod_rc.fullname().to_owned(),
+                class_ref.name.clone(),
+            )];
             for (i, idx) in correct_idx.iter().enumerate() {
                 if *idx < 0 {
                     panic!(
@@ -270,20 +276,19 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                                 v_ty, class_name, field_name, field.ty
                             );
                         }
+                        ctor_ps.push(field.ty.clone());
                     } else {
                         unreachable!();
                     }
                 }
             }
 
-            let class_idx = ctx
-                .module
-                .builder
-                .borrow_mut()
-                .add_const_class(mod_name, class_name);
+            let mut builder = ctx.module.builder.borrow_mut();
+            let ctor_sig = builder.add_const_fn_blob(&ctor_ps, &RValType::Void);
+            let ctor_idx = builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
             ctx.method_builder
                 .borrow_mut()
-                .add_inst(Inst::New(class_idx));
+                .add_inst(Inst::NewObj(ctor_idx));
         }
         RValType::Array(_) => unimplemented!(),
         _ => panic!("Invalid new expression, only new class or array is allowed"),

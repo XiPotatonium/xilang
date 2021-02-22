@@ -1,6 +1,9 @@
-use super::data::{VMMethod, VMType};
-use super::mem::{SharedMem, Slot, SlotTag, Stack};
+use super::data::{VMField, VMMethod, VMType};
+use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 use crate::ir::inst::Inst;
+use crate::ir::ir_file::{
+    TBL_CLASSREF_TAG, TBL_CLASS_TAG, TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK,
+};
 
 struct MethodState<'m> {
     ip: usize,
@@ -15,14 +18,16 @@ pub struct TExecutor<'m> {
 }
 
 impl<'m> TExecutor<'m> {
-    pub fn new(entry: &'m VMMethod) -> TExecutor<'m> {
+    pub unsafe fn new(entry: *const VMMethod) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
         ret.call(vec![], entry);
         ret
     }
 
-    fn call(&mut self, args: Vec<Slot>, method: &'m VMMethod) {
+    unsafe fn call(&mut self, args: Vec<Slot>, method: *const VMMethod) {
+        // Currently there is no verification of the arg type
+        let method = method.as_ref().unwrap();
         self.states.push(MethodState {
             stack: Stack::new(),
             locals: vec![Slot::default(); method.locals],
@@ -38,7 +43,7 @@ impl<'m> TExecutor<'m> {
         &state.method.insts[state.ip - 1]
     }
 
-    pub fn run(&mut self, mem: &mut SharedMem) -> u32 {
+    pub unsafe fn run(&mut self, mem: &'m mut SharedMem) -> u32 {
         loop {
             match self.fetch() {
                 Inst::Nop => {}
@@ -159,7 +164,25 @@ impl<'m> TExecutor<'m> {
                 Inst::Pop => {
                     self.states.last_mut().unwrap().stack.pop();
                 }
-                Inst::Call(_) => {}
+                Inst::Call(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let ctx = self.states.last().unwrap().method.ctx.as_ref().unwrap();
+
+                    let (arg_len, callee) = match tag {
+                        TBL_METHOD_TAG => (
+                            ctx.methods[idx].ps_ty.len(),
+                            ctx.methods[idx].as_ref() as *const VMMethod,
+                        ),
+                        TBL_MEMBERREF_TAG => {
+                            let callee = ctx.memberref[idx].expect_method();
+                            (callee.as_ref().unwrap().ps_ty.len(), callee)
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    self.call(self.states.last().unwrap().stack.clone_top(arg_len), callee);
+                }
                 Inst::Ret => {
                     let cur_state = self.states.last_mut().unwrap();
                     match cur_state.method.ret_ty {
@@ -201,9 +224,9 @@ impl<'m> TExecutor<'m> {
                     let lhs = stack.peek_mut();
                     match lhs.tag {
                         SlotTag::I32 => match rhs.tag {
-                            SlotTag::I32 => unsafe {
+                            SlotTag::I32 => {
                                 lhs.data.i32_ += rhs.data.i32_;
-                            },
+                            }
                             SlotTag::I64 => unimplemented!(),
                             SlotTag::F64 => panic!("Cannot add between float and int"),
                             SlotTag::Ref => panic!("Cannot add ref"),
@@ -215,12 +238,227 @@ impl<'m> TExecutor<'m> {
                         SlotTag::Uninit => panic!("Cannot add unint data"),
                     }
                 }
-                Inst::CallVirt(_) => {}
-                Inst::New(_) => {}
-                Inst::LdFld(_) => {}
-                Inst::StFld(_) => {}
-                Inst::LdSFld(_) => {}
-                Inst::StSFld(_) => {}
+                Inst::CallVirt(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let ctx = self.states.last().unwrap().method.ctx.as_ref().unwrap();
+
+                    let (arg_len, callee) = match tag {
+                        TBL_METHOD_TAG => (
+                            ctx.methods[idx].ps_ty.len(),
+                            ctx.methods[idx].as_ref() as *const VMMethod,
+                        ),
+                        TBL_MEMBERREF_TAG => {
+                            let callee = ctx.memberref[idx].expect_method();
+                            (callee.as_ref().unwrap().ps_ty.len(), callee)
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    if callee.as_ref().unwrap().offset != 0 {
+                        // virtual method
+                        unimplemented!("Calling a virtual method is not implemented");
+                    }
+
+                    self.call(self.states.last().unwrap().stack.clone_top(arg_len), callee);
+                }
+                Inst::NewObj(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let cur_state = self.states.last_mut().unwrap();
+
+                    let c = match tag {
+                        TBL_CLASS_TAG => {
+                            cur_state.method.ctx.as_ref().unwrap().classes[idx].as_ref()
+                        }
+                        TBL_CLASSREF_TAG => cur_state.method.ctx.as_ref().unwrap().classref[idx]
+                            .as_ref()
+                            .unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let offset = mem.heap.new_obj(c.obj_size);
+                }
+                Inst::LdFld(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let cur_state = self.states.last_mut().unwrap();
+                    let (mem_tag, offset) = cur_state.stack.pop().as_addr();
+                    if let MemTag::HeapMem = mem_tag {
+                    } else {
+                        panic!("Operand of ldfld is not a heap addr");
+                    }
+
+                    let f = match tag {
+                        TBL_FIELD_TAG => {
+                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                        }
+                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                            .expect_field()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let offset = offset + f.addr;
+
+                    match f.ty {
+                        VMType::Void | VMType::Unk => unreachable!(),
+                        VMType::Bool => unimplemented!(),
+                        VMType::Char => unimplemented!(),
+                        VMType::U8 => unimplemented!(),
+                        VMType::I8 => unimplemented!(),
+                        VMType::U16 => unimplemented!(),
+                        VMType::I16 => unimplemented!(),
+                        VMType::U32 => unimplemented!(),
+                        VMType::I32 => {
+                            cur_state.stack.push_i32(*mem.heap.access(offset));
+                        }
+                        VMType::U64 => unimplemented!(),
+                        VMType::I64 => unimplemented!(),
+                        VMType::UNative => unimplemented!(),
+                        VMType::INative => unimplemented!(),
+                        VMType::F32 => unimplemented!(),
+                        VMType::F64 => unimplemented!(),
+                        VMType::Obj(_) => unimplemented!(),
+                        VMType::Array(_) => unimplemented!(),
+                    }
+                }
+                Inst::StFld(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let cur_state = self.states.last_mut().unwrap();
+                    let v = cur_state.stack.pop();
+                    let (mem_tag, offset) = cur_state.stack.pop().as_addr();
+                    if let MemTag::HeapMem = mem_tag {
+                    } else {
+                        panic!("Operand of stfld is not a heap addr");
+                    }
+
+                    let f = match tag {
+                        TBL_FIELD_TAG => {
+                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                        }
+                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                            .expect_field()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let offset = offset + f.addr;
+
+                    match f.ty {
+                        VMType::Void | VMType::Unk => unreachable!(),
+                        VMType::Bool => unimplemented!(),
+                        VMType::Char => unimplemented!(),
+                        VMType::U8 => unimplemented!(),
+                        VMType::I8 => unimplemented!(),
+                        VMType::U16 => unimplemented!(),
+                        VMType::I16 => unimplemented!(),
+                        VMType::U32 => unimplemented!(),
+                        VMType::I32 => {
+                            *mem.heap.access_mut(offset) = v.data.i32_;
+                        }
+                        VMType::U64 => unimplemented!(),
+                        VMType::I64 => unimplemented!(),
+                        VMType::UNative => unimplemented!(),
+                        VMType::INative => unimplemented!(),
+                        VMType::F32 => unimplemented!(),
+                        VMType::F64 => unimplemented!(),
+                        VMType::Obj(_) => unimplemented!(),
+                        VMType::Array(_) => unimplemented!(),
+                    }
+                }
+                Inst::LdSFld(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let cur_state = self.states.last_mut().unwrap();
+
+                    let f = match tag {
+                        TBL_FIELD_TAG => {
+                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                        }
+                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                            .expect_field()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let (mem_tag, offset) = to_relative(f.addr);
+                    if let MemTag::StaticMem = mem_tag {
+                    } else {
+                        panic!("Operand of ldsfld is not a static addr");
+                    }
+
+                    match f.ty {
+                        VMType::Void | VMType::Unk => unreachable!(),
+                        VMType::Bool => unimplemented!(),
+                        VMType::Char => unimplemented!(),
+                        VMType::U8 => unimplemented!(),
+                        VMType::I8 => unimplemented!(),
+                        VMType::U16 => unimplemented!(),
+                        VMType::I16 => unimplemented!(),
+                        VMType::U32 => unimplemented!(),
+                        VMType::I32 => {
+                            cur_state.stack.push_i32(*mem.heap.access(offset));
+                        }
+                        VMType::U64 => unimplemented!(),
+                        VMType::I64 => unimplemented!(),
+                        VMType::UNative => unimplemented!(),
+                        VMType::INative => unimplemented!(),
+                        VMType::F32 => unimplemented!(),
+                        VMType::F64 => unimplemented!(),
+                        VMType::Obj(_) => unimplemented!(),
+                        VMType::Array(_) => unimplemented!(),
+                    }
+                }
+                Inst::StSFld(idx) => {
+                    let tag = *idx & TBL_TAG_MASK;
+                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                    let cur_state = self.states.last_mut().unwrap();
+                    let v = cur_state.stack.pop();
+
+                    let f = match tag {
+                        TBL_FIELD_TAG => {
+                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                        }
+                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                            .expect_field()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unreachable!(),
+                    };
+
+                    let (mem_tag, offset) = to_relative(f.addr);
+                    if let MemTag::StaticMem = mem_tag {
+                    } else {
+                        panic!("Operand of stsfld is not a static addr");
+                    }
+
+                    match f.ty {
+                        VMType::Void | VMType::Unk => unreachable!(),
+                        VMType::Bool => unimplemented!(),
+                        VMType::Char => unimplemented!(),
+                        VMType::U8 => unimplemented!(),
+                        VMType::I8 => unimplemented!(),
+                        VMType::U16 => unimplemented!(),
+                        VMType::I16 => unimplemented!(),
+                        VMType::U32 => unimplemented!(),
+                        VMType::I32 => {
+                            *mem.heap.access_mut(offset) = v.data.i32_;
+                        }
+                        VMType::U64 => unimplemented!(),
+                        VMType::I64 => unimplemented!(),
+                        VMType::UNative => unimplemented!(),
+                        VMType::INative => unimplemented!(),
+                        VMType::F32 => unimplemented!(),
+                        VMType::F64 => unimplemented!(),
+                        VMType::Obj(_) => unimplemented!(),
+                        VMType::Array(_) => unimplemented!(),
+                    }
+                }
             }
         }
     }
