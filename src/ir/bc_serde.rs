@@ -532,11 +532,11 @@ impl Serializable for Inst {
             Inst::LdC6 => 0x1Cu8.serialize(buf),
             Inst::LdC7 => 0x1Du8.serialize(buf),
             Inst::LdC8 => 0x1Eu8.serialize(buf),
-            Inst::LdCS(num) => {
+            Inst::LdCI4S(num) => {
                 0x1Fu8.serialize(buf);
                 num.serialize(buf);
             }
-            Inst::LdC(num) => {
+            Inst::LdCI4(num) => {
                 0x20u8.serialize(buf);
                 num.serialize(buf);
             }
@@ -556,10 +556,6 @@ impl Serializable for Inst {
                 0x6Fu8.serialize(buf);
                 idx.serialize(buf);
             }
-            Inst::New(idx) => {
-                0x73u8.serialize(buf);
-                idx.serialize(buf);
-            }
             Inst::LdFld(idx) => {
                 0x7Bu8.serialize(buf);
                 idx.serialize(buf);
@@ -574,6 +570,11 @@ impl Serializable for Inst {
             }
             Inst::StSFld(idx) => {
                 0x80u8.serialize(buf);
+                idx.serialize(buf);
+            }
+
+            Inst::New(idx) => {
+                0xF0u8.serialize(buf);
                 idx.serialize(buf);
             }
         }
@@ -614,24 +615,25 @@ impl Serializable for Inst {
             0x1C => Inst::LdC6,
             0x1D => Inst::LdC7,
             0x1E => Inst::LdC8,
-            0x1F => Inst::LdCS(i8::deserialize(buf)),
-            0x20 => Inst::LdC(i32::deserialize(buf)),
+            0x1F => Inst::LdCI4S(i8::deserialize(buf)),
+            0x20 => Inst::LdCI4(i32::deserialize(buf)),
 
             0x25 => Inst::Dup,
             0x26 => Inst::Pop,
 
             0x28 => Inst::Call(u32::deserialize(buf)),
 
-            0x2A => Inst::Add,
+            0x2A => Inst::Ret,
 
-            0x58 => Inst::Ret,
+            0x58 => Inst::Add,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
-            0x73 => Inst::New(u32::deserialize(buf)),
             0x7B => Inst::LdFld(u32::deserialize(buf)),
             0x7D => Inst::StFld(u32::deserialize(buf)),
             0x7E => Inst::LdSFld(u32::deserialize(buf)),
             0x80 => Inst::StSFld(u32::deserialize(buf)),
+
+            0xF0 => Inst::New(u32::deserialize(buf)),
 
             0xFE => {
                 let inner_coder = u8::deserialize(buf);

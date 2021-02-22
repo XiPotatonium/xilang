@@ -90,7 +90,10 @@ impl fmt::Display for IrFile {
                 (self.field_tbl.len(), self.method_tbl.len())
             } else {
                 let next_class = &self.class_tbl[class_i + 1];
-                (next_class.fields as usize, next_class.methods as usize)
+                (
+                    next_class.fields as usize - 1,
+                    next_class.methods as usize - 1,
+                )
             };
 
             let flag = TypeFlag::new(class.flag);
@@ -148,8 +151,8 @@ impl Inst {
             Inst::LdC6 => write!(f, "ldc.i4.6"),
             Inst::LdC7 => write!(f, "ldc.i4.7"),
             Inst::LdC8 => write!(f, "ldc.i4.8"),
-            Inst::LdCS(num) => write!(f, "ldc.i4.s {}", num),
-            Inst::LdC(num) => write!(f, "ldc.i4 {}", num),
+            Inst::LdCI4S(num) => write!(f, "ldc.i4.s {}", num),
+            Inst::LdCI4(num) => write!(f, "ldc.i4 {}", num),
 
             Inst::Dup => write!(f, "dup"),
             Inst::Pop => write!(f, "pop"),

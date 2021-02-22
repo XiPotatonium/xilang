@@ -6,6 +6,7 @@ mod vm;
 use clap::{App, Arg};
 
 use std::fs;
+use std::time::SystemTime;
 
 use vm::mem::SharedMem;
 use vm::VMCfg;
@@ -34,7 +35,7 @@ fn main() {
                 Arg::with_name("diagnose")
                     .short("d")
                     .long("diagnose")
-                    .help("Run diagnose or not")
+                    .help("Show diagnose info or not")
                     .takes_value(false),
             )
             .get_matches();
@@ -66,14 +67,37 @@ fn main() {
 
     let mut m = SharedMem::new();
 
+    let start_time = SystemTime::now();
     let (static_inits, entry) = load(entry, &mut m, &cfg);
+    let mod_load_time = SystemTime::now()
+        .duration_since(start_time)
+        .unwrap()
+        .as_secs_f32();
 
     // static inits
-    for static_init in static_inits.iter() {
-        let mut executor = TExecutor::new();
-        executor.run(&static_init, &mut m);
+    let start_time = SystemTime::now();
+    for static_init in static_inits.into_iter() {
+        let mut executor = TExecutor::new(&static_init);
+        executor.run(&mut m);
     }
+    let static_exec_time = SystemTime::now()
+        .duration_since(start_time)
+        .unwrap()
+        .as_secs_f32();
 
-    let mut executor = TExecutor::new();
-    executor.run(&entry, &mut m);
+    let start_time = SystemTime::now();
+    let mut executor = TExecutor::new(&entry);
+    let ret = executor.run(&mut m);
+    let main_exec_time = SystemTime::now()
+        .duration_since(start_time)
+        .unwrap()
+        .as_secs_f32();
+    println!("Thread exits with code {}", ret);
+
+    if cfg.diagnose {
+        println!("=============== Diagnose =================");
+        println!("Module load time: {}", mod_load_time);
+        println!("Static init execution time: {}", static_exec_time);
+        println!("Main execution time: {}", main_exec_time);
+    }
 }

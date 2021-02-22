@@ -113,9 +113,9 @@ impl MethodBuilder {
             8 => Inst::LdC8,
             _ => {
                 if value >= i8::MIN as i32 && value <= i8::MAX as i32 {
-                    Inst::LdCS(value as i8)
+                    Inst::LdCI4S(value as i8)
                 } else {
-                    Inst::LdC(value)
+                    Inst::LdCI4(value)
                 }
             }
         });

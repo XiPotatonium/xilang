@@ -12,5 +12,6 @@ pub struct VMMethod {
 
     /// if this is a virtual method, offset is the index in vtbl
     pub offset: u32,
+    pub locals: usize,
     pub insts: Vec<Inst>,
 }

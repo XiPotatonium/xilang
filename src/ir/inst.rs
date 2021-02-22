@@ -90,9 +90,9 @@ pub enum Inst {
     /// 0x1E, ldc.i4.8
     LdC8,
     /// 0x1F, ldc.i4.s <num>
-    LdCS(i8),
+    LdCI4S(i8),
     /// 0x20, ldc.i4 <num>
-    LdC(i32),
+    LdCI4(i32),
 
     /// 0x25, dup
     ///
@@ -133,12 +133,6 @@ pub enum Inst {
     ///
     /// ..., obj, arg1, ..., argN -> ..., retVal
     CallVirt(u32),
-    /// 0x73, newobj <class>
-    ///
-    /// This is not CLR standard.
-    ///
-    /// ..., f0, ..., fN -> ..., obj
-    New(u32),
     /// 0x7B, ldfld <field>
     ///
     /// Load a field onto the stack
@@ -163,6 +157,12 @@ pub enum Inst {
     ///
     /// ..., val -> ...,
     StSFld(u32),
+    /// 0xF0, new <class>
+    ///
+    /// This is not CLR standard.
+    ///
+    /// ..., f0, ..., fN -> ..., obj
+    New(u32),
 }
 
 impl Inst {
@@ -202,8 +202,8 @@ impl Inst {
             Inst::LdC6 => 1,
             Inst::LdC7 => 1,
             Inst::LdC8 => 1,
-            Inst::LdCS(_) => 2,
-            Inst::LdC(_) => 5,
+            Inst::LdCI4S(_) => 2,
+            Inst::LdCI4(_) => 5,
 
             Inst::Dup => 1,
             Inst::Pop => 1,
@@ -214,11 +214,11 @@ impl Inst {
             Inst::Add => 1,
 
             Inst::CallVirt(_) => 5,
-            Inst::New(_) => 5,
             Inst::LdFld(_) => 5,
             Inst::StFld(_) => 5,
             Inst::LdSFld(_) => 5,
             Inst::StSFld(_) => 5,
+            Inst::New(_) => 5,
         }
     }
 }

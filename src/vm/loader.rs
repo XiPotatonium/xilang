@@ -99,6 +99,8 @@ impl<'c> Loader<'c> {
     }
 
     fn load(&mut self, file: IrFile) -> u32 {
+        // println!("{}\n\n\n\n\n\n\n", file);
+
         let external_mods: Vec<String> = file
             .modref_tbl
             .iter()
@@ -116,6 +118,7 @@ impl<'c> Loader<'c> {
         let mut classes: Vec<Rc<VMClass>> = Vec::new();
         let mut methods: Vec<Rc<VMMethod>> = Vec::new();
         let mut fields: Vec<Rc<VMField>> = Vec::new();
+        let mut codes_iter = file.codes.into_iter();
 
         let (mut field_i, mut method_i) = if let Some(c0) = file.class_tbl.first() {
             (c0.fields as usize - 1, c0.methods as usize - 1)
@@ -139,7 +142,10 @@ impl<'c> Loader<'c> {
                 (file.field_tbl.len(), file.method_tbl.len())
             } else {
                 let next_class = &file.class_tbl[class_i + 1];
-                (next_class.fields as usize, next_class.methods as usize)
+                (
+                    next_class.fields as usize - 1,
+                    next_class.methods as usize - 1,
+                )
             };
 
             let class_flag = TypeFlag::new(class_entry.flag);
@@ -171,7 +177,8 @@ impl<'c> Loader<'c> {
                     ret_ty: VMType::Unk,
                     ps_ty: Vec::new(),
                     offset: 0,
-                    insts: Vec::new(),
+                    locals: method_entry.locals as usize,
+                    insts: codes_iter.next().unwrap(),
                 });
 
                 if ret.flag.is(MethodFlagTag::Static) {
