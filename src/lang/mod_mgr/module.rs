@@ -208,6 +208,7 @@ impl Module {
             for use_ast in uses.iter() {
                 if let AST::Use(raw_path, as_id) = use_ast.as_ref() {
                     let (path_has_crate, path_super_count, can_path) = raw_path.canonicalize();
+                    
                     let use_path = if path_has_crate {
                         let mut use_path = ModPath::new();
                         use_path.push(mod_path.get_root_name().unwrap());

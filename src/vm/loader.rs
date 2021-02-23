@@ -16,7 +16,7 @@ use std::ptr::null;
 
 fn blob_size(blob: &IrBlob) -> usize {
     match blob {
-        IrBlob::Void => panic!("Void type has not heap size"),
+        IrBlob::Void => panic!("Void type has no heap size"),
         IrBlob::Bool => size_of::<i32>(),
         IrBlob::Char => size_of::<u16>(),
         IrBlob::U8 => size_of::<u8>(),
@@ -50,20 +50,12 @@ pub fn load(
         panic!("{} has no entrypoint", entry.display());
     }
 
-    let mut loader = Loader {
-        root_name,
-        mem,
-        cfg,
-        str_map: HashMap::new(),
-        cctor_name: 0,
-        static_inits: Vec::new(),
-    };
-    loader.cctor_name = loader.add_const_str(String::from(CCTOR_NAME));
+    let mut loader = Loader::new(root_name, cfg, mem);
 
     let root = loader.load(f);
 
     (
-        loader.static_inits,
+        loader.cctors,
         mem.mods.get(&root).unwrap().methods[entrypoint - 1].as_ref() as *const VMMethod,
     )
 }
@@ -74,10 +66,23 @@ struct Loader<'c> {
     mem: &'c mut SharedMem,
     str_map: HashMap<String, u32>,
     cctor_name: u32,
-    static_inits: Vec<*const VMMethod>,
+    cctors: Vec<*const VMMethod>,
 }
 
 impl<'c> Loader<'c> {
+    fn new(root_name: String, cfg: &'c VMCfg, mem: &'c mut SharedMem) -> Loader<'c> {
+    let mut loader = Loader {
+        root_name,
+        mem,
+        cfg,
+        str_map: HashMap::new(),
+        cctor_name: 0,
+        cctors: Vec::new(),
+    };
+    loader.cctor_name = loader.add_const_str(String::from(CCTOR_NAME));
+        loader
+    }
+
     fn to_vm_ty(&self, blob_heap: &Vec<IrBlob>, this_mod: &VMModule, idx: u32) -> VMType {
         let sig = &blob_heap[idx as usize];
 
@@ -205,7 +210,7 @@ impl<'c> Loader<'c> {
                 });
 
                 if method.name == self.cctor_name {
-                    self.static_inits.push(method.as_ref() as *const VMMethod);
+                    self.cctors.push(method.as_ref() as *const VMMethod);
                 }
 
                 class_methods.push(method.as_ref() as *const VMMethod);
@@ -250,6 +255,7 @@ impl<'c> Loader<'c> {
                 vtbl_addr: 0,
             });
 
+            // prepare class static space
             let addr = unsafe {
                 to_absolute(
                     MemTag::StaticMem,

@@ -4,16 +4,22 @@ A toy programming language that runs on a simple virtual machine.
 
 ## 1 TODO
 
-* more expressions
-    * arithmatic: -, *, /, %
-    * unary: -
-* more statements:
+* More statements:
     * if
     * loop
-* Constant folding
+* More expressions
+    * arithmatic: -, *, /, %
+    * unary: -
 * GC
+* Constant folding
+* Deserialize .xir file
+* Use and pub use
+* Interface
+* Generic
 
 ## 2 Usage
+
+For examples see [demo.ps1](demo.ps1)
 
 ```
 USAGE:

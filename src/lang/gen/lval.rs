@@ -38,6 +38,8 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: ModPathSlice, expect_method: bool) 
         // module or class
         if id == "crate" {
             ValType::Module(ctx.mgr.root.name().to_owned())
+        } else if id == "super" {
+            ValType::Module(ctx.module.mod_path.get_super().to_string())
         } else if ctx.module.classes.contains_key(id) {
             // a class in current module
             ValType::Class(ctx.module.fullname().to_owned(), id.to_owned())
