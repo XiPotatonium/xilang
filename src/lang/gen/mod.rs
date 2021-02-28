@@ -7,8 +7,8 @@ mod op;
 pub use self::builder::{Builder, MethodBuilder};
 pub use self::gen::gen;
 
-use super::ast::AST;
 use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
+use super::{ast::AST, XicCfg};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -16,6 +16,7 @@ use std::fmt;
 
 pub struct CodeGenCtx<'c> {
     pub mgr: &'c ModMgr,
+    pub cfg: &'c XicCfg,
     pub module: &'c Module,
     pub class: &'c Class,
     pub method: &'c Method,
@@ -41,6 +42,7 @@ impl<'mgr> CodeGenCtx<'mgr> {
             &mut self.method_builder.borrow_mut(),
             self.method.method_idx,
             local_mut.size(),
+            self.cfg.optim >= 1,
         );
     }
 }

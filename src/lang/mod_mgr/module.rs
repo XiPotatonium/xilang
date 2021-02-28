@@ -465,6 +465,7 @@ impl Module {
     fn code_gen_method(
         &self,
         c: &ModMgr,
+        cfg: &XicCfg,
         class: &Class,
         m: &Method,
         ps: &Vec<Box<AST>>,
@@ -497,6 +498,7 @@ impl Module {
         let mut method_builder = MethodBuilder::new();
         let ctx = CodeGenCtx {
             mgr: c,
+            cfg,
             module: self,
             class,
             locals: RefCell::new(Locals::new()),
@@ -526,7 +528,7 @@ impl Module {
         ctx.done();
     }
 
-    pub fn code_gen(&self, c: &ModMgr) {
+    pub fn code_gen(&self, c: &ModMgr, cfg: &XicCfg) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
                 if let AST::Class(id, _, ast_methods, _, ast_init) = class.as_ref() {
@@ -536,7 +538,7 @@ impl Module {
                         AST::Block(_) => {
                             let m = class_ref.methods.get(CCTOR_NAME).unwrap();
                             let ps: Vec<Box<AST>> = vec![];
-                            self.code_gen_method(c, &class_ref, m, &ps, ast_init);
+                            self.code_gen_method(c, cfg, &class_ref, m, &ps, ast_init);
                         }
                         AST::None => (),
                         _ => unreachable!("Parser error"),
@@ -573,15 +575,18 @@ impl Module {
                             }
                         }
                         method_builder.add_inst(Inst::Ret);
-                        self.builder
-                            .borrow_mut()
-                            .done(&mut method_builder, m.method_idx, 0);
+                        self.builder.borrow_mut().done(
+                            &mut method_builder,
+                            m.method_idx,
+                            0,
+                            cfg.optim >= 1,
+                        );
                     }
 
                     for method_ast in ast_methods.iter() {
                         if let AST::Method(id, _, _, ps, block) = method_ast.as_ref() {
                             let m = class_ref.methods.get(id).unwrap();
-                            self.code_gen_method(c, &class_ref, m, ps, block);
+                            self.code_gen_method(c, cfg, &class_ref, m, ps, block);
                         } else {
                             unreachable!("Parser error");
                         }
@@ -594,7 +599,7 @@ impl Module {
 
         // recursive
         for sub in self.sub_mods.values() {
-            sub.code_gen(c);
+            sub.code_gen(c, cfg);
         }
     }
 }

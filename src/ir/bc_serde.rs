@@ -580,6 +580,10 @@ impl Serializable for Inst {
                 offset.serialize(buf);
             }
 
+            Inst::CEq => 0xFE01u16.serialize(buf),
+            Inst::CGt => 0xFE02u16.serialize(buf),
+            Inst::CLt => 0xFE04u16.serialize(buf),
+
             Inst::Add => 0x58u8.serialize(buf),
             Inst::Rem => 0x5Du8.serialize(buf),
 
@@ -676,6 +680,9 @@ impl Serializable for Inst {
             0xFE => {
                 let inner_coder = u8::deserialize(buf);
                 match inner_coder {
+                    0x01 => Inst::CEq,
+                    0x02 => Inst::CGt,
+                    0x04 => Inst::CLt,
                     0x0C => Inst::LdLoc(u16::deserialize(buf)),
                     0x0E => Inst::StLoc(u16::deserialize(buf)),
                     _ => panic!("Unknown inst 0xFE{:X}", inner_coder),

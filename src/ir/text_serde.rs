@@ -169,6 +169,10 @@ impl Inst {
             Inst::BLe(offset) => write!(f, "ble IL_{:0>4X}", i as i32 + offset),
             Inst::BLt(offset) => write!(f, "blt IL_{:0>4X}", i as i32 + offset),
 
+            Inst::CEq => write!(f, "ceq"),
+            Inst::CGt => write!(f, "cgt"),
+            Inst::CLt => write!(f, "clt"),
+
             Inst::Add => write!(f, "add"),
             Inst::Rem => write!(f, "rem"),
 

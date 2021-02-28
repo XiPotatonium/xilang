@@ -141,6 +141,15 @@ pub enum Inst {
     /// 0x3F, blt
     BLt(i32),
 
+    /// 0xFE01, ceq
+    CEq,
+
+    /// 0xFE02 cgt
+    CGt,
+
+    /// 0xFE04 clt
+    CLt,
+
     /// 0x58, add
     ///
     /// Add two numeric values without overflow check
@@ -245,6 +254,10 @@ impl Inst {
             Inst::BGt(_) => 5,
             Inst::BLe(_) => 5,
             Inst::BLt(_) => 5,
+
+            Inst::CEq => 2,
+            Inst::CGt => 2,
+            Inst::CLt => 2,
 
             Inst::Add => 1,
             Inst::Rem => 1,

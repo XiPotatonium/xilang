@@ -307,7 +307,7 @@ impl<'m> TExecutor<'m> {
                 Inst::BEq(offset) => {
                     let cur_state = self.states.last_mut().unwrap();
                     let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
+                    let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(==, lhs, rhs);
                     if b {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -316,7 +316,7 @@ impl<'m> TExecutor<'m> {
                 Inst::BGe(offset) => {
                     let cur_state = self.states.last_mut().unwrap();
                     let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
+                    let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(>=, lhs, rhs);
                     if b {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -325,7 +325,7 @@ impl<'m> TExecutor<'m> {
                 Inst::BGt(offset) => {
                     let cur_state = self.states.last_mut().unwrap();
                     let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
+                    let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(>, lhs, rhs);
                     if b {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -334,7 +334,7 @@ impl<'m> TExecutor<'m> {
                 Inst::BLe(offset) => {
                     let cur_state = self.states.last_mut().unwrap();
                     let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
+                    let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(<=, lhs, rhs);
                     if b {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -343,11 +343,35 @@ impl<'m> TExecutor<'m> {
                 Inst::BLt(offset) => {
                     let cur_state = self.states.last_mut().unwrap();
                     let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
+                    let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(<, lhs, rhs);
                     if b {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
+                }
+                Inst::CEq => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let t = exec_cmp_op!(==, lhs, rhs);
+                    lhs.data.inative_ = if t { 1 } else { 0 };
+                    lhs.tag = SlotTag::INative;
+                }
+                Inst::CGt => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let t = exec_cmp_op!(>, lhs, rhs);
+                    lhs.data.inative_ = if t { 1 } else { 0 };
+                    lhs.tag = SlotTag::INative;
+                }
+                Inst::CLt => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let t = exec_cmp_op!(<, lhs, rhs);
+                    lhs.data.inative_ = if t { 1 } else { 0 };
+                    lhs.tag = SlotTag::INative;
                 }
                 Inst::Add => {
                     let stack = &mut self.states.last_mut().unwrap().stack;

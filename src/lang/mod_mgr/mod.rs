@@ -68,12 +68,12 @@ impl ModMgr {
         self.root.tree(0);
     }
 
-    pub fn build(&mut self) {
+    pub fn build(&mut self, cfg: &XicCfg) {
         // 1. member pass
         self.root.member_pass(self);
 
         // 2. code gen
-        self.root.code_gen(self);
+        self.root.code_gen(self, cfg);
     }
 
     pub fn dump(&self, cfg: &XicCfg) {

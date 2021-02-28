@@ -12,25 +12,20 @@ use super::{fn_descriptor, RValType};
 pub struct MethodBuilder {
     bb: LinkedList<BasicBlock>,
     cur_bb: LLCursor<BasicBlock>,
-    size: u32,
 }
 
 impl MethodBuilder {
     pub fn new() -> MethodBuilder {
         let mut bb = LinkedList::new();
-        bb.push_back(BasicBlock { insts: Vec::new() });
+        bb.push_back(BasicBlock::new());
         let cur_bb = bb.cursor_back_mut();
 
-        MethodBuilder {
-            bb,
-            cur_bb,
-            size: 0,
-        }
+        MethodBuilder { bb, cur_bb }
     }
 
     pub fn insert_after_cur(&mut self) -> LLCursor<BasicBlock> {
         self.bb
-            .insert_after_cursor(&mut self.cur_bb, BasicBlock { insts: Vec::new() })
+            .insert_after_cursor(&mut self.cur_bb, BasicBlock::new())
     }
 
     pub fn set_cur_bb(&mut self, cur_bb: LLCursor<BasicBlock>) -> LLCursor<BasicBlock> {
@@ -42,8 +37,7 @@ impl MethodBuilder {
 
 impl MethodBuilder {
     pub fn add_inst(&mut self, inst: Inst) {
-        self.size += inst.size() as u32;
-        self.cur_bb.as_mut().unwrap().insts.push(inst);
+        self.cur_bb.as_mut().unwrap().push(inst);
     }
 
     pub fn add_inst_stloc(&mut self, local_offset: u16) {
@@ -243,9 +237,36 @@ impl Builder {
     ///
     /// Fill all jump instructions, concat all basic blocks
     ///
-    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals: u16) {
+    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals: u16, fold_br: bool) {
         let ir_method = &mut self.file.method_tbl[((method_idx & !TBL_TAG_MASK) - 1) as usize];
+
+        if fold_br {
+            unimplemented!("Fold branch operation is not implemented");
+            // ceq, brfalse -> bne
+        }
+
+        let mut offset = 0;
+        for bb in m.bb.iter_mut() {
+            bb.offset = offset;
+            offset += bb.size as i32;
+        }
+
         // fill jump instructions
+        for bb in m.bb.iter_mut() {
+            if let Some(target) = &bb.target {
+                let offset = target.as_ref().unwrap().offset - (bb.size as i32 + bb.offset);
+                match bb.insts.last_mut().unwrap() {
+                    Inst::BrFalse(offset_) => *offset_ = offset,
+                    Inst::BrTrue(offset_) => *offset_ = offset,
+                    Inst::BEq(offset_) => *offset_ = offset,
+                    Inst::BGe(offset_) => *offset_ = offset,
+                    Inst::BGt(offset_) => *offset_ = offset,
+                    Inst::BLe(offset_) => *offset_ = offset,
+                    Inst::BLt(offset_) => *offset_ = offset,
+                    _ => unreachable!(),
+                }
+            }
+        }
 
         // concat basic blocks
         let mut code: Vec<Inst> = Vec::new();

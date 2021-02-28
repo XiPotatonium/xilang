@@ -6,6 +6,26 @@ use crate::ir::inst::Inst;
 
 pub struct BasicBlock {
     pub insts: Vec<Inst>,
+    pub offset: i32,
+    pub size: usize,
+    /// Branch target of the last inst,
+    pub target: Option<LLCursor<BasicBlock>>,
+}
+
+impl BasicBlock {
+    pub fn new() -> BasicBlock {
+        BasicBlock {
+            insts: Vec::new(),
+            offset: 0,
+            size: 0,
+            target: None,
+        }
+    }
+
+    pub fn push(&mut self, inst: Inst) {
+        self.size += inst.size();
+        self.insts.push(inst);
+    }
 }
 
 #[derive(Clone)]
@@ -18,6 +38,16 @@ impl<T> LLCursor<T> {
         unsafe {
             if let Some(n) = self.node.as_mut() {
                 Some(n.as_mut())
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn as_ref(&self) -> Option<&T> {
+        unsafe {
+            if let Some(n) = self.node.as_ref() {
+                Some(n.as_ref())
             } else {
                 None
             }

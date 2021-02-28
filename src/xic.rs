@@ -125,7 +125,7 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    module_mgr.build();
+    module_mgr.build(&cfg);
     if cfg.verbose >= 1 {
         println!(
             "Build finished in {} seconds",
