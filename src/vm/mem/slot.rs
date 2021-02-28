@@ -13,6 +13,7 @@ pub enum SlotTag {
     I32,
     I64,
     F64,
+    INative,
     Ref,
     Uninit,
 }
@@ -20,6 +21,7 @@ pub enum SlotTag {
 #[derive(Copy, Clone)]
 pub union SlotData {
     pub i32_: i32,
+    pub inative_: isize,
     pub i64_: i64,
     pub f64_: f64,
     pub ref_: usize,

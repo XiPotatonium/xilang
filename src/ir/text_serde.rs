@@ -47,9 +47,9 @@ impl IrFile {
             write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
         }
 
-        for inst in code.iter() {
+        for (i, inst) in code.iter().enumerate() {
             write!(f, "\n{}", " ".repeat(indent * 8))?;
-            inst.fmt(f, self)?;
+            inst.fmt(f, self, i)?;
         }
 
         Ok(())
@@ -115,7 +115,8 @@ impl fmt::Display for IrFile {
 }
 
 impl Inst {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &IrFile) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &IrFile, i: usize) -> fmt::Result {
+        write!(f, "IL_{:0>4X}:  ", i)?;
         match self {
             Inst::Nop => write!(f, "nop"),
 
@@ -160,7 +161,16 @@ impl Inst {
             Inst::Call(idx) => write!(f, "call {}", c.get_tbl_entry_repr(*idx)),
             Inst::Ret => write!(f, "ret"),
 
+            Inst::BrFalse(offset) => write!(f, "brfalse IL_{:0>4X}", i as i32 + offset),
+            Inst::BrTrue(offset) => write!(f, "brtrue IL_{:0>4X}", i as i32 + offset),
+            Inst::BEq(offset) => write!(f, "beq IL_{:0>4X}", i as i32 + offset),
+            Inst::BGe(offset) => write!(f, "bge IL_{:0>4X}", i as i32 + offset),
+            Inst::BGt(offset) => write!(f, "bgt IL_{:0>4X}", i as i32 + offset),
+            Inst::BLe(offset) => write!(f, "ble IL_{:0>4X}", i as i32 + offset),
+            Inst::BLt(offset) => write!(f, "blt IL_{:0>4X}", i as i32 + offset),
+
             Inst::Add => write!(f, "add"),
+            Inst::Rem => write!(f, "rem"),
 
             Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_tbl_entry_repr(*idx)),
             Inst::NewObj(idx) => write!(f, "newobj {}", c.get_tbl_entry_repr(*idx)),

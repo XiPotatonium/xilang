@@ -71,15 +71,15 @@ struct Loader<'c> {
 
 impl<'c> Loader<'c> {
     fn new(root_name: String, cfg: &'c VMCfg, mem: &'c mut SharedMem) -> Loader<'c> {
-    let mut loader = Loader {
-        root_name,
-        mem,
-        cfg,
-        str_map: HashMap::new(),
-        cctor_name: 0,
-        cctors: Vec::new(),
-    };
-    loader.cctor_name = loader.add_const_str(String::from(CCTOR_NAME));
+        let mut loader = Loader {
+            root_name,
+            mem,
+            cfg,
+            str_map: HashMap::new(),
+            cctor_name: 0,
+            cctors: Vec::new(),
+        };
+        loader.cctor_name = loader.add_const_str(String::from(CCTOR_NAME));
         loader
     }
 

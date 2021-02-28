@@ -120,12 +120,39 @@ pub enum Inst {
     /// `retVal -> ..., retVal`
     Ret,
 
+    /// 0x39, brfalse
+    BrFalse(i32),
+
+    /// 0x3A, brtrue
+    BrTrue(i32),
+
+    /// 0x3B, beq
+    BEq(i32),
+
+    /// 0x3C, bge
+    BGe(i32),
+
+    /// 0x3D, bgt
+    BGt(i32),
+
+    /// 0x3E, ble
+    BLe(i32),
+
+    /// 0x3F, blt
+    BLt(i32),
+
     /// 0x58, add
     ///
     /// Add two numeric values without overflow check
     ///
     /// `..., val1, val2 -> ..., res`
     Add,
+    /// 0x5D, rem
+    ///
+    /// a % b
+    ///
+    /// `..., val1, val2 -> ..., res`
+    Rem,
 
     /// 0x6F, callvirt <method>
     ///
@@ -166,7 +193,7 @@ pub enum Inst {
 }
 
 impl Inst {
-    pub fn size(&self) -> u16 {
+    pub fn size(&self) -> usize {
         match self {
             Inst::Nop => 1,
 
@@ -211,7 +238,16 @@ impl Inst {
             Inst::Call(_) => 5,
             Inst::Ret => 1,
 
+            Inst::BrFalse(_) => 5,
+            Inst::BrTrue(_) => 5,
+            Inst::BEq(_) => 5,
+            Inst::BGe(_) => 5,
+            Inst::BGt(_) => 5,
+            Inst::BLe(_) => 5,
+            Inst::BLt(_) => 5,
+
             Inst::Add => 1,
+            Inst::Rem => 1,
 
             Inst::CallVirt(_) => 5,
             Inst::NewObj(_) => 5,

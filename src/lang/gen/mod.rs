@@ -1,6 +1,8 @@
+mod basic_block;
 mod builder;
 mod gen;
 mod lval;
+mod op;
 
 pub use self::builder::{Builder, MethodBuilder};
 pub use self::gen::gen;
@@ -12,11 +14,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 
-pub struct CodeGenCtx<'mgr> {
-    pub mgr: &'mgr ModMgr,
-    pub module: &'mgr Module,
-    pub class: &'mgr Class,
-    pub method: &'mgr Method,
+pub struct CodeGenCtx<'c> {
+    pub mgr: &'c ModMgr,
+    pub module: &'c Module,
+    pub class: &'c Class,
+    pub method: &'c Method,
     pub locals: RefCell<Locals>,
     pub args_map: HashMap<String, Arg>,
     pub method_builder: RefCell<MethodBuilder>,

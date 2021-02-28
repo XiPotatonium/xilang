@@ -551,7 +551,37 @@ impl Serializable for Inst {
             }
             Inst::Ret => 0x2Au8.serialize(buf),
 
+            Inst::BrFalse(offset) => {
+                0x39u8.serialize(buf);
+                offset.serialize(buf);
+            }
+            Inst::BrTrue(offset) => {
+                0x3Au8.serialize(buf);
+                offset.serialize(buf);
+            }
+            Inst::BEq(offset) => {
+                0x3Bu8.serialize(buf);
+                offset.serialize(buf);
+            }
+            Inst::BGe(offset) => {
+                0x3Cu8.serialize(buf);
+                offset.serialize(buf);
+            }
+            Inst::BGt(offset) => {
+                0x3Du8.serialize(buf);
+                offset.serialize(buf);
+            }
+            Inst::BLe(offset) => {
+                0x3Eu8.serialize(buf);
+                offset.serialize(buf);
+            }
+            Inst::BLt(offset) => {
+                0x3Fu8.serialize(buf);
+                offset.serialize(buf);
+            }
+
             Inst::Add => 0x58u8.serialize(buf),
+            Inst::Rem => 0x5Du8.serialize(buf),
 
             Inst::CallVirt(idx) => {
                 0x6Fu8.serialize(buf);
@@ -625,7 +655,16 @@ impl Serializable for Inst {
 
             0x2A => Inst::Ret,
 
+            0x39 => Inst::BrFalse(i32::deserialize(buf)),
+            0x3A => Inst::BrTrue(i32::deserialize(buf)),
+            0x3B => Inst::BEq(i32::deserialize(buf)),
+            0x3C => Inst::BGe(i32::deserialize(buf)),
+            0x3D => Inst::BGt(i32::deserialize(buf)),
+            0x3E => Inst::BLe(i32::deserialize(buf)),
+            0x3F => Inst::BLt(i32::deserialize(buf)),
+
             0x58 => Inst::Add,
+            0x5D => Inst::Rem,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
             0x73 => Inst::NewObj(u32::deserialize(buf)),

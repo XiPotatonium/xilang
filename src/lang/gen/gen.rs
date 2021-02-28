@@ -1,5 +1,6 @@
 use super::super::ast::AST;
 use super::lval::{gen_lval, gen_path_lval};
+use super::op::BinOp;
 use super::{CodeGenCtx, RValType, ValType};
 
 use crate::ir::flag::*;
@@ -19,11 +20,25 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
     match ast.as_ref() {
         AST::Block(children) => gen_block(ctx, children),
         AST::Stmt(stmt) => gen_stmt(ctx, stmt),
+        AST::If(cond, then, els) => ValType::RVal(gen_if(ctx, cond, then, els)),
         AST::Let(pattern, flag, ty, init) => ValType::RVal(gen_let(ctx, pattern, flag, ty, init)),
         AST::OpNew(ty, fields) => ValType::RVal(gen_new(ctx, ty, fields)),
         AST::OpCall(f, args) => ValType::RVal(gen_call(ctx, f, args)),
         AST::OpAssign(lhs, rhs) => ValType::RVal(gen_assign(ctx, lhs, rhs)),
-        AST::OpAdd(lhs, rhs) => ValType::RVal(gen_add(ctx, lhs, rhs)),
+        AST::OpAdd(lhs, rhs) => ValType::RVal(gen_arith(ctx, BinOp::Add, lhs, rhs)),
+        AST::OpMod(lhs, rhs) => ValType::RVal(gen_arith(ctx, BinOp::Mod, lhs, rhs)),
+        AST::OpLogAnd(lhs, rhs) => {
+            unimplemented!();
+        }
+        AST::OpLogOr(lhs, rhs) => {
+            unimplemented!();
+        }
+        AST::OpNe(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Ne, lhs, rhs)),
+        AST::OpEq(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Eq, lhs, rhs)),
+        AST::OpGe(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Ge, lhs, rhs)),
+        AST::OpGt(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Gt, lhs, rhs)),
+        AST::OpLe(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Le, lhs, rhs)),
+        AST::OpLt(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Lt, lhs, rhs)),
         AST::OpObjAccess(_, _) => {
             let lval = gen_lval(ctx, ast, false);
             match &lval {
@@ -61,6 +76,12 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
             }
         }
         AST::Id(id) => ValType::RVal(gen_id_rval(ctx, id)),
+        AST::Bool(val) => {
+            ctx.method_builder
+                .borrow_mut()
+                .add_inst_ldc(if *val { 1 } else { 0 });
+            ValType::RVal(RValType::Bool)
+        }
         AST::Int(val) => {
             ctx.method_builder.borrow_mut().add_inst_ldc(*val);
             ValType::RVal(RValType::I32)
@@ -122,6 +143,44 @@ fn gen_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
         ValType::Ret(_) => ret,
         _ => unreachable!(),
     }
+}
+
+fn gen_if(ctx: &CodeGenCtx, cond: &Box<AST>, then: &Box<AST>, els: &Box<AST>) -> RValType {
+    let then_bb;
+    let els_bb;
+    let after_bb;
+    {
+        let mut builder = ctx.method_builder.borrow_mut();
+        after_bb = builder.insert_after_cur();
+        els_bb = builder.insert_after_cur();
+        then_bb = builder.insert_after_cur();
+    }
+
+    gen(ctx, cond);
+
+    ctx.method_builder.borrow_mut().set_cur_bb(then_bb);
+    let then_v = gen(ctx, then);
+
+    ctx.method_builder.borrow_mut().set_cur_bb(els_bb);
+    let els_v = gen(ctx, els);
+
+    let ret = if let ValType::RVal(then_v) = then_v {
+        if let ValType::RVal(els_v) = els_v {
+            if then_v != els_v {
+                panic!();
+            } else {
+                then_v
+            }
+        } else {
+            panic!();
+        }
+    } else {
+        RValType::Void
+    };
+
+    ctx.method_builder.borrow_mut().set_cur_bb(after_bb);
+
+    ret
 }
 
 fn gen_let(
@@ -193,7 +252,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
 
             // Find method
             let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
-            let class_ref = mod_rc.classes.get(class).unwrap().borrow_mut();
+            let class_ref = mod_rc.classes.get(class).unwrap().borrow();
             let m = class_ref.methods.get(name).unwrap();
 
             // Add to class file
@@ -359,16 +418,30 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     RValType::Void
 }
 
-fn gen_add(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
+fn gen_arith(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     let lty = gen(ctx, lhs).expect_rval();
     let rty = gen(ctx, rhs).expect_rval();
 
     if lty != rty {
-        panic!("Cannot add between {} and {}", lty, rty);
+        panic!(
+            "Arithmatic op cannot be applied between {} and {}",
+            lty, rty
+        );
     }
 
-    ctx.method_builder.borrow_mut().add_inst(Inst::Add);
+    ctx.method_builder.borrow_mut().add_inst(match op {
+        BinOp::Add => Inst::Add,
+        BinOp::Sub => unimplemented!(),
+        BinOp::Mul => unimplemented!(),
+        BinOp::Div => unimplemented!(),
+        BinOp::Mod => Inst::Rem,
+        _ => unreachable!(),
+    });
     lty
+}
+
+fn gen_cmp(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
+    unimplemented!();
 }
 
 fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {

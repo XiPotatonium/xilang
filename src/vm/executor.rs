@@ -15,6 +15,77 @@ pub struct TExecutor<'m> {
     states: Vec<MethodState<'m>>,
 }
 
+macro_rules! exec_numeric_op {
+    ($op: tt, $lhs: ident, $rhs: ident) => {
+        match $lhs.tag {
+            SlotTag::I32 => match $rhs.tag {
+                SlotTag::I32 => {
+                    $lhs.data.i32_ = $lhs.data.i32_ $op $rhs.data.i32_;
+                }
+                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
+                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::INative => {
+                    $lhs.data.inative_ = $lhs.data.i32_ as isize $op $rhs.data.inative_;
+                    $lhs.tag = SlotTag::INative;
+                }
+                SlotTag::Ref => panic!("Cannot add ref"),
+                SlotTag::Uninit => panic!("Cannot add unint data"),
+            },
+            SlotTag::I64 => unimplemented!(),
+            SlotTag::F64 => unimplemented!(),
+            SlotTag::INative => match $rhs.tag {
+                SlotTag::I32 => {
+                    $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.i32_ as isize;
+                }
+                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
+                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::INative => {
+                    $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.inative_;
+                }
+                SlotTag::Ref => panic!("Cannot add ref"),
+                SlotTag::Uninit => panic!("Cannot add unint data"),
+            },
+            SlotTag::Ref => panic!("Cannot add ref"),
+            SlotTag::Uninit => panic!("Cannot add unint data"),
+        }
+    };
+}
+
+macro_rules! exec_cmp_op {
+    ($op: tt, $lhs: ident, $rhs: ident) => {
+        match $lhs.tag {
+            SlotTag::I32 => match $rhs.tag {
+                SlotTag::I32 => {
+                    $lhs.data.i32_ $op $rhs.data.i32_
+                }
+                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
+                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::INative => {
+                    ($lhs.data.i32_ as isize) $op $rhs.data.inative_
+                }
+                SlotTag::Ref => panic!("Cannot add ref"),
+                SlotTag::Uninit => panic!("Cannot add unint data"),
+            },
+            SlotTag::I64 => unimplemented!(),
+            SlotTag::F64 => unimplemented!(),
+            SlotTag::INative => match $rhs.tag {
+                SlotTag::I32 => {
+                    $lhs.data.inative_ $op $rhs.data.i32_ as isize
+                }
+                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
+                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::INative => {
+                    $lhs.data.inative_ $op $rhs.data.inative_
+                }
+                SlotTag::Ref => panic!("Cannot add ref"),
+                SlotTag::Uninit => panic!("Cannot add unint data"),
+            },
+            SlotTag::Ref => panic!("Cannot add ref"),
+            SlotTag::Uninit => panic!("Cannot add unint data"),
+        }
+    };
+}
+
 impl<'m> TExecutor<'m> {
     pub unsafe fn new(entry: *const VMMethod) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
@@ -217,25 +288,78 @@ impl<'m> TExecutor<'m> {
                         VMType::Unk => unreachable!(),
                     }
                 }
+                Inst::BrFalse(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let v = cur_state.stack.pop();
+                    if v.data.inative_ == 0 {
+                        // false
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
+                Inst::BrTrue(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let v = cur_state.stack.pop();
+                    if v.data.inative_ != 0 {
+                        // true
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
+                Inst::BEq(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let b = exec_cmp_op!(==, lhs, rhs);
+                    if b {
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
+                Inst::BGe(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let b = exec_cmp_op!(>=, lhs, rhs);
+                    if b {
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
+                Inst::BGt(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let b = exec_cmp_op!(>, lhs, rhs);
+                    if b {
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
+                Inst::BLe(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let b = exec_cmp_op!(<=, lhs, rhs);
+                    if b {
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
+                Inst::BLt(offset) => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let rhs = cur_state.stack.pop();
+                    let lhs = cur_state.stack.peek_mut();
+                    let b = exec_cmp_op!(<, lhs, rhs);
+                    if b {
+                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    }
+                }
                 Inst::Add => {
                     let stack = &mut self.states.last_mut().unwrap().stack;
                     let rhs = stack.pop();
                     let lhs = stack.peek_mut();
-                    match lhs.tag {
-                        SlotTag::I32 => match rhs.tag {
-                            SlotTag::I32 => {
-                                lhs.data.i32_ += rhs.data.i32_;
-                            }
-                            SlotTag::I64 => unimplemented!(),
-                            SlotTag::F64 => panic!("Cannot add between float and int"),
-                            SlotTag::Ref => panic!("Cannot add ref"),
-                            SlotTag::Uninit => panic!("Cannot add unint data"),
-                        },
-                        SlotTag::I64 => unimplemented!(),
-                        SlotTag::F64 => unimplemented!(),
-                        SlotTag::Ref => panic!("Cannot add ref"),
-                        SlotTag::Uninit => panic!("Cannot add unint data"),
-                    }
+                    exec_numeric_op!(+, lhs, rhs);
+                }
+                Inst::Rem => {
+                    let stack = &mut self.states.last_mut().unwrap().stack;
+                    let rhs = stack.pop();
+                    let lhs = stack.peek_mut();
+                    exec_numeric_op!(%, lhs, rhs);
                 }
                 Inst::CallVirt(idx) => {
                     let tag = *idx & TBL_TAG_MASK;

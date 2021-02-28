@@ -2,43 +2,48 @@ use crate::ir::blob::IrBlob;
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
 use crate::ir::ir_file::*;
-use crate::ir::util::linkedlist::LinkedList;
 
 use std::collections::HashMap;
+use std::mem;
 
+use super::basic_block::{BasicBlock, LLCursor, LinkedList};
 use super::{fn_descriptor, RValType};
 
-struct BasicBlock {
-    insts: Vec<Inst>,
-}
-
 pub struct MethodBuilder {
-    codes: LinkedList<BasicBlock>,
-    size: u16,
+    bb: LinkedList<BasicBlock>,
+    cur_bb: LLCursor<BasicBlock>,
+    size: u32,
 }
 
 impl MethodBuilder {
     pub fn new() -> MethodBuilder {
-        let mut ret = MethodBuilder {
-            codes: LinkedList::new(),
+        let mut bb = LinkedList::new();
+        bb.push_back(BasicBlock { insts: Vec::new() });
+        let cur_bb = bb.cursor_back_mut();
+
+        MethodBuilder {
+            bb,
+            cur_bb,
             size: 0,
-        };
-
-        // there is a default bb
-        ret.push_bb();
-
-        ret
+        }
     }
 
-    fn push_bb(&mut self) {
-        self.codes.push_back(BasicBlock { insts: Vec::new() });
+    pub fn insert_after_cur(&mut self) -> LLCursor<BasicBlock> {
+        self.bb
+            .insert_after_cursor(&mut self.cur_bb, BasicBlock { insts: Vec::new() })
+    }
+
+    pub fn set_cur_bb(&mut self, cur_bb: LLCursor<BasicBlock>) -> LLCursor<BasicBlock> {
+        let mut cur_bb = cur_bb;
+        mem::swap(&mut cur_bb, &mut self.cur_bb);
+        cur_bb
     }
 }
 
 impl MethodBuilder {
     pub fn add_inst(&mut self, inst: Inst) {
-        self.size += inst.size();
-        self.codes.back_mut().unwrap().insts.push(inst);
+        self.size += inst.size() as u32;
+        self.cur_bb.as_mut().unwrap().insts.push(inst);
     }
 
     pub fn add_inst_stloc(&mut self, local_offset: u16) {
@@ -244,7 +249,7 @@ impl Builder {
 
         // concat basic blocks
         let mut code: Vec<Inst> = Vec::new();
-        for bb in m.codes.iter_mut() {
+        for bb in m.bb.iter_mut() {
             code.append(&mut bb.insts);
         }
         ir_method.locals = locals;
