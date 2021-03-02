@@ -28,7 +28,6 @@ impl BasicBlock {
     }
 }
 
-#[derive(Clone)]
 pub struct LLCursor<T> {
     node: *mut Node<T>,
 }
@@ -52,6 +51,12 @@ impl<T> LLCursor<T> {
                 None
             }
         }
+    }
+}
+
+impl<T> Clone for LLCursor<T> {
+    fn clone(&self) -> Self {
+        LLCursor { node: self.node }
     }
 }
 

@@ -1,4 +1,4 @@
-use super::AST;
+use super::super::ast::AST;
 
 impl AST {
     pub fn is_constant(&self) -> bool {
@@ -24,7 +24,7 @@ impl AST {
             | Self::TypeTuple(_)
             | Self::Path(_)
             | Self::TypeArr(_, _) => false,
-            Self::Stmt(stmt) => stmt.is_constant(),
+            Self::ExprStmt(stmt) => stmt.is_constant(),
             Self::Block(children) => {
                 children.len() == 0 || (children.len() == 1 && children[0].is_constant())
             }

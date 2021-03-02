@@ -495,7 +495,6 @@ impl Module {
             }
         }
 
-        let mut method_builder = MethodBuilder::new();
         let ctx = CodeGenCtx {
             mgr: c,
             cfg,
@@ -504,7 +503,7 @@ impl Module {
             locals: RefCell::new(Locals::new()),
             method: m,
             args_map,
-            method_builder: RefCell::new(method_builder),
+            method_builder: RefCell::new(MethodBuilder::new()),
         };
         let ret = gen(&ctx, block);
 

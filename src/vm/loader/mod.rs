@@ -1,6 +1,9 @@
+mod bc_deser;
+
 use super::data::*;
 use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
 use super::VMCfg;
+use bc_deser::VMFile;
 
 use crate::ir::blob::IrBlob;
 use crate::ir::flag::*;
@@ -42,9 +45,9 @@ pub fn load(
     mem: &mut SharedMem,
     cfg: &VMCfg,
 ) -> (Vec<*const VMMethod>, *const VMMethod) {
-    let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
+    let f = VMFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
-    let root_name = f.mod_name().unwrap().to_owned();
+    let root_name = f.mod_name().to_owned();
     let entrypoint = (f.mod_tbl[0].entrypoint & !TBL_TAG_MASK) as usize;
     if entrypoint == 0 {
         panic!("{} has no entrypoint", entry.display());
@@ -133,7 +136,7 @@ impl<'c> Loader<'c> {
         }
     }
 
-    fn load(&mut self, file: IrFile) -> u32 {
+    fn load(&mut self, file: VMFile) -> u32 {
         // println!("{}\n\n\n\n\n\n\n", file);
 
         let external_mods: Vec<String> = file
@@ -327,7 +330,7 @@ impl<'c> Loader<'c> {
                 let mod_name = path.get_self_name().unwrap();
                 sub_mod_path.push(format!("{}.xibc", mod_name));
                 if sub_mod_path.is_file() {
-                    self.load(IrFile::from_binary(Box::new(
+                    self.load(VMFile::from_binary(Box::new(
                         fs::File::open(&sub_mod_path).unwrap(),
                     )));
                 } else {
@@ -335,7 +338,7 @@ impl<'c> Loader<'c> {
                     if sub_mod_path.is_dir() {
                         sub_mod_path.push(format!("{}.xibc", mod_name));
                         if sub_mod_path.is_file() {
-                            self.load(IrFile::from_binary(Box::new(
+                            self.load(VMFile::from_binary(Box::new(
                                 fs::File::open(&sub_mod_path).unwrap(),
                             )));
                         } else {

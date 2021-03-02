@@ -120,6 +120,9 @@ pub enum Inst {
     /// `retVal -> ..., retVal`
     Ret,
 
+    /// 0x38, br
+    Br(i32),
+
     /// 0x39, brfalse
     BrFalse(i32),
 
@@ -247,6 +250,7 @@ impl Inst {
             Inst::Call(_) => 5,
             Inst::Ret => 1,
 
+            Inst::Br(_) => 5,
             Inst::BrFalse(_) => 5,
             Inst::BrTrue(_) => 5,
             Inst::BEq(_) => 5,

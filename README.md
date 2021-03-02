@@ -5,10 +5,9 @@ A toy programming language that runs on a simple virtual machine.
 ## 1 TODO
 
 * More statements:
-    * if
     * loop
 * More expressions
-    * arithmatic: -, *, /, %
+    * arithmatic: -, *, /
     * unary: -
 * GC
 * Constant folding

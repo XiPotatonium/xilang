@@ -68,7 +68,7 @@ impl fmt::Display for AST {
             ),
             Self::Param(id, flag, ty) => write!(
                 f,
-                "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"type\":{}}}",
+                "{{\"name\":\"(param){}\",\"flag\":\"{}\",\"type\":{}}}",
                 id, flag, ty
             ),
             Self::Let(pattern, flag, ty, init) => write!(
@@ -79,7 +79,7 @@ impl fmt::Display for AST {
                 ty,
                 init.as_ref()
             ),
-            Self::Stmt(stmt) => write!(f, "{{\"name\":\"(stmt)\",\"stmt\":{}}}", stmt),
+            Self::ExprStmt(stmt) => write!(f, "{{\"name\":\"(ExprStmt)\",\"stmt\":{}}}", stmt),
             Self::Block(children) => write!(
                 f,
                 "{{\"name\":\"(block)\",\"children\":{}}}",

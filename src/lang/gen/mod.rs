@@ -1,6 +1,7 @@
 mod basic_block;
 mod builder;
 mod gen;
+mod interpreter;
 mod lval;
 mod op;
 
@@ -121,8 +122,6 @@ pub fn fn_descriptor(ret_ty: &RValType, ps: &Vec<RValType>) -> String {
         ret_ty
     )
 }
-
-pub enum LValType {}
 
 impl fmt::Display for ValType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

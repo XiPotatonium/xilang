@@ -40,6 +40,26 @@ impl MethodBuilder {
         self.cur_bb.as_mut().unwrap().push(inst);
     }
 
+    pub fn add_brfalse(&mut self, target: LLCursor<BasicBlock>) {
+        let cur_bb = self.cur_bb.as_mut().unwrap();
+        cur_bb.push(Inst::BrFalse(0));
+        if let Some(_) = cur_bb.target {
+            unreachable!();
+        } else {
+            cur_bb.target = Some(target);
+        }
+    }
+
+    pub fn add_br(&mut self, target: LLCursor<BasicBlock>) {
+        let cur_bb = self.cur_bb.as_mut().unwrap();
+        cur_bb.push(Inst::Br(0));
+        if let Some(_) = cur_bb.target {
+            unreachable!();
+        } else {
+            cur_bb.target = Some(target);
+        }
+    }
+
     pub fn add_inst_stloc(&mut self, local_offset: u16) {
         self.add_inst(match local_offset {
             0 => Inst::StLoc0,
@@ -256,6 +276,7 @@ impl Builder {
             if let Some(target) = &bb.target {
                 let offset = target.as_ref().unwrap().offset - (bb.size as i32 + bb.offset);
                 match bb.insts.last_mut().unwrap() {
+                    Inst::Br(offset_) => *offset_ = offset,
                     Inst::BrFalse(offset_) => *offset_ = offset,
                     Inst::BrTrue(offset_) => *offset_ = offset,
                     Inst::BEq(offset_) => *offset_ = offset,

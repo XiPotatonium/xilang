@@ -1,5 +1,4 @@
 mod disp;
-mod interpreter;
 
 use crate::ir::flag::*;
 use crate::ir::path::ModPath;
@@ -21,7 +20,7 @@ pub enum AST {
     /// pattern, ty, flag, init: Box<AST>
     Let(Box<AST>, LocalFlag, Box<AST>, Box<AST>),
 
-    Stmt(Box<AST>),
+    ExprStmt(Box<AST>),
 
     /// children: Vec<Stmt>
     Block(Vec<Box<AST>>),

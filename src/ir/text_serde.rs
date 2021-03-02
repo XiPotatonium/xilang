@@ -47,9 +47,11 @@ impl IrFile {
             write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
         }
 
-        for (i, inst) in code.iter().enumerate() {
+        let mut offset = 0;
+        for inst in code.iter() {
             write!(f, "\n{}", " ".repeat(indent * 8))?;
-            inst.fmt(f, self, i)?;
+            inst.fmt(f, self, offset)?;
+            offset += inst.size();
         }
 
         Ok(())
@@ -161,13 +163,18 @@ impl Inst {
             Inst::Call(idx) => write!(f, "call {}", c.get_tbl_entry_repr(*idx)),
             Inst::Ret => write!(f, "ret"),
 
-            Inst::BrFalse(offset) => write!(f, "brfalse IL_{:0>4X}", i as i32 + offset),
-            Inst::BrTrue(offset) => write!(f, "brtrue IL_{:0>4X}", i as i32 + offset),
-            Inst::BEq(offset) => write!(f, "beq IL_{:0>4X}", i as i32 + offset),
-            Inst::BGe(offset) => write!(f, "bge IL_{:0>4X}", i as i32 + offset),
-            Inst::BGt(offset) => write!(f, "bgt IL_{:0>4X}", i as i32 + offset),
-            Inst::BLe(offset) => write!(f, "ble IL_{:0>4X}", i as i32 + offset),
-            Inst::BLt(offset) => write!(f, "blt IL_{:0>4X}", i as i32 + offset),
+            Inst::Br(offset) => write!(f, "br IL_{:0>4X}", (i + self.size()) as i32 + offset),
+            Inst::BrFalse(offset) => {
+                write!(f, "brfalse IL_{:0>4X}", (i + self.size()) as i32 + offset)
+            }
+            Inst::BrTrue(offset) => {
+                write!(f, "brtrue IL_{:0>4X}", (i + self.size()) as i32 + offset)
+            }
+            Inst::BEq(offset) => write!(f, "beq IL_{:0>4X}", (i + self.size()) as i32 + offset),
+            Inst::BGe(offset) => write!(f, "bge IL_{:0>4X}", (i + self.size()) as i32 + offset),
+            Inst::BGt(offset) => write!(f, "bgt IL_{:0>4X}", (i + self.size()) as i32 + offset),
+            Inst::BLe(offset) => write!(f, "ble IL_{:0>4X}", (i + self.size()) as i32 + offset),
+            Inst::BLt(offset) => write!(f, "blt IL_{:0>4X}", (i + self.size()) as i32 + offset),
 
             Inst::CEq => write!(f, "ceq"),
             Inst::CGt => write!(f, "cgt"),

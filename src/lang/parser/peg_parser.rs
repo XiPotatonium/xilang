@@ -25,14 +25,15 @@ pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
         match sub.as_rule() {
             Rule::EOI => break,
             Rule::Class => classes.push(build_class(sub)),
-            Rule::ModStmt => mods.push(build_id(sub.into_inner().next().unwrap())),
-            Rule::UseStmt => {
+            Rule::Modules => mods.push(build_id(sub.into_inner().next().unwrap())),
+            Rule::UseDeclarations => {
                 let mut iter = sub.into_inner();
                 let path = build_pathexpr(iter.next().unwrap());
-                let as_id = if let Some(as_id) = iter.next() {
-                    Some(build_id(as_id))
-                } else {
-                    None
+                let as_clause = iter.next().unwrap();
+                let as_id = match as_clause.as_rule() {
+                    Rule::Id => Some(build_id(as_clause)),
+                    Rule::Semi => None,
+                    _ => unreachable!(),
                 };
 
                 uses.push(Box::new(AST::Use(path, as_id)));
@@ -227,45 +228,63 @@ fn build_if(tree: Pair<Rule>) -> Box<AST> {
 }
 
 fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
-    let sub = tree.into_inner().next().unwrap();
-    Box::new(AST::Stmt(match sub.as_rule() {
+    let mut iter = tree.into_inner();
+    let clause = iter.next().unwrap();
+    match clause.as_rule() {
         Rule::LetStmt => {
-            let mut iter = sub.into_inner();
+            let mut iter = clause.into_inner();
             let pattern = build_pattern(iter.next().unwrap());
-            Box::new(if let Some(sub) = iter.next() {
-                match sub.as_rule() {
-                    Rule::Type => {
-                        // has type
-                        let ty = build_type(sub);
-                        if let Some(sub) = iter.next() {
-                            AST::Let(pattern, LocalFlag::default(), ty, build_expr(sub))
-                        } else {
+            let clause = iter.next().unwrap();
+            Box::new(match clause.as_rule() {
+                Rule::Type => {
+                    // has type
+                    let ty = build_type(clause);
+                    let clause = iter.next().unwrap();
+                    match clause.as_rule() {
+                        Rule::Semi => {
                             // no init
                             AST::Let(pattern, LocalFlag::default(), ty, Box::new(AST::None))
                         }
-                    }
-                    _ => {
-                        // no type but has init
-                        AST::Let(
+                        Rule::Eq => AST::Let(
                             pattern,
                             LocalFlag::default(),
-                            Box::new(AST::None),
-                            build_expr(sub),
-                        )
+                            ty,
+                            build_expr(iter.next().unwrap()),
+                        ),
+                        _ => unreachable!(),
                     }
                 }
-            } else {
-                // no type and no init
-                AST::Let(
-                    pattern,
-                    LocalFlag::default(),
-                    Box::new(AST::None),
-                    Box::new(AST::None),
-                )
+                Rule::Eq => {
+                    // no type but has init
+                    AST::Let(
+                        pattern,
+                        LocalFlag::default(),
+                        Box::new(AST::None),
+                        build_expr(iter.next().unwrap()),
+                    )
+                }
+                Rule::Semi => {
+                    // no type and no init
+                    AST::Let(
+                        pattern,
+                        LocalFlag::default(),
+                        Box::new(AST::None),
+                        Box::new(AST::None),
+                    )
+                }
+                _ => unreachable!(),
             })
         }
-        _ => build_expr(sub),
-    }))
+        _ => {
+            let sub = build_expr(clause);
+            if let Some(_) = iter.next() {
+                // Semi
+                Box::new(AST::ExprStmt(sub))
+            } else {
+                sub
+            }
+        }
+    }
 }
 
 fn build_block(tree: Pair<Rule>) -> Box<AST> {
@@ -282,7 +301,7 @@ fn build_block(tree: Pair<Rule>) -> Box<AST> {
 fn build_assign(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let lhs = build_log_or_expr(iter.next().unwrap());
-    iter.next();
+    iter.next(); // "="
     Box::new(AST::OpAssign(lhs, build_log_or_expr(iter.next().unwrap())))
 }
 
@@ -314,8 +333,8 @@ fn build_eq_expr(tree: Pair<Rule>) -> Box<AST> {
     loop {
         if let Some(op) = iter.next() {
             ret = Box::new(match op.as_rule() {
-                Rule::EqOp => AST::OpEq(ret, build_comp_expr(iter.next().unwrap())),
-                Rule::NeOp => AST::OpNe(ret, build_comp_expr(iter.next().unwrap())),
+                Rule::EqEq => AST::OpEq(ret, build_comp_expr(iter.next().unwrap())),
+                Rule::Ne => AST::OpNe(ret, build_comp_expr(iter.next().unwrap())),
                 _ => unreachable!(),
             });
         } else {
@@ -332,10 +351,10 @@ fn build_comp_expr(tree: Pair<Rule>) -> Box<AST> {
     loop {
         if let Some(op) = iter.next() {
             ret = Box::new(match op.as_rule() {
-                Rule::LeOp => AST::OpLe(ret, build_add_expr(iter.next().unwrap())),
-                Rule::LtOp => AST::OpLt(ret, build_add_expr(iter.next().unwrap())),
-                Rule::GeOp => AST::OpGe(ret, build_add_expr(iter.next().unwrap())),
-                Rule::GtOp => AST::OpGt(ret, build_add_expr(iter.next().unwrap())),
+                Rule::Le => AST::OpLe(ret, build_add_expr(iter.next().unwrap())),
+                Rule::Lt => AST::OpLt(ret, build_add_expr(iter.next().unwrap())),
+                Rule::Ge => AST::OpGe(ret, build_add_expr(iter.next().unwrap())),
+                Rule::Gt => AST::OpGt(ret, build_add_expr(iter.next().unwrap())),
                 _ => unreachable!(),
             });
         } else {
@@ -352,8 +371,8 @@ fn build_add_expr(tree: Pair<Rule>) -> Box<AST> {
     loop {
         if let Some(op) = iter.next() {
             ret = Box::new(match op.as_rule() {
-                Rule::AddOp => AST::OpAdd(ret, build_mul_expr(iter.next().unwrap())),
-                Rule::SubOp => AST::OpSub(ret, build_mul_expr(iter.next().unwrap())),
+                Rule::Plus => AST::OpAdd(ret, build_mul_expr(iter.next().unwrap())),
+                Rule::Minus => AST::OpSub(ret, build_mul_expr(iter.next().unwrap())),
                 _ => unreachable!(),
             });
         } else {
@@ -370,9 +389,9 @@ fn build_mul_expr(tree: Pair<Rule>) -> Box<AST> {
     loop {
         if let Some(op) = iter.next() {
             ret = Box::new(match op.as_rule() {
-                Rule::MulOp => AST::OpMul(ret, build_cast_expr(iter.next().unwrap())),
-                Rule::DivOp => AST::OpDiv(ret, build_cast_expr(iter.next().unwrap())),
-                Rule::ModOp => AST::OpMod(ret, build_cast_expr(iter.next().unwrap())),
+                Rule::Star => AST::OpMul(ret, build_cast_expr(iter.next().unwrap())),
+                Rule::Slash => AST::OpDiv(ret, build_cast_expr(iter.next().unwrap())),
+                Rule::Percent => AST::OpMod(ret, build_cast_expr(iter.next().unwrap())),
                 _ => unreachable!(),
             });
         } else {
@@ -408,9 +427,9 @@ fn build_unary_expr(tree: Pair<Rule>) -> Box<AST> {
 
     for op in iter {
         ret = Box::new(match op.as_rule() {
-            Rule::AddOp => AST::OpPos(ret),
-            Rule::LogNegOp => AST::OpLogNot(ret),
-            Rule::SubOp => AST::OpNeg(ret),
+            Rule::Plus => AST::OpPos(ret),
+            Rule::Not => AST::OpLogNot(ret),
+            Rule::Minus => AST::OpNeg(ret),
             _ => unreachable!(),
         });
     }

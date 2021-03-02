@@ -1,7 +1,10 @@
 use super::data::{VMMethod, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
+
 use crate::ir::inst::Inst;
 use crate::ir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
+
+use std::mem::transmute;
 
 struct MethodState<'m> {
     ip: usize,
@@ -9,6 +12,42 @@ struct MethodState<'m> {
     stack: Stack,
     locals: Vec<Slot>,
     args: Vec<Slot>,
+}
+
+impl<'m> MethodState<'m> {
+    pub fn consume_u8(&mut self) -> u8 {
+        self.ip += 1;
+        self.method.insts[self.ip - 1]
+    }
+
+    pub fn consume_u16(&mut self) -> u16 {
+        self.ip += 2;
+        ((self.method.insts[self.ip - 2] as u16) << 8) + (self.method.insts[self.ip - 1] as u16)
+    }
+
+    pub fn consume_u32(&mut self) -> u32 {
+        self.ip += 4;
+        ((self.method.insts[self.ip - 4] as u32) << 24)
+            + ((self.method.insts[self.ip - 3] as u32) << 16)
+            + ((self.method.insts[self.ip - 2] as u32) << 8)
+            + (self.method.insts[self.ip - 1] as u32)
+    }
+
+    pub fn consume_i8(&mut self) -> i8 {
+        self.ip += 1;
+        unsafe { transmute(self.method.insts[self.ip - 1]) }
+    }
+
+    pub fn consume_i32(&mut self) -> i32 {
+        self.ip += 4;
+        let bytes = [
+            self.method.insts[self.ip - 4],
+            self.method.insts[self.ip - 3],
+            self.method.insts[self.ip - 2],
+            self.method.insts[self.ip - 1],
+        ];
+        i32::from_be_bytes(bytes)
+    }
 }
 
 pub struct TExecutor<'m> {
@@ -106,137 +145,167 @@ impl<'m> TExecutor<'m> {
         });
     }
 
-    fn fetch(&mut self) -> &'m Inst {
-        let state = self.states.last_mut().unwrap();
-        state.ip += 1;
-        &state.method.insts[state.ip - 1]
-    }
-
     pub unsafe fn run(&mut self, mem: &'m mut SharedMem) -> u32 {
         loop {
-            match self.fetch() {
-                Inst::Nop => {}
-                Inst::LdArg0 => {
+            let code = self.states.last_mut().unwrap().consume_u8();
+            match code {
+                // nop
+                0x00 => {}
+                // ldarg0
+                0x02 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.args[0]);
                 }
-                Inst::LdArg1 => {
+                // ldarg1
+                0x03 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.args[1]);
                 }
-                Inst::LdArg2 => {
+                // ldarg2
+                0x04 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.args[2]);
                 }
-                Inst::LdArg3 => {
+                // ldarg3
+                0x05 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.args[3]);
                 }
-                Inst::LdArgS(idx) => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.args[*idx as usize]);
-                }
-                Inst::StArgS(idx) => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    cur_state.args[*idx as usize] = cur_state.stack.pop();
-                }
-                Inst::LdLoc0 => {
+                // ldloc0
+                0x06 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.locals[0]);
                 }
-                Inst::LdLoc1 => {
+                // ldloc1
+                0x07 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.locals[1]);
                 }
-                Inst::LdLoc2 => {
+                // ldloc2
+                0x08 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.locals[2]);
                 }
-                Inst::LdLoc3 => {
+                // ldloc3
+                0x09 => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.stack.push(cur_state.locals[3]);
                 }
-                Inst::LdLocS(idx) => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.locals[*idx as usize]);
-                }
-                Inst::LdLoc(idx) => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.locals[*idx as usize]);
-                }
-                Inst::StLoc0 => {
+                // stloc0
+                0x0A => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.locals[0] = cur_state.stack.pop();
                 }
-                Inst::StLoc1 => {
+                // stloc1
+                0x0B => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.locals[1] = cur_state.stack.pop();
                 }
-                Inst::StLoc2 => {
+                // stloc2
+                0x0C => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.locals[2] = cur_state.stack.pop();
                 }
-                Inst::StLoc3 => {
+                // stloc3
+                0x0D => {
                     let cur_state = self.states.last_mut().unwrap();
                     cur_state.locals[3] = cur_state.stack.pop();
                 }
-                Inst::StLocS(idx) => {
+                // ldarg.s
+                0x0E => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.locals[*idx as usize] = cur_state.stack.pop();
+                    let idx = cur_state.consume_u8();
+                    cur_state.stack.push(cur_state.args[idx as usize]);
                 }
-                Inst::StLoc(idx) => {
+                // starg.s
+                0x10 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.locals[*idx as usize] = cur_state.stack.pop();
+                    let idx = cur_state.consume_u8();
+                    cur_state.args[idx as usize] = cur_state.stack.pop();
                 }
-                Inst::LdNull => {
+                // ldloc.s
+                0x11 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u8();
+                    cur_state.stack.push(cur_state.locals[idx as usize]);
+                }
+                // stloc.s
+                0x13 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u8();
+                    cur_state.locals[idx as usize] = cur_state.stack.pop();
+                }
+                // ldnull
+                0x14 => {
                     self.states.last_mut().unwrap().stack.push(Slot::null());
                 }
-                Inst::LdCM1 => {
+                // ldc.i4.m1
+                0x15 => {
                     self.states.last_mut().unwrap().stack.push_i32(-1);
                 }
-                Inst::LdC0 => {
+                // ldc.i4.0
+                0x16 => {
                     self.states.last_mut().unwrap().stack.push_i32(0);
                 }
-                Inst::LdC1 => {
+                // ldc.i4.1
+                0x17 => {
                     self.states.last_mut().unwrap().stack.push_i32(1);
                 }
-                Inst::LdC2 => {
+                // ldc.i4.2
+                0x18 => {
                     self.states.last_mut().unwrap().stack.push_i32(2);
                 }
-                Inst::LdC3 => {
+                // ldc.i4.3
+                0x19 => {
                     self.states.last_mut().unwrap().stack.push_i32(3);
                 }
-                Inst::LdC4 => {
+                // ldc.i4.4
+                0x1A => {
                     self.states.last_mut().unwrap().stack.push_i32(4);
                 }
-                Inst::LdC5 => {
+                // ldc.i4.5
+                0x1B => {
                     self.states.last_mut().unwrap().stack.push_i32(5);
                 }
-                Inst::LdC6 => {
+                // ldc.i4.6
+                0x1C => {
                     self.states.last_mut().unwrap().stack.push_i32(6);
                 }
-                Inst::LdC7 => {
+                // ldc.i4.7
+                0x1D => {
                     self.states.last_mut().unwrap().stack.push_i32(7);
                 }
-                Inst::LdC8 => {
+                // ldc.i4.8
+                0x1E => {
                     self.states.last_mut().unwrap().stack.push_i32(8);
                 }
-                Inst::LdCI4S(v) => {
-                    self.states.last_mut().unwrap().stack.push_i32(*v as i32);
+                // ldc.i4.s
+                0x1F => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let v = cur_state.consume_i8();
+                    cur_state.stack.push_i32(v as i32);
                 }
-                Inst::LdCI4(v) => {
-                    self.states.last_mut().unwrap().stack.push_i32(*v);
+                // ldc.i4
+                0x20 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let v = cur_state.consume_i32();
+                    cur_state.stack.push_i32(v);
                 }
-                Inst::Dup => {
+                // dup
+                0x25 => {
                     self.states.last_mut().unwrap().stack.dup();
                 }
-                Inst::Pop => {
+                // pop
+                0x26 => {
                     self.states.last_mut().unwrap().stack.pop();
                 }
-                Inst::Call(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
-                    let ctx = self.states.last().unwrap().method.ctx.as_ref().unwrap();
+                // call
+                0x28 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let ctx = cur_state.method.ctx.as_ref().unwrap();
 
                     let (arg_len, callee) = match tag {
                         TBL_METHOD_TAG => (
@@ -253,7 +322,8 @@ impl<'m> TExecutor<'m> {
                     let args = self.states.last_mut().unwrap().stack.pop_n(arg_len);
                     self.call(args, callee);
                 }
-                Inst::Ret => {
+                // ret
+                0x2A => {
                     let cur_state = self.states.last_mut().unwrap();
                     match cur_state.method.ret_ty {
                         VMType::Void => {
@@ -288,24 +358,36 @@ impl<'m> TExecutor<'m> {
                         VMType::Unk => unreachable!(),
                     }
                 }
-                Inst::BrFalse(offset) => {
+                // br
+                0x38 => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
+                    cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                }
+                // brfalse
+                0x39 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let v = cur_state.stack.pop();
                     if v.data.inative_ == 0 {
                         // false
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::BrTrue(offset) => {
+                // brtrue
+                0x3A => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let v = cur_state.stack.pop();
                     if v.data.inative_ != 0 {
                         // true
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::BEq(offset) => {
+                // beq
+                0x3B => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let rhs = cur_state.stack.pop();
                     let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(==, lhs, rhs);
@@ -313,8 +395,10 @@ impl<'m> TExecutor<'m> {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::BGe(offset) => {
+                // bge
+                0x3C => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let rhs = cur_state.stack.pop();
                     let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(>=, lhs, rhs);
@@ -322,8 +406,10 @@ impl<'m> TExecutor<'m> {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::BGt(offset) => {
+                // bgt
+                0x3D => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let rhs = cur_state.stack.pop();
                     let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(>, lhs, rhs);
@@ -331,8 +417,10 @@ impl<'m> TExecutor<'m> {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::BLe(offset) => {
+                // ble
+                0x3E => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let rhs = cur_state.stack.pop();
                     let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(<=, lhs, rhs);
@@ -340,8 +428,10 @@ impl<'m> TExecutor<'m> {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::BLt(offset) => {
+                // blt
+                0x3F => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let offset = cur_state.consume_i32();
                     let rhs = cur_state.stack.pop();
                     let lhs = cur_state.stack.pop();
                     let b = exec_cmp_op!(<, lhs, rhs);
@@ -349,46 +439,27 @@ impl<'m> TExecutor<'m> {
                         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                     }
                 }
-                Inst::CEq => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
-                    let t = exec_cmp_op!(==, lhs, rhs);
-                    lhs.data.inative_ = if t { 1 } else { 0 };
-                    lhs.tag = SlotTag::INative;
-                }
-                Inst::CGt => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
-                    let t = exec_cmp_op!(>, lhs, rhs);
-                    lhs.data.inative_ = if t { 1 } else { 0 };
-                    lhs.tag = SlotTag::INative;
-                }
-                Inst::CLt => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.peek_mut();
-                    let t = exec_cmp_op!(<, lhs, rhs);
-                    lhs.data.inative_ = if t { 1 } else { 0 };
-                    lhs.tag = SlotTag::INative;
-                }
-                Inst::Add => {
+                // add
+                0x58 => {
                     let stack = &mut self.states.last_mut().unwrap().stack;
                     let rhs = stack.pop();
                     let lhs = stack.peek_mut();
                     exec_numeric_op!(+, lhs, rhs);
                 }
-                Inst::Rem => {
+                // rem
+                0x5D => {
                     let stack = &mut self.states.last_mut().unwrap().stack;
                     let rhs = stack.pop();
                     let lhs = stack.peek_mut();
                     exec_numeric_op!(%, lhs, rhs);
                 }
-                Inst::CallVirt(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
-                    let ctx = self.states.last().unwrap().method.ctx.as_ref().unwrap();
+                // callvirt
+                0x6F => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let ctx = cur_state.method.ctx.as_ref().unwrap();
 
                     let (arg_len, callee) = match tag {
                         TBL_METHOD_TAG => (
@@ -407,13 +478,16 @@ impl<'m> TExecutor<'m> {
                         unimplemented!("Calling a virtual method is not implemented");
                     }
 
-                    let args = self.states.last_mut().unwrap().stack.pop_n(arg_len + 1);
+                    let args = cur_state.stack.pop_n(arg_len + 1);
                     self.call(args, callee);
                 }
-                Inst::NewObj(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
-                    let ctx = self.states.last().unwrap().method.ctx.as_ref().unwrap();
+                // newobj
+                0x73 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let ctx = cur_state.method.ctx.as_ref().unwrap();
 
                     let (arg_len, callee) = match tag {
                         TBL_METHOD_TAG => (
@@ -427,7 +501,6 @@ impl<'m> TExecutor<'m> {
                         _ => unreachable!(),
                     };
 
-                    let cur_state = self.states.last_mut().unwrap();
                     let mut args: Vec<Slot> = Vec::new();
                     if let VMType::Obj(class) = &callee.as_ref().unwrap().ps_ty[0] {
                         let offset = mem.heap.new_obj(*class);
@@ -440,10 +513,12 @@ impl<'m> TExecutor<'m> {
 
                     self.call(args, callee);
                 }
-                Inst::LdFld(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                // ldfld
+                0x7B => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
                     let (mem_tag, offset) = cur_state.stack.pop().as_addr();
                     if let MemTag::HeapMem = mem_tag {
                     } else {
@@ -485,10 +560,12 @@ impl<'m> TExecutor<'m> {
                         VMType::Array(_) => unimplemented!(),
                     }
                 }
-                Inst::StFld(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                // stfld
+                0x7D => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
                     let v = cur_state.stack.pop();
                     let (mem_tag, offset) = cur_state.stack.pop().as_addr();
                     if let MemTag::HeapMem = mem_tag {
@@ -531,10 +608,12 @@ impl<'m> TExecutor<'m> {
                         VMType::Array(_) => unimplemented!(),
                     }
                 }
-                Inst::LdSFld(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                // ldsfld
+                0x7E => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
 
                     let f = match tag {
                         TBL_FIELD_TAG => {
@@ -575,10 +654,12 @@ impl<'m> TExecutor<'m> {
                         VMType::Array(_) => unimplemented!(),
                     }
                 }
-                Inst::StSFld(idx) => {
-                    let tag = *idx & TBL_TAG_MASK;
-                    let idx = (*idx & !TBL_TAG_MASK) as usize - 1;
+                // stfld
+                0x80 => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u32();
+                    let tag = idx & TBL_TAG_MASK;
+                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
                     let v = cur_state.stack.pop();
 
                     let f = match tag {
@@ -620,6 +701,54 @@ impl<'m> TExecutor<'m> {
                         VMType::Array(_) => unimplemented!(),
                     }
                 }
+
+                0xFE => {
+                    let inner_code = self.states.last_mut().unwrap().consume_u8();
+                    match inner_code {
+                        // ceq
+                        0x01 => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let rhs = cur_state.stack.pop();
+                            let lhs = cur_state.stack.peek_mut();
+                            let t = exec_cmp_op!(==, lhs, rhs);
+                            lhs.data.inative_ = if t { 1 } else { 0 };
+                            lhs.tag = SlotTag::INative;
+                        }
+                        // cgt
+                        0x02 => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let rhs = cur_state.stack.pop();
+                            let lhs = cur_state.stack.peek_mut();
+                            let t = exec_cmp_op!(>, lhs, rhs);
+                            lhs.data.inative_ = if t { 1 } else { 0 };
+                            lhs.tag = SlotTag::INative;
+                        }
+                        // clt
+                        0x04 => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let rhs = cur_state.stack.pop();
+                            let lhs = cur_state.stack.peek_mut();
+                            let t = exec_cmp_op!(<, lhs, rhs);
+                            lhs.data.inative_ = if t { 1 } else { 0 };
+                            lhs.tag = SlotTag::INative;
+                        }
+                        // ldloc
+                        0x0C => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let idx = cur_state.consume_u16();
+                            cur_state.stack.push(cur_state.locals[idx as usize]);
+                        }
+                        // stloc
+                        0x0E => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let idx = cur_state.consume_u16();
+                            cur_state.locals[idx as usize] = cur_state.stack.pop();
+                        }
+                        _ => panic!("Unknown inst 0xFE{:X}", inner_code),
+                    }
+                }
+
+                _ => panic!("Unknown inst: 0x{:X}", code),
             }
         }
     }

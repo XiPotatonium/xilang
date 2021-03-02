@@ -1,13 +1,13 @@
-File = { SOI ~ ModStmt* ~ UseStmt* ~ Class* ~ EOI }
+File = { SOI ~ Modules* ~ UseDeclarations* ~ Class* ~ EOI }
 
-ModStmt = { "mod" ~ Id ~ ";" }
+Modules = { "mod" ~ Id ~ Semi }
 
-UseStmt = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ ";" }
+UseDeclarations = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
 
 Class = { "class" ~ Id ~ "{" ~ (StaticInit | Func | StaticField | NonStaticField)* ~ "}" }
 
-StaticField = { "static" ~ Id ~ ":" ~ Type ~ ";" }
-NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ ";" }
+StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
+NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
 StaticInit = { "static" ~ BlockExpr }
 Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ BlockExpr }
@@ -27,8 +27,8 @@ BasicType = _{ KwBool | KwChar | KwI32 | KwF64 }
 TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
 ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
 
-Stmt = { LetStmt | ExprWithoutBlock ~ ";" | ExprWithBlock ~ ";"? }
-LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ ("=" ~ Expr)? ~ ";" }
+Stmt = { LetStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
+LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ (Eq ~ Expr)? ~ Semi }
 Expr = _{ ExprWithBlock | ExprWithoutBlock }
 ExprWithBlock = _{ BlockExpr | LoopExpr | IfExpr }
 ExprWithoutBlock = _{
@@ -56,30 +56,16 @@ ArrAccessExpr = { "[" ~ Expr ~ "]" }
 CallExpr = { PrimaryExpr ~ (ArgsExpr | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
 StructExprField = { Id ~ (":" ~ Expr)? }
 NewExpr = { "new" ~ Type ~ ("{" ~ (StructExprField ~ ",")* ~ StructExprField? ~ "}")? }
-UnaryExpr = { (LogNegOp | AddOp | SubOp)* ~ (NewExpr | CallExpr) }
+UnaryExpr = { (Not | Plus | Minus)* ~ (NewExpr | CallExpr) }
 CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
-MulExpr = { CastExpr ~ ((MulOp | DivOp | ModOp) ~ CastExpr)* }
-AddExpr = { MulExpr ~ ((AddOp | SubOp) ~ MulExpr)* }
-CompExpr = { AddExpr ~ ((LeOp | LtOp | GeOp | GtOp) ~ AddExpr)* }
-EqExpr = { CompExpr ~ ((EqOp | NeOp) ~ CompExpr)* }
+MulExpr = { CastExpr ~ ((Star | Slash | Percent) ~ CastExpr)* }
+AddExpr = { MulExpr ~ ((Plus | Minus) ~ MulExpr)* }
+CompExpr = { AddExpr ~ ((Le | Lt | Ge | Gt) ~ AddExpr)* }
+EqExpr = { CompExpr ~ ((EqEq | Ne) ~ CompExpr)* }
 LogAndExpr = { EqExpr ~ ("&&" ~ EqExpr)* }
 LogOrExpr = { LogAndExpr ~ ("||" ~ LogAndExpr)* }
 OpExpr = { LogOrExpr }
-AssignExpr = { LogOrExpr ~ AssignOp ~ LogOrExpr }
-
-AssignOp = { "=" }
-EqOp = { "==" }
-NeOp = { "!=" }
-GeOp = { ">=" }
-GtOp = { ">" }
-LeOp = { "<=" }
-LtOp = { "<" }
-AddOp = { "+" }
-SubOp = { "-" }
-MulOp = { "*" }
-DivOp = { "/" }
-ModOp = { "%" }
-LogNegOp = { "!" }
+AssignExpr = { LogOrExpr ~ Eq ~ LogOrExpr }
 
 LiteralExpr = {
     KwTrue
@@ -131,6 +117,21 @@ KeyWord = @{
     | KwFalse | KwTrue | KwNull
     | "yield" | "typeof"
 }
+
+Eq = { "=" }
+EqEq = { "==" }
+Ne = { "!=" }
+Ge = { ">=" }
+Gt = { ">" }
+Le = { "<=" }
+Lt = { "<" }
+Plus = { "+" }
+Minus = { "-" }
+Star = { "*" }
+Slash = { "/" }
+Percent = { "%" }
+Not = { "!" }
+Semi = { ";" }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }
