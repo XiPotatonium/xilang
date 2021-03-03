@@ -181,6 +181,9 @@ impl Inst {
             Inst::CLt => write!(f, "clt"),
 
             Inst::Add => write!(f, "add"),
+            Inst::Sub => write!(f, "sub"),
+            Inst::Mul => write!(f, "mul"),
+            Inst::Div => write!(f, "div"),
             Inst::Rem => write!(f, "rem"),
 
             Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_tbl_entry_repr(*idx)),

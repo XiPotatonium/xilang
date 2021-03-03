@@ -2,7 +2,7 @@ use super::super::ast::AST;
 use super::interpreter::constant_folding;
 use super::lval::{gen_lval, gen_path_lval};
 use super::op::BinOp;
-use super::{CodeGenCtx, RValType, ValType};
+use super::{CodeGenCtx, LoopCtx, LoopType, RValType, ValType};
 
 use crate::ir::flag::*;
 use crate::ir::inst::Inst;
@@ -19,17 +19,83 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
         AST::ExprStmt(stmt) => gen_expr_stmt(ctx, stmt),
         AST::If(cond, then, els) => ValType::RVal(gen_if(ctx, cond, then, els)),
         AST::Let(pattern, flag, ty, init) => ValType::RVal(gen_let(ctx, pattern, flag, ty, init)),
+        AST::Loop(body) => ValType::RVal(gen_loop(ctx, body)),
+        AST::Return(v) => ValType::Ret(if let ValType::RVal(ret) = gen(ctx, v) {
+            ctx.method_builder.borrow_mut().add_inst(Inst::Ret);
+            ret
+        } else {
+            unreachable!();
+        }),
+        AST::Break(v) => {
+            if let AST::None = v.as_ref() {
+                if let Some(l) = ctx.loop_ctx.borrow_mut().last_mut() {
+                    if let LoopType::Loop(ty) = &mut l.ty {
+                        match ty {
+                            RValType::Void => {}
+                            RValType::Never => {
+                                l.ty = LoopType::Loop(RValType::Void);
+                            },
+                            _ => panic!("Loop return type mismatch. Previously break with {} but later break with {}", ty, RValType::Void),
+                        };
+                    } else {
+                        unimplemented!();
+                    }
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_br(l.break_target.clone());
+                } else {
+                    panic!("Break not in a loop expr");
+                }
+
+                ValType::RVal(RValType::Void)
+            } else {
+                let v_ty = gen(ctx, v);
+
+                if let ValType::RVal(v_ty_) = &v_ty {
+                    if let Some(l) = ctx.loop_ctx.borrow_mut().last_mut() {
+                        if let LoopType::Loop(ty) = &mut l.ty {
+                            match ty {
+                                RValType::Never => {
+                                    l.ty = LoopType::Loop(v_ty_.clone());
+                                }
+                                _ => {
+                                    if v_ty_ != ty {
+                                        panic!("Loop return type mismatch. Previously break with {} but later break with {}", ty, v_ty_);
+                                    }
+                                }
+                            };
+                        } else {
+                            panic!("break with expr is only allowed in loop");
+                        }
+                        ctx.method_builder
+                            .borrow_mut()
+                            .add_br(l.break_target.clone());
+                    } else {
+                        panic!("Break not in a loop expr");
+                    }
+                } else {
+                    panic!();
+                }
+
+                v_ty
+            }
+        }
+        AST::Continue => {
+            if let Some(l) = ctx.loop_ctx.borrow_mut().last_mut() {
+                ctx.method_builder
+                    .borrow_mut()
+                    .add_br(l.break_target.clone());
+            } else {
+                panic!("Break not in a loop expr");
+            }
+            ValType::RVal(RValType::Void)
+        }
         AST::OpNew(ty, fields) => ValType::RVal(gen_new(ctx, ty, fields)),
         AST::OpCall(f, args) => ValType::RVal(gen_call(ctx, f, args)),
         AST::OpAssign(lhs, rhs) => ValType::RVal(gen_assign(ctx, lhs, rhs)),
         AST::OpAdd(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Add, lhs, rhs)),
+        AST::OpMul(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Mul, lhs, rhs)),
         AST::OpMod(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Mod, lhs, rhs)),
-        AST::OpLogAnd(lhs, rhs) => {
-            unimplemented!();
-        }
-        AST::OpLogOr(lhs, rhs) => {
-            unimplemented!();
-        }
         AST::OpNe(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Ne, lhs, rhs)),
         AST::OpEq(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Eq, lhs, rhs)),
         AST::OpGe(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Ge, lhs, rhs)),
@@ -119,6 +185,11 @@ fn gen_block(ctx: &CodeGenCtx, children: &Vec<Box<AST>>) -> ValType {
     let mut ret = ValType::RVal(RValType::Void);
     for stmt in children.iter() {
         ret = gen(ctx, stmt);
+        if ctx.method_builder.borrow().cur_bb_last_is_branch() {
+            // do not generate unreachable stmts.
+            // branch should be the last inst in bb
+            break;
+        }
     }
 
     // Pop Symbol table
@@ -165,7 +236,10 @@ fn gen_if(ctx: &CodeGenCtx, cond: &Box<AST>, then: &Box<AST>, els: &Box<AST>) ->
 
     {
         let mut builder = ctx.method_builder.borrow_mut();
-        builder.add_br(after_bb.clone());
+        if !builder.cur_bb_last_is_branch() {
+            // branch to after if no branch
+            builder.add_br(after_bb.clone());
+        }
         builder.set_cur_bb(els_bb);
     }
 
@@ -173,7 +247,6 @@ fn gen_if(ctx: &CodeGenCtx, cond: &Box<AST>, then: &Box<AST>, els: &Box<AST>) ->
 
     {
         let mut builder = ctx.method_builder.borrow_mut();
-        builder.add_br(after_bb.clone());
         builder.set_cur_bb(after_bb);
     }
 
@@ -192,6 +265,44 @@ fn gen_if(ctx: &CodeGenCtx, cond: &Box<AST>, then: &Box<AST>, els: &Box<AST>) ->
     };
 
     ret
+}
+
+fn gen_loop(ctx: &CodeGenCtx, body: &Box<AST>) -> RValType {
+    {
+        let mut builder = ctx.method_builder.borrow_mut();
+        let after_bb = builder.insert_after_cur();
+        let body_bb = builder.insert_after_cur();
+        builder.set_cur_bb(body_bb.clone());
+        ctx.loop_ctx.borrow_mut().push(LoopCtx {
+            ty: LoopType::Loop(RValType::Never),
+            continue_target: body_bb,
+            break_target: after_bb,
+        });
+    }
+
+    gen(ctx, body);
+
+    {
+        let LoopCtx {
+            ty,
+            continue_target: body_bb,
+            break_target: after_bb,
+        } = ctx.loop_ctx.borrow_mut().pop().unwrap();
+        let mut builder = ctx.method_builder.borrow_mut();
+
+        if !builder.cur_bb_last_is_branch() {
+            // loop if no branch
+            builder.add_br(body_bb);
+        }
+
+        builder.set_cur_bb(after_bb);
+
+        if let LoopType::Loop(ret) = ty {
+            ret
+        } else {
+            RValType::Void
+        }
+    }
 }
 
 fn gen_let(
@@ -439,9 +550,9 @@ fn gen_numeric(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> R
 
     ctx.method_builder.borrow_mut().add_inst(match op {
         BinOp::Add => Inst::Add,
-        BinOp::Sub => unimplemented!(),
-        BinOp::Mul => unimplemented!(),
-        BinOp::Div => unimplemented!(),
+        BinOp::Sub => Inst::Sub,
+        BinOp::Mul => Inst::Mul,
+        BinOp::Div => Inst::Div,
         BinOp::Mod => Inst::Rem,
         _ => unreachable!(),
     });

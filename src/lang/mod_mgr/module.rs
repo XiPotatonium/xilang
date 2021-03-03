@@ -504,6 +504,7 @@ impl Module {
             method: m,
             args_map,
             method_builder: RefCell::new(MethodBuilder::new()),
+            loop_ctx: RefCell::new(vec![]),
         };
         let ret = gen(&ctx, block);
 

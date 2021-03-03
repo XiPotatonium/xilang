@@ -4,17 +4,15 @@ A toy programming language that runs on a simple virtual machine.
 
 ## 1 TODO
 
-* More statements:
-    * loop
 * More expressions
-    * arithmatic: -, *, /
     * unary: -
+    * logical: && ||
 * GC
-* Constant folding
-* Deserialize .xir file
 * Use and pub use
+* Deserialize .xir file
 * Interface
 * Generic
+* Constant folding
 
 ## 2 Usage
 

@@ -33,6 +33,25 @@ impl MethodBuilder {
         mem::swap(&mut cur_bb, &mut self.cur_bb);
         cur_bb
     }
+
+    pub fn cur_bb_last_is_branch(&self) -> bool {
+        if let Some(inst) = self.cur_bb.as_ref().unwrap().insts.last() {
+            match inst {
+                Inst::BEq(_)
+                | Inst::BGe(_)
+                | Inst::BGt(_)
+                | Inst::BLe(_)
+                | Inst::BLt(_)
+                | Inst::Br(_)
+                | Inst::BrFalse(_)
+                | Inst::BrTrue(_)
+                | Inst::Ret => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
 }
 
 impl MethodBuilder {
@@ -284,7 +303,7 @@ impl Builder {
                     Inst::BGt(offset_) => *offset_ = offset,
                     Inst::BLe(offset_) => *offset_ = offset,
                     Inst::BLt(offset_) => *offset_ = offset,
-                    _ => unreachable!(),
+                    _ => {}
                 }
             }
         }
@@ -320,6 +339,7 @@ impl Builder {
             RValType::I32 => IrBlob::I32,
             RValType::F64 => IrBlob::F64,
             RValType::Void => IrBlob::Void,
+            RValType::Never => unreachable!(),
             RValType::Obj(mod_name, name) => IrBlob::Obj(self.add_const_class(mod_name, name)),
             RValType::Array(inner) => IrBlob::Array(self.add_const_ty_blob(&inner)),
         }

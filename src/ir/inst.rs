@@ -159,6 +159,12 @@ pub enum Inst {
     ///
     /// `..., val1, val2 -> ..., res`
     Add,
+    /// 0x59, sub
+    Sub,
+    /// 0x5A, mul
+    Mul,
+    /// 0x5B, div
+    Div,
     /// 0x5D, rem
     ///
     /// a % b
@@ -264,6 +270,9 @@ impl Inst {
             Inst::CLt => 2,
 
             Inst::Add => 1,
+            Inst::Sub => 1,
+            Inst::Mul => 1,
+            Inst::Div => 1,
             Inst::Rem => 1,
 
             Inst::CallVirt(_) => 5,

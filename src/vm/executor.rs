@@ -1,7 +1,6 @@
 use super::data::{VMMethod, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
-use crate::ir::inst::Inst;
 use crate::ir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
 
 use std::mem::transmute;
@@ -445,6 +444,27 @@ impl<'m> TExecutor<'m> {
                     let rhs = stack.pop();
                     let lhs = stack.peek_mut();
                     exec_numeric_op!(+, lhs, rhs);
+                }
+                // sub
+                0x59 => {
+                    let stack = &mut self.states.last_mut().unwrap().stack;
+                    let rhs = stack.pop();
+                    let lhs = stack.peek_mut();
+                    exec_numeric_op!(-, lhs, rhs);
+                }
+                // mul
+                0x5A => {
+                    let stack = &mut self.states.last_mut().unwrap().stack;
+                    let rhs = stack.pop();
+                    let lhs = stack.peek_mut();
+                    exec_numeric_op!(*, lhs, rhs);
+                }
+                // div
+                0x5B => {
+                    let stack = &mut self.states.last_mut().unwrap().stack;
+                    let rhs = stack.pop();
+                    let lhs = stack.peek_mut();
+                    exec_numeric_op!(/, lhs, rhs);
                 }
                 // rem
                 0x5D => {

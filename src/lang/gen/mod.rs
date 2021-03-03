@@ -5,6 +5,7 @@ mod interpreter;
 mod lval;
 mod op;
 
+pub use self::basic_block::{BasicBlock, LLCursor};
 pub use self::builder::{Builder, MethodBuilder};
 pub use self::gen::gen;
 
@@ -15,6 +16,17 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 
+pub enum LoopType {
+    Loop(RValType),
+    For,
+}
+
+pub struct LoopCtx {
+    pub ty: LoopType,
+    pub continue_target: LLCursor<BasicBlock>,
+    pub break_target: LLCursor<BasicBlock>,
+}
+
 pub struct CodeGenCtx<'c> {
     pub mgr: &'c ModMgr,
     pub cfg: &'c XicCfg,
@@ -24,6 +36,7 @@ pub struct CodeGenCtx<'c> {
     pub locals: RefCell<Locals>,
     pub args_map: HashMap<String, Arg>,
     pub method_builder: RefCell<MethodBuilder>,
+    pub loop_ctx: RefCell<Vec<LoopCtx>>,
 }
 
 impl<'mgr> CodeGenCtx<'mgr> {
@@ -74,6 +87,7 @@ pub enum RValType {
     I32,
     F64,
     Void,
+    Never,
     /// mod fullname, class name
     Obj(String, String),
     Array(Box<RValType>),
@@ -109,6 +123,7 @@ impl fmt::Display for RValType {
             Self::I32 => write!(f, "I"),
             Self::F64 => write!(f, "D"),
             Self::Void => write!(f, "V"),
+            Self::Never => write!(f, "!"),
             Self::Obj(m, s) => write!(f, "L{}/{};", m, s),
             Self::Array(t) => write!(f, "[{}", t),
         }

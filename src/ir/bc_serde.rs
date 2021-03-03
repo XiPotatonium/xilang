@@ -598,6 +598,9 @@ impl ISerializable for Inst {
             Inst::CLt => 0xFE04u16.serialize(buf),
 
             Inst::Add => 0x58u8.serialize(buf),
+            Inst::Sub => 0x59u8.serialize(buf),
+            Inst::Mul => 0x5Au8.serialize(buf),
+            Inst::Div => 0x5Bu8.serialize(buf),
             Inst::Rem => 0x5Du8.serialize(buf),
 
             Inst::CallVirt(idx) => {
@@ -682,6 +685,9 @@ impl ISerializable for Inst {
             0x3F => Inst::BLt(i32::deserialize(buf)),
 
             0x58 => Inst::Add,
+            0x59 => Inst::Sub,
+            0x5A => Inst::Mul,
+            0x5B => Inst::Div,
             0x5D => Inst::Rem,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
