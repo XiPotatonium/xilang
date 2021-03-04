@@ -2,61 +2,163 @@ use super::super::ast::AST;
 use super::{gen, CodeGenCtx, RValType, ValType};
 
 use crate::ir::flag::*;
-use crate::ir::path::{IModPath, ModPathSlice};
+use crate::ir::path::{IModPath, ModPath};
 
 use std::rc::Weak;
 
-pub fn gen_path_lval(ctx: &CodeGenCtx, path: ModPathSlice, expect_method: bool) -> ValType {
-    if path.len() == 1 {
-        let id = path.as_str();
-        if expect_method {
-            // query method in this class
-            if ctx.class.methods.contains_key(id) {
-                return ValType::Method(
-                    ctx.module.fullname().to_owned(),
-                    ctx.class.name.clone(),
-                    id.to_owned(),
-                );
-            }
-        } else {
-            // query local var
-            if ctx.locals.borrow().contains_key(id) {
-                return ValType::Local(id.to_owned());
-            } else if ctx.args_map.contains_key(id) {
-                return ValType::Arg(id.to_owned());
-            } else if ctx.class.fields.contains_key(id) {
-                // query field in this class
-                // either static or non-static is ok
-                return ValType::Field(
-                    ctx.module.fullname().to_owned(),
-                    ctx.class.name.clone(),
-                    id.to_owned(),
-                );
-            }
-        }
+/// Similar to Module.get_ty
+pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> ValType {
+    let (has_crate, super_cnt, path) = path.canonicalize();
 
-        // module or class
-        if id == "crate" {
-            ValType::Module(ctx.mgr.root.name().to_owned())
-        } else if id == "super" {
-            ValType::Module(ctx.module.mod_path.get_super().to_string())
-        } else if ctx.module.classes.contains_key(id) {
-            // a class in current module
-            ValType::Class(ctx.module.fullname().to_owned(), id.to_owned())
-        } else if ctx.mgr.mod_tbl.contains_key(id) {
-            ValType::Module(id.to_owned())
-        } else {
-            panic!("Cannot find {}", id);
+    let (mut p, mut segs) = if has_crate {
+        let mut p = ModPath::new();
+        p.push(ctx.mgr.root.name());
+        (p, path.iter().skip(1))
+    } else if super_cnt != 0 {
+        let mut p = ctx.module.mod_path.as_slice();
+        for _ in (0..super_cnt).into_iter() {
+            p.to_super();
         }
+        (p.to_owned(), path.iter().skip(super_cnt))
     } else {
-        let mut path = path;
-        // TODO optimize to_owned
-        let rhs = path.get_self_name().unwrap().to_owned();
-        path.to_super();
-        let lhs = gen_path_lval(ctx, path, expect_method);
+        let r = path.get_root_name().unwrap();
+        if let Some(p) = ctx.module.use_map.get(r) {
+            (p.to_owned(), path.iter().skip(1))
+        } else if let Some(c) = ctx.module.classes.get(r) {
+            if path.len() == 1 {
+                return ValType::Class(ctx.module.fullname().to_owned(), r.to_string());
+            } else {
+                let c = c.borrow();
+                let mem = &path[1];
+                let ret = if expect_method {
+                    if c.methods.contains_key(mem) {
+                        ValType::Method(
+                            ctx.module.fullname().to_owned(),
+                            r.to_owned(),
+                            mem.to_owned(),
+                        )
+                    } else {
+                        panic!("No method {} in class {}/{}", mem, ctx.module.fullname(), r);
+                    }
+                } else if c.fields.contains_key(mem) {
+                    ValType::Field(
+                        ctx.module.fullname().to_owned(),
+                        r.to_owned(),
+                        mem.to_owned(),
+                    )
+                } else {
+                    panic!("No field {} in class {}/{}", mem, ctx.module.fullname(), r);
+                };
+                if path.len() > 2 {
+                    panic!("Sub-item in {} is not allowed", ret);
+                }
+                return ret;
+            }
+        } else if path.len() == 1 {
+            if expect_method {
+                if ctx.class.methods.contains_key(r) {
+                    return ValType::Method(
+                        ctx.module.fullname().to_owned(),
+                        ctx.class.name.clone(),
+                        r.to_string(),
+                    );
+                } else {
+                    panic!(
+                        "No method {} in class {}/{}",
+                        r,
+                        ctx.module.fullname(),
+                        ctx.class.name
+                    );
+                }
+            } else {
+                return if ctx.locals.borrow().contains_key(r) {
+                    // query local var
+                    ValType::Local(r.to_owned())
+                } else if ctx.args_map.contains_key(r) {
+                    // query args
+                    ValType::Arg(r.to_owned())
+                } else if ctx.class.fields.contains_key(r) {
+                    // query field in this class
+                    // either static or non-static is ok
+                    ValType::Field(
+                        ctx.module.fullname().to_owned(),
+                        ctx.class.name.clone(),
+                        r.to_owned(),
+                    )
+                } else {
+                    panic!("Cannot found item with path: {}", path);
+                };
+            }
+        } else {
+            panic!("Cannot found item with path: {}", path);
+        }
+    };
 
-        gen_static_access(ctx, lhs, &rhs, expect_method)
+    let ret = loop {
+        let seg = if let Some(seg) = segs.next() {
+            seg
+        } else {
+            break ValType::Module(p.to_string());
+        };
+        p.push(seg);
+        if !ctx.mgr.mod_tbl.contains_key(p.as_str()) {
+            // not a module, check class
+            let mod_path = p.get_super();
+            let m = ctx.mgr.mod_tbl.get(mod_path.as_str()).unwrap();
+            let m = Weak::upgrade(m).unwrap();
+            if let Some(c) = m.classes.get(seg) {
+                if let Some(mem_seg) = segs.next() {
+                    // field/method
+                    let c = c.borrow();
+                    if expect_method {
+                        if c.methods.contains_key(mem_seg) {
+                            break ValType::Method(
+                                mod_path.to_string(),
+                                seg.to_string(),
+                                mem_seg.to_string(),
+                            );
+                        } else {
+                            panic!(
+                                "No method named {} in class {}/{}",
+                                mem_seg,
+                                mod_path.as_str(),
+                                seg
+                            );
+                        }
+                    } else {
+                        if c.fields.contains_key(mem_seg) {
+                            break ValType::Field(
+                                mod_path.to_string(),
+                                seg.to_string(),
+                                mem_seg.to_string(),
+                            );
+                        } else {
+                            panic!(
+                                "No field named {} in class {}/{}",
+                                mem_seg,
+                                mod_path.as_str(),
+                                seg
+                            );
+                        }
+                    }
+                } else {
+                    break ValType::Class(mod_path.to_string(), seg.to_string());
+                }
+            } else {
+                panic!("No class named {} in mod {}", seg, m.fullname());
+            }
+        }
+    };
+
+    // TODO expect none
+    if let Some(_) = segs.next() {
+        panic!(
+            "Invalid path {}: sub-item in method or field is not allowed",
+            path.as_str()
+        );
     }
+
+    ret
 }
 
 fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: bool) -> ValType {
@@ -105,10 +207,7 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
 
 pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValType {
     match ast.as_ref() {
-        AST::Path(path) => {
-            let (_, _, path) = path.canonicalize();
-            gen_path_lval(ctx, path.as_slice(), expect_method)
-        }
+        AST::Path(path) => gen_path_lval(ctx, path, expect_method),
         AST::OpObjAccess(lhs, rhs) => {
             // generate lhs as lval (as the first arg in non-static method or objectref of putfield)
             let lhs = gen(ctx, lhs).expect_rval();

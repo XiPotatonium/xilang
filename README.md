@@ -7,12 +7,14 @@ A toy programming language that runs on a simple virtual machine.
 * More expressions
     * unary: -
     * logical: && ||
+* Array type
 * GC
-* Use and pub use
+* Pub use
 * Deserialize .xir file
 * Interface
 * Generic
 * Constant folding
+* pub/priv flag
 
 ## 2 Usage
 

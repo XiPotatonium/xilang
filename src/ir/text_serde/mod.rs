@@ -1,3 +1,5 @@
+mod ir_parser;
+
 use super::flag::*;
 use super::inst::Inst;
 use super::ir_file::*;

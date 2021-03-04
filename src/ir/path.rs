@@ -1,5 +1,5 @@
-use core::panic;
-use std::{ops::Index, usize};
+use std::ops::Index;
+use std::{fmt, usize};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -85,8 +85,8 @@ impl ModPath {
     }
 
     pub fn get_super(&self) -> ModPathSlice {
-        if self.len() <= 1 {
-            panic!("Path {} has no super", self.as_str());
+        if self.len() == 0 {
+            panic!("Empty path has no super");
         } else {
             ModPathSlice {
                 path: self,
@@ -331,5 +331,17 @@ impl<'p> Iterator for ModPathIter<'p> {
             self.cur += 1;
             Some(&self.path[self.cur - 1])
         }
+    }
+}
+
+impl fmt::Display for ModPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path)
+    }
+}
+
+impl<'p> fmt::Display for ModPathSlice<'p> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }

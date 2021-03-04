@@ -332,22 +332,59 @@ impl Module {
             AST::Path(class_path) => {
                 // TODO: use
                 // Search in this module and global
+                let (has_crate, super_cnt, class_path) = class_path.canonicalize();
                 let class_id = class_path.get_self_name().unwrap();
-                if class_path.len() == 0 {
-                    panic!("Parser error");
-                } else if class_path.len() == 1 {
+                let mod_path = class_path.get_super();
+                if mod_path.len() == 0 {
+                    // this mod
                     // might be a class in this module
                     if self.classes.contains_key(class_id) {
-                        return RValType::Obj(self.fullname().to_owned(), class_id.to_owned());
+                        RValType::Obj(self.fullname().to_owned(), class_id.to_owned())
+                    } else {
+                        panic!("No class {} in mod {}", class_id, self.fullname());
                     }
-                }
-
-                // Search in global
-                let mod_path = class_path.get_super();
-                if c.mod_tbl.contains_key(mod_path.as_str()) {
-                    RValType::Obj(mod_path.as_str().to_owned(), class_id.to_owned())
                 } else {
-                    panic!("Class {} not found", class_path.as_str());
+                    let m = if has_crate {
+                        let mut m = ModPath::new();
+                        m.push(c.root.name());
+                        for seg in mod_path.iter().skip(1) {
+                            m.push(seg);
+                        }
+                        m
+                    } else if super_cnt != 0 {
+                        let mut m = self.mod_path.as_slice();
+                        for _ in (0..super_cnt).into_iter() {
+                            m.to_super();
+                        }
+                        let mut m = m.to_owned();
+                        for seg in mod_path.iter().skip(super_cnt) {
+                            m.push(seg);
+                        }
+                        m
+                    } else {
+                        let mut mod_path_iter = mod_path.iter();
+                        let r = mod_path_iter.next().unwrap();
+                        if let Some(m) = self.use_map.get(r) {
+                            let mut m = m.clone();
+                            for seg in mod_path_iter {
+                                m.push(seg);
+                            }
+                            m
+                        } else {
+                            panic!("Cannot find mod {} in mod {}", r, self.fullname());
+                        }
+                    };
+
+                    if let Some(m) = c.mod_tbl.get(m.as_str()) {
+                        let m = Weak::upgrade(m).unwrap();
+                        if m.classes.contains_key(class_id) {
+                            RValType::Obj(m.fullname().to_owned(), class_id.to_owned())
+                        } else {
+                            panic!("Class {} not found", class_id);
+                        }
+                    } else {
+                        panic!("Module {} not found", m.as_str());
+                    }
                 }
             }
             AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, c))),

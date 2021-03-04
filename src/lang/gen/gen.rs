@@ -134,7 +134,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
             if p.len() == 1 {
                 ValType::RVal(gen_id_rval(ctx, p.as_str()))
             } else {
-                let v = gen_path_lval(ctx, p.as_slice(), false);
+                let v = gen_path_lval(ctx, p, false);
                 gen_static_access(ctx, v)
             }
         }
@@ -339,7 +339,10 @@ fn gen_let(
                     // check type match
                     let ty = ctx.get_ty(ty);
                     if ty != init_ty {
-                        panic!("Invalid let statement: Incompatible type");
+                        panic!(
+                            "Invalid let statement: Incompatible type {} and {}",
+                            ty, init_ty
+                        );
                     }
                 }
             }

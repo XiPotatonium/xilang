@@ -12,9 +12,9 @@ pub use self::gen::gen;
 use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
 use super::{ast::AST, XicCfg};
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::{cell::RefCell, fmt::write};
 
 pub enum LoopType {
     Loop(RValType),
@@ -124,7 +124,7 @@ impl fmt::Display for RValType {
             Self::F64 => write!(f, "D"),
             Self::Void => write!(f, "V"),
             Self::Never => write!(f, "!"),
-            Self::Obj(m, s) => write!(f, "L{}/{};", m, s),
+            Self::Obj(m, s) => write!(f, "O{}/{};", m, s),
             Self::Array(t) => write!(f, "[{}", t),
         }
     }
@@ -141,9 +141,14 @@ pub fn fn_descriptor(ret_ty: &RValType, ps: &Vec<RValType>) -> String {
 impl fmt::Display for ValType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RVal(rval) => write!(f, "{} (RVal)", rval),
-            Self::Ret(retv) => write!(f, "{} (Ret)", retv),
-            _ => unimplemented!(),
+            Self::RVal(rval) => write!(f, "(RVal){}", rval),
+            Self::Ret(retv) => write!(f, "(Ret){}", retv),
+            Self::Method(m, c, n) => write!(f, "(Method){}/{}::{}", m, c, n),
+            Self::Field(m, c, n) => write!(f, "(Field){}/{}::{}", m, c, n),
+            Self::Class(m, c) => write!(f, "(Class){}/{}", m, c),
+            Self::Module(m) => write!(f, "(Mod){}", m),
+            Self::Local(n) => write!(f, "(Local){}", n),
+            Self::Arg(n) => write!(f, "(Arg){}", n),
         }
     }
 }
