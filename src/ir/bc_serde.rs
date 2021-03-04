@@ -297,6 +297,28 @@ impl ISerializable for Vec<Vec<Inst>> {
     }
 }
 
+// another repr for codes
+impl ISerializable for Vec<Vec<u8>> {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        let mut code = vec![];
+        for inst in self.iter() {
+            inst.serialize(&mut code);
+        }
+        code.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        let code: Vec<u8> = Vec::deserialize(buf);
+        let code_len = code.len() as u32;
+        let mut code_buf = Deserializer::new(Box::new(code.into_iter()));
+        let mut out = vec![];
+        while code_buf.bytes_taken < code_len {
+            out.push(Vec::deserialize(&mut code_buf));
+        }
+        out
+    }
+}
+
 impl ISerializable for IrClass {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);

@@ -1,4 +1,4 @@
-use crate::ir::flag::MethodFlag;
+use xir::flag::MethodFlag;
 
 use super::{VMModule, VMType};
 

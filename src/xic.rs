@@ -4,8 +4,8 @@ extern crate pest_derive;
 extern crate clap;
 extern crate lazy_static;
 extern crate regex;
+extern crate xir;
 
-mod ir;
 mod lang;
 
 use lang::mod_mgr::ModMgr;

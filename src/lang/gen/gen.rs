@@ -4,10 +4,10 @@ use super::lval::{gen_lval, gen_path_lval};
 use super::op::BinOp;
 use super::{CodeGenCtx, LoopCtx, LoopType, RValType, ValType};
 
-use crate::ir::flag::*;
-use crate::ir::inst::Inst;
-use crate::ir::path::IModPath;
-use crate::ir::CTOR_NAME;
+use xir::flag::*;
+use xir::inst::Inst;
+use xir::path::IModPath;
+use xir::CTOR_NAME;
 
 pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
     if ctx.cfg.optim >= 1 && ast.is_constant() {

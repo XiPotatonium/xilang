@@ -1,4 +1,4 @@
-use crate::ir::flag::FieldFlag;
+use xir::flag::FieldFlag;
 
 use super::VMType;
 

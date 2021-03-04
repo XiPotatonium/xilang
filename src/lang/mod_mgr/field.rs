@@ -1,5 +1,5 @@
 use super::super::gen::RValType;
-use crate::ir::flag::*;
+use xir::flag::*;
 
 pub struct Field {
     pub id: String,

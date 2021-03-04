@@ -1,4 +1,4 @@
-use crate::ir::flag::TypeFlag;
+use xir::flag::TypeFlag;
 
 use super::{VMField, VMMethod};
 

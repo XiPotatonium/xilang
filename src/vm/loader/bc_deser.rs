@@ -1,8 +1,8 @@
 use std::io::Read;
 
-use crate::ir::bc_serde::{Deserializer, IDeserializer, ISerializable};
-use crate::ir::blob::IrBlob;
-use crate::ir::ir_file::*;
+use xir::bc_serde::{Deserializer, IDeserializer, ISerializable};
+use xir::blob::IrBlob;
+use xir::ir_file::*;
 
 pub struct VMFile {
     pub minor_version: u16,
@@ -80,26 +80,5 @@ impl VMFile {
 
     pub fn mod_name(&self) -> &str {
         &self.str_heap[self.mod_tbl[0].name as usize]
-    }
-}
-
-impl ISerializable for Vec<Vec<u8>> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        let mut code = vec![];
-        for inst in self.iter() {
-            inst.serialize(&mut code);
-        }
-        code.serialize(buf);
-    }
-
-    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
-        let code: Vec<u8> = Vec::deserialize(buf);
-        let code_len = code.len() as u32;
-        let mut code_buf = Deserializer::new(Box::new(code.into_iter()));
-        let mut out = vec![];
-        while code_buf.bytes_taken < code_len {
-            out.push(Vec::deserialize(&mut code_buf));
-        }
-        out
     }
 }

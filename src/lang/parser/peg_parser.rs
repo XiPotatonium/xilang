@@ -1,6 +1,6 @@
 use super::super::ast::AST;
-use crate::ir::flag::*;
-use crate::ir::path::ModPath;
+use xir::flag::*;
+use xir::path::ModPath;
 
 use std::fs;
 use std::path::Path;
@@ -11,7 +11,7 @@ use pest::Parser;
 
 #[derive(Parser)]
 #[grammar = "lang/parser/grammar.pest"]
-pub struct LRParser;
+struct LRParser;
 
 pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
     let code = fs::read_to_string(path).unwrap();

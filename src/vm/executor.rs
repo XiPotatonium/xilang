@@ -1,7 +1,7 @@
 use super::data::{VMMethod, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
-use crate::ir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
+use xir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
 
 use std::mem::transmute;
 

@@ -1,16 +1,18 @@
 extern crate clap;
+extern crate xir;
 
-mod ir;
 mod vm;
 
 use clap::{App, Arg};
 
 use std::fs;
+use std::path::PathBuf;
 use std::time::SystemTime;
 
+use vm::executor::TExecutor;
+use vm::loader::load;
 use vm::mem::SharedMem;
 use vm::VMCfg;
-use vm::{executor::TExecutor, loader::load};
 
 fn main() {
     let (entry, cfg) = {

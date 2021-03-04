@@ -14,11 +14,15 @@ pest_derive = "2.0"
 regex = "1"
 lazy_static = "1.4.0"
 
+[lib]
+name = "xir"
+path = "src/lib.rs"
+
 [[bin]]
 name = "xic"
 path = "src/xic.rs"
 
 [[bin]]
-name = "xilang"
-path = "src/xilang.rs"
+name = "xix"
+path = "src/xix.rs"
 

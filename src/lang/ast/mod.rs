@@ -1,7 +1,7 @@
 mod disp;
 
-use crate::ir::flag::*;
-use crate::ir::path::ModPath;
+use xir::flag::*;
+use xir::path::ModPath;
 
 pub enum AST {
     /// mods, uses, classes: Vec<AST>

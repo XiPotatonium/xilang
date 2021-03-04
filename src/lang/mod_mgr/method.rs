@@ -1,4 +1,4 @@
-use crate::ir::flag::*;
+use xir::flag::*;
 
 use super::super::gen::{fn_descriptor, RValType};
 

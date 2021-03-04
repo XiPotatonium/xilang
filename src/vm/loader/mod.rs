@@ -5,11 +5,11 @@ use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
 use super::VMCfg;
 use bc_deser::VMFile;
 
-use crate::ir::blob::IrBlob;
-use crate::ir::flag::*;
-use crate::ir::ir_file::*;
-use crate::ir::path::{IModPath, ModPath};
-use crate::ir::CCTOR_NAME;
+use xir::blob::IrBlob;
+use xir::flag::*;
+use xir::ir_file::*;
+use xir::path::{IModPath, ModPath};
+use xir::CCTOR_NAME;
 
 use std::collections::HashMap;
 use std::fs;

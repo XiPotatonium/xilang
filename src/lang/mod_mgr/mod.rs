@@ -11,7 +11,7 @@ pub use self::module::Module;
 pub use self::var::{Arg, Locals, Var};
 
 use super::super::XicCfg;
-use crate::ir::path::ModPath;
+use xir::path::ModPath;
 
 use std::fs;
 use std::rc::{Rc, Weak};

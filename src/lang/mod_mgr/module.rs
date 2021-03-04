@@ -6,10 +6,10 @@ use std::io::Write;
 use std::path::Path;
 use std::rc::{Rc, Weak};
 
-use crate::ir::flag::*;
-use crate::ir::inst::Inst;
-use crate::ir::path::{IModPath, ModPath};
-use crate::ir::{CCTOR_NAME, CTOR_NAME};
+use xir::flag::*;
+use xir::inst::Inst;
+use xir::path::{IModPath, ModPath};
+use xir::{CCTOR_NAME, CTOR_NAME};
 
 use super::super::ast::AST;
 use super::super::gen::{gen, Builder, CodeGenCtx, MethodBuilder, RValType, ValType};

@@ -1,8 +1,8 @@
 use super::super::ast::AST;
 use super::{gen, CodeGenCtx, RValType, ValType};
 
-use crate::ir::flag::*;
-use crate::ir::path::{IModPath, ModPath};
+use xir::flag::*;
+use xir::path::{IModPath, ModPath};
 
 use std::rc::Weak;
 

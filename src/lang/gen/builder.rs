@@ -1,7 +1,7 @@
-use crate::ir::blob::IrBlob;
-use crate::ir::flag::*;
-use crate::ir::inst::Inst;
-use crate::ir::ir_file::*;
+use xir::blob::IrBlob;
+use xir::flag::*;
+use xir::inst::Inst;
+use xir::ir_file::*;
 
 use std::collections::HashMap;
 use std::mem;

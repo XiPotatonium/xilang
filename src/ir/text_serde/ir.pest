@@ -1,0 +1,5 @@
+File = { SOI ~ EOI }
+
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::mem::swap;
 use std::ptr::null_mut;
 
-use crate::ir::inst::Inst;
+use xir::inst::Inst;
 
 pub struct BasicBlock {
     pub insts: Vec<Inst>,
