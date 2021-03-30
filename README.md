@@ -15,6 +15,7 @@ A toy programming language that runs on a simple virtual machine.
 * Generic
 * Constant folding
 * pub/priv flag
+* How to implement DLL import?
 
 ## 2 Usage
 
@@ -41,10 +42,10 @@ ARGS:
 
 ```
 USAGE:
-    xilang.exe [FLAGS] [OPTIONS] <entry>
+    xix.exe [FLAGS] [OPTIONS] <entry>
 
 FLAGS:
-    -d, --diagnose    Run diagnose or not
+    -d, --diagnose    Show diagnose info or not
     -h, --help        Prints help information
     -V, --version     Prints version information
 
@@ -52,7 +53,7 @@ OPTIONS:
     -i, --import <ext>    External module paths
 
 ARGS:
-    <entry>    Entry of executable
+    <entry>    Entry module of executable
 ```
 
 ## 3 Grammar

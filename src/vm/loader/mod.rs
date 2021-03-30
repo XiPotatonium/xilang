@@ -1,9 +1,6 @@
-mod bc_deser;
-
 use super::data::*;
 use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
 use super::VMCfg;
-use bc_deser::VMFile;
 
 use xir::blob::IrBlob;
 use xir::flag::*;
@@ -45,9 +42,9 @@ pub fn load(
     mem: &mut SharedMem,
     cfg: &VMCfg,
 ) -> (Vec<*const VMMethod>, *const VMMethod) {
-    let f = VMFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
+    let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
-    let root_name = f.mod_name().to_owned();
+    let root_name = f.mod_name().unwrap().to_owned();
     let entrypoint = (f.mod_tbl[0].entrypoint & !TBL_TAG_MASK) as usize;
     if entrypoint == 0 {
         panic!("{} has no entrypoint", entry.display());
@@ -136,7 +133,7 @@ impl<'c> Loader<'c> {
         }
     }
 
-    fn load(&mut self, file: VMFile) -> u32 {
+    fn load(&mut self, file: IrFile) -> u32 {
         // println!("{}\n\n\n\n\n\n\n", file);
 
         let external_mods: Vec<String> = file
@@ -144,6 +141,8 @@ impl<'c> Loader<'c> {
             .iter()
             .map(|entry| file.str_heap[entry.name as usize].clone())
             .collect();
+        // Some external mods is not loadable modules but dlls
+        let mut external_mods_mask: Vec<bool> = vec![true; external_mods.len()];
 
         let str_heap: Vec<u32> = file
             .str_heap
@@ -155,7 +154,6 @@ impl<'c> Loader<'c> {
         let mut classes: Vec<Box<VMClass>> = Vec::new();
         let mut methods: Vec<Box<VMMethod>> = Vec::new();
         let mut fields: Vec<Box<VMField>> = Vec::new();
-        let mut codes_iter = file.codes.into_iter();
 
         let (mut field_i, mut method_i) = if let Some(c0) = file.class_tbl.first() {
             (c0.fields as usize - 1, c0.methods as usize - 1)
@@ -196,23 +194,31 @@ impl<'c> Loader<'c> {
 
             while method_i < method_lim {
                 let method_entry = &file.method_tbl[method_i];
+                let name = str_heap[method_entry.name as usize];
 
                 let flag = MethodFlag::new(method_entry.flag);
-                // Currently virtual method is not implemented
-                // Callvirt actually call non virtual method, which offset = 0
-                let method = Box::new(VMMethod {
-                    ctx: null(),
-                    name: str_heap[method_entry.name as usize],
-                    flag,
-                    offset: 0,
-                    locals: method_entry.locals as usize,
-                    insts: codes_iter.next().unwrap(),
-                    // fill in link stage
-                    ret_ty: VMType::Unk,
-                    ps_ty: Vec::new(),
+
+                let method = Box::new(if method_entry.body == 0 {
+                    // pinvoke
+                    unimplemented!();
+                } else {
+                    let body = &file.codes[method_entry.body as usize - 1];
+                    // Currently virtual method is not implemented
+                    // Callvirt actually call non virtual method, which offset = 0
+                    VMMethod {
+                        ctx: VMMethodCtx::Mod(null()),
+                        name,
+                        flag,
+                        offset: 0,
+                        locals: body.local as usize,
+                        insts: body.insts.to_owned(),
+                        // fill in link stage
+                        ret_ty: VMType::Unk,
+                        ps_ty: Vec::new(),
+                    }
                 });
 
-                if method.name == self.cctor_name {
+                if name == self.cctor_name {
                     self.cctors.push(method.as_ref() as *const VMMethod);
                 }
 
@@ -303,7 +309,12 @@ impl<'c> Loader<'c> {
         });
         let this_mod_ptr = this_mod.as_ref() as *const VMModule;
         for method in this_mod.methods.iter_mut() {
-            method.ctx = this_mod_ptr;
+            match &mut method.ctx {
+                VMMethodCtx::Mod(m) => {
+                    *m = this_mod_ptr;
+                }
+                VMMethodCtx::Dll(_) => {}
+            }
         }
 
         if let Some(_) = self.mem.mods.insert(mod_name_addr, this_mod) {
@@ -311,7 +322,12 @@ impl<'c> Loader<'c> {
         }
 
         // 2. Recursive load dependencies
-        for external_mod_path in external_mods.iter() {
+        for (external_mod_path, mask) in external_mods.iter().zip(external_mods_mask.into_iter()) {
+            if mask == false {
+                // some external mods is not xir mod, they are dlls
+                continue;
+            }
+
             let path = ModPath::from_str(external_mod_path);
             if path.get_root_name().unwrap() == self.root_name {
                 // a sub module
@@ -330,7 +346,7 @@ impl<'c> Loader<'c> {
                 let mod_name = path.get_self_name().unwrap();
                 sub_mod_path.push(format!("{}.xibc", mod_name));
                 if sub_mod_path.is_file() {
-                    self.load(VMFile::from_binary(Box::new(
+                    self.load(IrFile::from_binary(Box::new(
                         fs::File::open(&sub_mod_path).unwrap(),
                     )));
                 } else {
@@ -338,7 +354,7 @@ impl<'c> Loader<'c> {
                     if sub_mod_path.is_dir() {
                         sub_mod_path.push(format!("{}.xibc", mod_name));
                         if sub_mod_path.is_file() {
-                            self.load(VMFile::from_binary(Box::new(
+                            self.load(IrFile::from_binary(Box::new(
                                 fs::File::open(&sub_mod_path).unwrap(),
                             )));
                         } else {

@@ -6,7 +6,6 @@ mod vm;
 use clap::{App, Arg};
 
 use std::fs;
-use std::path::PathBuf;
 use std::time::SystemTime;
 
 use vm::executor::TExecutor;
@@ -16,10 +15,10 @@ use vm::VMCfg;
 
 fn main() {
     let (entry, cfg) = {
-        let matches = App::new("xilang")
+        let matches = App::new("xix")
             .version("0.1.0")
             .author("Xi")
-            .about("Hello world! This is xilang")
+            .about("Hello world! This is xix")
             .arg(
                 Arg::with_name("entry")
                     .help("Entry module of executable")

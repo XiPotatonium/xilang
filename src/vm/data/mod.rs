@@ -5,7 +5,7 @@ mod module;
 
 pub use self::class::VMClass;
 pub use self::field::VMField;
-pub use self::method::VMMethod;
+pub use self::method::{VMMethod, VMMethodCtx};
 pub use self::module::{VMMemberRef, VMModule};
 
 #[derive(PartialEq, Eq)]

@@ -62,6 +62,7 @@ pub enum MethodFlagTag {
     Priv = 0x0001,
     Pub = 0x0006,
     Static = 0x0010,
+    PInvokeImpl = 0x2000,
 }
 
 #[derive(Clone, Copy)]

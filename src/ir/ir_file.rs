@@ -1,5 +1,4 @@
 use super::blob::IrBlob;
-use super::inst::Inst;
 
 pub const MAJOR_VERSION: u16 = 1;
 pub const MINOR_VERSION: u16 = 0;
@@ -23,10 +22,13 @@ pub struct IrFile {
 
     pub memberref_tbl: Vec<IrMemberRef>,
 
+    pub implmap_tbl: Vec<IrImplMap>,
+
     pub str_heap: Vec<String>,
     /// none CLR standard
     pub blob_heap: Vec<IrBlob>,
-    pub codes: Vec<Vec<Inst>>,
+
+    pub codes: Vec<CorILMethod>,
 }
 
 #[derive(Debug)]
@@ -82,11 +84,11 @@ pub struct IrMethod {
     pub name: u32,
     /// index into blob heap
     pub signature: u32,
+    /// index into code tbl, similar to RVA
+    pub body: u32,
 
     /// IrMethodFlag
     pub flag: u16,
-    /// local size
-    pub locals: u16,
 }
 
 #[derive(Debug)]
@@ -99,6 +101,27 @@ pub struct IrMemberRef {
     pub signature: u32,
 }
 
+#[derive(Debug)]
+pub struct IrImplMap {
+    /// index into methoddef tbl
+    pub member: u32,
+    /// index into str heap
+    pub name: u32,
+    /// index into modref tbl
+    pub scope: u32,
+    pub flag: u16,
+}
+
+/// Similar to fat format
+#[derive(Debug)]
+pub struct CorILMethod {
+    /// max stack
+    pub max_stack: u16,
+    /// max locals
+    pub local: u16,
+    pub insts: Vec<u8>,
+}
+
 pub const TBL_TAG_MASK: u32 = 0xFF << 24;
 pub const TBL_MOD_TAG: u32 = 0x00 << 24;
 pub const TBL_MODREF_TAG: u32 = 0x1A << 24;
@@ -107,6 +130,7 @@ pub const TBL_CLASSREF_TAG: u32 = 0x01 << 24;
 pub const TBL_FIELD_TAG: u32 = 0x04 << 24;
 pub const TBL_METHOD_TAG: u32 = 0x06 << 24;
 pub const TBL_MEMBERREF_TAG: u32 = 0x0A << 24;
+pub const TBL_IMPLMAP_TAG: u32 = 0x1C << 24;
 
 pub enum TblValue<'f> {
     Mod(&'f IrMod),
@@ -116,6 +140,7 @@ pub enum TblValue<'f> {
     Field(&'f IrField),
     Method(&'f IrMethod),
     MemberRef(&'f IrMemberRef),
+    ImplMap(&'f IrImplMap),
     None,
 }
 
@@ -134,6 +159,8 @@ impl IrFile {
             field_tbl: vec![],
             method_tbl: vec![],
             memberref_tbl: vec![],
+
+            implmap_tbl: vec![],
 
             str_heap: vec![],
             blob_heap: vec![],
@@ -166,6 +193,7 @@ impl IrFile {
             TBL_METHOD_TAG => TblValue::Method(&self.method_tbl[idx]),
             TBL_FIELD_TAG => TblValue::Field(&self.field_tbl[idx]),
             TBL_MEMBERREF_TAG => TblValue::MemberRef(&self.memberref_tbl[idx]),
+            TBL_IMPLMAP_TAG => TblValue::ImplMap(&self.implmap_tbl[idx]),
             _ => TblValue::None,
         }
     }
@@ -288,6 +316,12 @@ impl IrFile {
                 self.get_str(*name),
                 self.get_blob_repr(*signature)
             ),
+            TblValue::ImplMap(IrImplMap {
+                member,
+                name,
+                scope,
+                flag,
+            }) => unimplemented!(),
             TblValue::None => String::new(),
         }
     }

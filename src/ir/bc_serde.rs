@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::mem::transmute;
+use std::slice::Iter;
 
 use super::blob::IrBlob;
 use super::inst::Inst;
@@ -22,6 +23,8 @@ impl IrFile {
         self.method_tbl.serialize(&mut buf);
 
         self.memberref_tbl.serialize(&mut buf);
+
+        self.implmap_tbl.serialize(&mut buf);
 
         self.str_heap.serialize(&mut buf);
         self.blob_heap.serialize(&mut buf);
@@ -54,6 +57,8 @@ impl IrFile {
         let method_tbl = Vec::deserialize(&mut buf);
         let memberref_tbl = Vec::deserialize(&mut buf);
 
+        let implmap_tbl = Vec::deserialize(&mut buf);
+
         let str_heap = Vec::deserialize(&mut buf);
         let blob_heap = Vec::deserialize(&mut buf);
 
@@ -72,6 +77,8 @@ impl IrFile {
             field_tbl,
             method_tbl,
             memberref_tbl,
+
+            implmap_tbl,
 
             str_heap,
             blob_heap,
@@ -253,71 +260,9 @@ impl_vec_serde!(IrClassRef);
 impl_vec_serde!(IrField);
 impl_vec_serde!(IrMethod);
 impl_vec_serde!(IrMemberRef);
+impl_vec_serde!(IrImplMap);
+impl_vec_serde!(CorILMethod);
 impl_vec_serde!(IrBlob);
-
-impl ISerializable for Vec<Inst> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        let mut code = vec![];
-        for inst in self.iter() {
-            inst.serialize(&mut code);
-        }
-        code.serialize(buf);
-    }
-
-    fn deserialize(buf: &mut dyn IDeserializer) -> Vec<Inst> {
-        let code: Vec<u8> = Vec::deserialize(buf);
-        let code_len = code.len() as u32;
-        let mut code_buf = Deserializer::new(Box::new(code.into_iter()));
-        let mut out = vec![];
-        while code_buf.bytes_taken < code_len {
-            out.push(Inst::deserialize(&mut code_buf));
-        }
-        out
-    }
-}
-
-impl ISerializable for Vec<Vec<Inst>> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        let mut code = vec![];
-        for inst in self.iter() {
-            inst.serialize(&mut code);
-        }
-        code.serialize(buf);
-    }
-
-    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
-        let code: Vec<u8> = Vec::deserialize(buf);
-        let code_len = code.len() as u32;
-        let mut code_buf = Deserializer::new(Box::new(code.into_iter()));
-        let mut out = vec![];
-        while code_buf.bytes_taken < code_len {
-            out.push(Vec::deserialize(&mut code_buf));
-        }
-        out
-    }
-}
-
-// another repr for codes
-impl ISerializable for Vec<Vec<u8>> {
-    fn serialize(&self, buf: &mut Vec<u8>) {
-        let mut code = vec![];
-        for inst in self.iter() {
-            inst.serialize(&mut code);
-        }
-        code.serialize(buf);
-    }
-
-    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
-        let code: Vec<u8> = Vec::deserialize(buf);
-        let code_len = code.len() as u32;
-        let mut code_buf = Deserializer::new(Box::new(code.into_iter()));
-        let mut out = vec![];
-        while code_buf.bytes_taken < code_len {
-            out.push(Vec::deserialize(&mut code_buf));
-        }
-        out
-    }
-}
 
 impl ISerializable for IrClass {
     fn serialize(&self, buf: &mut Vec<u8>) {
@@ -380,25 +325,23 @@ impl ISerializable for IrMethod {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.signature.serialize(buf);
+        self.body.serialize(buf);
 
         self.flag.serialize(buf);
-
-        self.locals.serialize(buf);
     }
 
     fn deserialize(buf: &mut dyn IDeserializer) -> IrMethod {
         let name = u32::deserialize(buf);
-        let descriptor = u32::deserialize(buf);
+        let signature = u32::deserialize(buf);
+        let body = u32::deserialize(buf);
 
         let flag = u16::deserialize(buf);
-
-        let locals = u16::deserialize(buf);
 
         IrMethod {
             flag,
             name,
-            signature: descriptor,
-            locals,
+            body,
+            signature,
         }
     }
 }
@@ -413,11 +356,11 @@ impl ISerializable for IrMemberRef {
     fn deserialize(buf: &mut dyn IDeserializer) -> Self {
         let parent = u32::deserialize(buf);
         let name = u32::deserialize(buf);
-        let descriptor = u32::deserialize(buf);
+        let signature = u32::deserialize(buf);
         IrMemberRef {
             parent,
             name,
-            signature: descriptor,
+            signature,
         }
     }
 }
@@ -443,6 +386,47 @@ impl ISerializable for IrModRef {
     fn deserialize(buf: &mut dyn IDeserializer) -> Self {
         let name = u32::deserialize(buf);
         IrModRef { name }
+    }
+}
+
+impl ISerializable for IrImplMap {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.member.serialize(buf);
+        self.name.serialize(buf);
+        self.scope.serialize(buf);
+        self.flag.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        let member = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let scope = u32::deserialize(buf);
+        let flag = u16::deserialize(buf);
+        IrImplMap {
+            member,
+            name,
+            scope,
+            flag,
+        }
+    }
+}
+
+impl ISerializable for CorILMethod {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.max_stack.serialize(buf);
+        self.local.serialize(buf);
+        self.insts.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        let max_stack = u16::deserialize(buf);
+        let local = u16::deserialize(buf);
+        let insts = Vec::deserialize(buf);
+        CorILMethod {
+            max_stack,
+            local,
+            insts,
+        }
     }
 }
 
@@ -732,5 +716,72 @@ impl ISerializable for Inst {
             }
             _ => panic!("Unknown inst: 0x{:X}", code),
         }
+    }
+}
+
+struct InstDeserializer<'i> {
+    stream: Iter<'i, u8>,
+    bytes_taken: u32,
+}
+
+impl<'i> InstDeserializer<'i> {
+    fn new(insts: &Vec<u8>) -> InstDeserializer {
+        InstDeserializer {
+            stream: insts.iter(),
+            bytes_taken: 0,
+        }
+    }
+}
+
+impl<'i> IDeserializer for InstDeserializer<'i> {
+    fn take_byte(&mut self) -> u8 {
+        self.bytes_taken += 1;
+        *(&mut self.stream).next().unwrap()
+    }
+
+    fn take_bytes2(&mut self) -> [u8; 2] {
+        self.bytes_taken += 2;
+        let b1 = *(&mut self.stream).next().unwrap();
+        let b2 = *(&mut self.stream).next().unwrap();
+
+        [b1, b2]
+    }
+
+    fn take_bytes4(&mut self) -> [u8; 4] {
+        self.bytes_taken += 4;
+        let b1 = *(&mut self.stream).next().unwrap();
+        let b2 = *(&mut self.stream).next().unwrap();
+        let b3 = *(&mut self.stream).next().unwrap();
+        let b4 = *(&mut self.stream).next().unwrap();
+
+        [b1, b2, b3, b4]
+    }
+
+    fn take_bytes(&mut self, n: u32) -> Vec<u8> {
+        self.bytes_taken += n;
+        (&mut self.stream).take(n as usize).map(|b| *b).collect()
+    }
+}
+
+impl CorILMethod {
+    pub fn new(max_stack: u16, local: u16, insts: Vec<Inst>) -> CorILMethod {
+        let mut code = vec![];
+        for inst in insts.iter() {
+            inst.serialize(&mut code);
+        }
+        CorILMethod {
+            max_stack,
+            local,
+            insts: code,
+        }
+    }
+
+    pub fn to_insts(&self) -> Vec<Inst> {
+        let mut inst_deser = InstDeserializer::new(&self.insts);
+        let mut out = vec![];
+        while inst_deser.bytes_taken < self.insts.len() as u32 {
+            out.push(Inst::deserialize(&mut inst_deser));
+        }
+        out
     }
 }

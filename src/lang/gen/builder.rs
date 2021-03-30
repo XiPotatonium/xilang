@@ -261,8 +261,8 @@ impl Builder {
         self.file.method_tbl.push(IrMethod {
             flag: flag.flag,
             name,
+            body: 0,
             signature: sig,
-            locals: 0,
         });
         let ret = self.file.method_tbl.len() as u32 | TBL_METHOD_TAG;
         self.member_map.insert(
@@ -276,7 +276,7 @@ impl Builder {
     ///
     /// Fill all jump instructions, concat all basic blocks
     ///
-    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, locals: u16, fold_br: bool) {
+    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, local: u16, fold_br: bool) {
         let ir_method = &mut self.file.method_tbl[((method_idx & !TBL_TAG_MASK) - 1) as usize];
 
         if fold_br {
@@ -313,8 +313,9 @@ impl Builder {
         for bb in m.bb.iter_mut() {
             code.append(&mut bb.insts);
         }
-        ir_method.locals = locals;
-        self.file.codes.push(code);
+
+        self.file.codes.push(CorILMethod::new(0, local, code));
+        ir_method.body = self.file.codes.len() as u32;
     }
 }
 

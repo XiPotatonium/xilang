@@ -7,4 +7,4 @@ Write-Output "================== Compiling examples ======================"
 
 Write-Output "==================    Run examples    ======================="
 
-./target/debug/xilang.exe ./examples-build/examples.xibc -d
+./target/debug/xix.exe ./examples-build/examples.xibc -d

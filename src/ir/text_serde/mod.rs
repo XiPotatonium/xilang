@@ -33,7 +33,6 @@ impl IrFile {
         is_entrypoint: bool,
     ) -> fmt::Result {
         let method = &self.method_tbl[method_i];
-        let code = &self.codes[method_i];
         let flag = MethodFlag::new(method.flag);
         write!(
             f,
@@ -44,16 +43,29 @@ impl IrFile {
             self.get_blob_repr(method.signature)
         )?;
 
-        write!(f, "{}.locals\t{}", " ".repeat(indent * 8), method.locals)?;
-        if is_entrypoint {
-            write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
-        }
+        if method.body != 0 {
+            // has body
+            let body = &self.codes[method.body as usize - 1];
 
-        let mut offset = 0;
-        for inst in code.iter() {
-            write!(f, "\n{}", " ".repeat(indent * 8))?;
-            inst.fmt(f, self, offset)?;
-            offset += inst.size();
+            write!(
+                f,
+                "{}.maxstacks\t{}",
+                " ".repeat(indent * 8),
+                body.max_stack
+            )?;
+            write!(f, "{}.locals\t{}", " ".repeat(indent * 8), body.local)?;
+            if is_entrypoint {
+                write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
+            }
+
+            let code: Vec<Inst> = body.to_insts();
+
+            let mut offset = 0;
+            for inst in code.iter() {
+                write!(f, "\n{}", " ".repeat(indent * 8))?;
+                inst.fmt(f, self, offset)?;
+                offset += inst.size();
+            }
         }
 
         Ok(())

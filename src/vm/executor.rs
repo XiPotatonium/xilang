@@ -1,4 +1,4 @@
-use super::data::{VMMethod, VMType};
+use super::data::{VMMethod, VMMethodCtx, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
 use xir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
@@ -128,13 +128,12 @@ impl<'m> TExecutor<'m> {
     pub unsafe fn new(entry: *const VMMethod) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
-        ret.call(vec![], entry);
+        ret.call(vec![], entry.as_ref().unwrap());
         ret
     }
 
-    unsafe fn call(&mut self, args: Vec<Slot>, method: *const VMMethod) {
+    unsafe fn call(&mut self, args: Vec<Slot>, method: &'m VMMethod) {
         // Currently there is no verification of the arg type
-        let method = method.as_ref().unwrap();
         self.states.push(MethodState {
             stack: Stack::new(),
             locals: vec![Slot::default(); method.locals],
@@ -304,21 +303,27 @@ impl<'m> TExecutor<'m> {
                     let idx = cur_state.consume_u32();
                     let tag = idx & TBL_TAG_MASK;
                     let idx = (idx & !TBL_TAG_MASK) as usize - 1;
-                    let ctx = cur_state.method.ctx.as_ref().unwrap();
+                    let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
 
-                    let (arg_len, callee) = match tag {
-                        TBL_METHOD_TAG => (
-                            ctx.methods[idx].ps_ty.len(),
-                            ctx.methods[idx].as_ref() as *const VMMethod,
-                        ),
-                        TBL_MEMBERREF_TAG => {
-                            let callee = ctx.memberref[idx].expect_method();
-                            (callee.as_ref().unwrap().ps_ty.len(), callee)
-                        }
+                    let callee = match tag {
+                        TBL_METHOD_TAG => ctx.methods[idx].as_ref(),
+                        TBL_MEMBERREF_TAG => ctx.memberref[idx].expect_method().as_ref().unwrap(),
                         _ => unreachable!(),
                     };
 
-                    let args = self.states.last_mut().unwrap().stack.pop_n(arg_len);
+                    match &callee.ctx {
+                        VMMethodCtx::Mod(_) => {}
+                        VMMethodCtx::Dll(_) => {
+                            unimplemented!();
+                        }
+                    }
+
+                    let args = self
+                        .states
+                        .last_mut()
+                        .unwrap()
+                        .stack
+                        .pop_n(callee.ps_ty.len());
                     self.call(args, callee);
                 }
                 // ret
@@ -479,26 +484,21 @@ impl<'m> TExecutor<'m> {
                     let idx = cur_state.consume_u32();
                     let tag = idx & TBL_TAG_MASK;
                     let idx = (idx & !TBL_TAG_MASK) as usize - 1;
-                    let ctx = cur_state.method.ctx.as_ref().unwrap();
+                    let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
 
-                    let (arg_len, callee) = match tag {
-                        TBL_METHOD_TAG => (
-                            ctx.methods[idx].ps_ty.len(),
-                            ctx.methods[idx].as_ref() as *const VMMethod,
-                        ),
-                        TBL_MEMBERREF_TAG => {
-                            let callee = ctx.memberref[idx].expect_method();
-                            (callee.as_ref().unwrap().ps_ty.len(), callee)
-                        }
+                    let callee = match tag {
+                        TBL_METHOD_TAG => ctx.methods[idx].as_ref(),
+                        TBL_MEMBERREF_TAG => ctx.memberref[idx].expect_method().as_ref().unwrap(),
                         _ => unreachable!(),
                     };
+                    callee.ctx.expect_mod();
 
-                    if callee.as_ref().unwrap().offset != 0 {
+                    if callee.offset != 0 {
                         // virtual method
                         unimplemented!("Calling a virtual method is not implemented");
                     }
 
-                    let args = cur_state.stack.pop_n(arg_len + 1);
+                    let args = cur_state.stack.pop_n(callee.ps_ty.len() + 1);
                     self.call(args, callee);
                 }
                 // newobj
@@ -507,25 +507,20 @@ impl<'m> TExecutor<'m> {
                     let idx = cur_state.consume_u32();
                     let tag = idx & TBL_TAG_MASK;
                     let idx = (idx & !TBL_TAG_MASK) as usize - 1;
-                    let ctx = cur_state.method.ctx.as_ref().unwrap();
+                    let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
 
-                    let (arg_len, callee) = match tag {
-                        TBL_METHOD_TAG => (
-                            ctx.methods[idx].ps_ty.len(),
-                            ctx.methods[idx].as_ref() as *const VMMethod,
-                        ),
-                        TBL_MEMBERREF_TAG => {
-                            let callee = ctx.memberref[idx].expect_method();
-                            (callee.as_ref().unwrap().ps_ty.len(), callee)
-                        }
+                    let callee = match tag {
+                        TBL_METHOD_TAG => ctx.methods[idx].as_ref(),
+                        TBL_MEMBERREF_TAG => ctx.memberref[idx].expect_method().as_ref().unwrap(),
                         _ => unreachable!(),
                     };
+                    callee.ctx.expect_mod();
 
                     let mut args: Vec<Slot> = Vec::new();
-                    if let VMType::Obj(class) = &callee.as_ref().unwrap().ps_ty[0] {
+                    if let VMType::Obj(class) = &callee.ps_ty[0] {
                         let offset = mem.heap.new_obj(*class);
                         args.push(Slot::new_ref(MemTag::HeapMem, offset));
-                        args.append(&mut cur_state.stack.pop_n(arg_len - 1));
+                        args.append(&mut cur_state.stack.pop_n(callee.ps_ty.len() - 1));
                         cur_state.stack.push(Slot::new_ref(MemTag::HeapMem, offset));
                     } else {
                         panic!("Creator's first param is not a class type");
@@ -547,9 +542,15 @@ impl<'m> TExecutor<'m> {
 
                     let f = match tag {
                         TBL_FIELD_TAG => {
-                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
                         }
-                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                        TBL_MEMBERREF_TAG => cur_state
+                            .method
+                            .ctx
+                            .expect_mod()
+                            .as_ref()
+                            .unwrap()
+                            .memberref[idx]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
@@ -595,9 +596,15 @@ impl<'m> TExecutor<'m> {
 
                     let f = match tag {
                         TBL_FIELD_TAG => {
-                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
                         }
-                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                        TBL_MEMBERREF_TAG => cur_state
+                            .method
+                            .ctx
+                            .expect_mod()
+                            .as_ref()
+                            .unwrap()
+                            .memberref[idx]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
@@ -637,9 +644,15 @@ impl<'m> TExecutor<'m> {
 
                     let f = match tag {
                         TBL_FIELD_TAG => {
-                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
                         }
-                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                        TBL_MEMBERREF_TAG => cur_state
+                            .method
+                            .ctx
+                            .expect_mod()
+                            .as_ref()
+                            .unwrap()
+                            .memberref[idx]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
@@ -684,9 +697,15 @@ impl<'m> TExecutor<'m> {
 
                     let f = match tag {
                         TBL_FIELD_TAG => {
-                            cur_state.method.ctx.as_ref().unwrap().fields[idx].as_ref()
+                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
                         }
-                        TBL_MEMBERREF_TAG => cur_state.method.ctx.as_ref().unwrap().memberref[idx]
+                        TBL_MEMBERREF_TAG => cur_state
+                            .method
+                            .ctx
+                            .expect_mod()
+                            .as_ref()
+                            .unwrap()
+                            .memberref[idx]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
