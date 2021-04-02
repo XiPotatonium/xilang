@@ -1,5 +1,3 @@
-use std::borrow::BorrowMut;
-
 use super::super::ast::AST;
 use super::interpreter::constant_folding;
 use super::lval::{gen_lval, gen_path_lval};
@@ -263,7 +261,10 @@ fn gen_and(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         _ => panic!("Cond not return bool"),
     }
 
-    ctx.method_builder.borrow_mut().add_brfalse(false_bb.clone()).set_cur_bb(rhs_bb);
+    ctx.method_builder
+        .borrow_mut()
+        .add_brfalse(false_bb.clone())
+        .set_cur_bb(rhs_bb);
 
     let rhs_ty = gen(ctx, rhs);
     match rhs_ty.expect_rval() {
@@ -274,7 +275,10 @@ fn gen_and(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     let mut builder = ctx.method_builder.borrow_mut();
     builder.add_br(after_bb.clone()).set_cur_bb(false_bb);
 
-    builder.add_inst_ldc(0).add_br(after_bb.clone()).set_cur_bb(after_bb);
+    builder
+        .add_inst_ldc(0)
+        .add_br(after_bb.clone())
+        .set_cur_bb(after_bb);
 
     RValType::Bool
 }
@@ -296,7 +300,10 @@ fn gen_or(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         _ => panic!("Cond not return bool"),
     }
 
-    ctx.method_builder.borrow_mut().add_brtrue(after_bb.clone()).set_cur_bb(rhs_bb);
+    ctx.method_builder
+        .borrow_mut()
+        .add_brtrue(after_bb.clone())
+        .set_cur_bb(rhs_bb);
 
     let rhs_ty = gen(ctx, rhs);
     match rhs_ty.expect_rval() {
@@ -307,7 +314,10 @@ fn gen_or(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     let mut builder = ctx.method_builder.borrow_mut();
     builder.add_br(after_bb.clone()).set_cur_bb(false_bb);
 
-    builder.add_inst_ldc(0).add_br(after_bb.clone()).set_cur_bb(after_bb);
+    builder
+        .add_inst_ldc(0)
+        .add_br(after_bb.clone())
+        .set_cur_bb(after_bb);
 
     RValType::Bool
 }
@@ -710,7 +720,7 @@ fn gen_cmp(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> RValT
         _ => unreachable!(),
     }
 
-    lty
+    RValType::Bool
 }
 
 fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {

@@ -6,7 +6,7 @@ mod demo;
 
 class Program {
     fn main() {
-        let d: demo::Demo = crate::demo::Demo::new(1, 24);
+        let d: demo::Demo = crate::demo::Demo::create(1, 24);
         let a = d.foo(6);               // 32
         let d: i32 = gcd(a, d.value);   // gcd(32, 24)
 

@@ -10,7 +10,7 @@ class Demo {
         Demo::TAG = foo;
     }
 
-    fn new(id: i32, value: i32) -> Demo {
+    fn create(id: i32, value: i32) -> Demo {
         let ret = new Demo {
             id,
             value: value,

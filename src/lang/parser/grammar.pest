@@ -109,7 +109,7 @@ KwTrue = { "true" }
 KwFalse = { "false" }
 KwNull = { "null" }
 KeyWord = @{ 
-    "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where"
+    "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
     | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
     | KwLSelf | KwUSelf | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
