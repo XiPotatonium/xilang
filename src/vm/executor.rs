@@ -478,6 +478,26 @@ impl<'m> TExecutor<'m> {
                     let lhs = stack.peek_mut();
                     exec_numeric_op!(%, lhs, rhs);
                 }
+                // neg
+                0x65 => {
+                    let lhs = self.states.last_mut().unwrap().stack.peek_mut();
+                    match lhs.tag {
+                        SlotTag::I32 => {
+                            lhs.data.i32_ = -lhs.data.i32_;
+                        }
+                        SlotTag::I64 => {
+                            lhs.data.i64_ = -lhs.data.i64_;
+                        }
+                        SlotTag::F64 => {
+                            lhs.data.f64_ = -lhs.data.f64_;
+                        }
+                        SlotTag::INative => {
+                            lhs.data.inative_ = -lhs.data.inative_;
+                        }
+                        SlotTag::Ref => panic!("Cannot neg ref type"),
+                        SlotTag::Uninit => panic!("Cannot neg uinit slot"),
+                    }
+                }
                 // callvirt
                 0x6F => {
                     let cur_state = self.states.last_mut().unwrap();

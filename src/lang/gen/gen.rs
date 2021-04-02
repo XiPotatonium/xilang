@@ -1,3 +1,5 @@
+use std::borrow::BorrowMut;
+
 use super::super::ast::AST;
 use super::interpreter::constant_folding;
 use super::lval::{gen_lval, gen_path_lval};
@@ -93,6 +95,35 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
         AST::OpNew(ty, fields) => ValType::RVal(gen_new(ctx, ty, fields)),
         AST::OpCall(f, args) => ValType::RVal(gen_call(ctx, f, args)),
         AST::OpAssign(lhs, rhs) => ValType::RVal(gen_assign(ctx, lhs, rhs)),
+        AST::OpNeg(lhs) => {
+            let v_ty = gen(ctx, lhs);
+
+            match v_ty.expect_rval_ref() {
+                RValType::I32 | RValType::F64 => {
+                    ctx.method_builder.borrow_mut().add_inst(Inst::Neg);
+                }
+                _ => panic!("neg op is only available for i32 or f64 operand"),
+            };
+
+            v_ty
+        }
+        AST::OpLogNot(lhs) => {
+            let v_ty = gen(ctx, lhs);
+
+            match v_ty.expect_rval_ref() {
+                RValType::Bool => {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst_ldc(0)
+                        .add_inst(Inst::CEq);
+                }
+                _ => panic!("not op is only available for bool operand"),
+            };
+
+            v_ty
+        }
+        AST::OpLogAnd(lhs, rhs) => ValType::RVal(gen_and(ctx, lhs, rhs)),
+        AST::OpLogOr(lhs, rhs) => ValType::RVal(gen_or(ctx, lhs, rhs)),
         AST::OpAdd(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Add, lhs, rhs)),
         AST::OpMul(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Mul, lhs, rhs)),
         AST::OpMod(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Mod, lhs, rhs)),
@@ -204,13 +235,81 @@ fn gen_expr_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
             // pop from stack
             match ty {
                 RValType::Void => (),
-                _ => ctx.method_builder.borrow_mut().add_inst(Inst::Pop),
+                _ => {
+                    ctx.method_builder.borrow_mut().add_inst(Inst::Pop);
+                }
             };
             ValType::RVal(RValType::Void)
         }
         ValType::Ret(_) => ret,
         _ => unreachable!(),
     }
+}
+
+fn gen_and(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
+    let rhs_bb;
+    let false_bb;
+    let after_bb;
+    {
+        let mut builder = ctx.method_builder.borrow_mut();
+        after_bb = builder.insert_after_cur();
+        false_bb = builder.insert_after_cur();
+        rhs_bb = builder.insert_after_cur();
+    }
+
+    let lhs_ty = gen(ctx, lhs);
+    match lhs_ty.expect_rval() {
+        RValType::Bool => {}
+        _ => panic!("Cond not return bool"),
+    }
+
+    ctx.method_builder.borrow_mut().add_brfalse(false_bb.clone()).set_cur_bb(rhs_bb);
+
+    let rhs_ty = gen(ctx, rhs);
+    match rhs_ty.expect_rval() {
+        RValType::Bool => {}
+        _ => panic!("Cond not return bool"),
+    }
+
+    let mut builder = ctx.method_builder.borrow_mut();
+    builder.add_br(after_bb.clone()).set_cur_bb(false_bb);
+
+    builder.add_inst_ldc(0).add_br(after_bb.clone()).set_cur_bb(after_bb);
+
+    RValType::Bool
+}
+
+fn gen_or(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
+    let rhs_bb;
+    let false_bb;
+    let after_bb;
+    {
+        let mut builder = ctx.method_builder.borrow_mut();
+        after_bb = builder.insert_after_cur();
+        false_bb = builder.insert_after_cur();
+        rhs_bb = builder.insert_after_cur();
+    }
+
+    let lhs_ty = gen(ctx, lhs);
+    match lhs_ty.expect_rval() {
+        RValType::Bool => {}
+        _ => panic!("Cond not return bool"),
+    }
+
+    ctx.method_builder.borrow_mut().add_brtrue(after_bb.clone()).set_cur_bb(rhs_bb);
+
+    let rhs_ty = gen(ctx, rhs);
+    match rhs_ty.expect_rval() {
+        RValType::Bool => {}
+        _ => panic!("Cond not return bool"),
+    }
+
+    let mut builder = ctx.method_builder.borrow_mut();
+    builder.add_br(after_bb.clone()).set_cur_bb(false_bb);
+
+    builder.add_inst_ldc(0).add_br(after_bb.clone()).set_cur_bb(after_bb);
+
+    RValType::Bool
 }
 
 fn gen_if(ctx: &CodeGenCtx, cond: &Box<AST>, then: &Box<AST>, els: &Box<AST>) -> RValType {
@@ -224,7 +323,11 @@ fn gen_if(ctx: &CodeGenCtx, cond: &Box<AST>, then: &Box<AST>, els: &Box<AST>) ->
         then_bb = builder.insert_after_cur();
     }
 
-    gen(ctx, cond);
+    let cond_ty = gen(ctx, cond);
+    match cond_ty.expect_rval() {
+        RValType::Bool => {}
+        _ => panic!("Cond not return bool"),
+    }
 
     {
         let mut builder = ctx.method_builder.borrow_mut();
@@ -551,6 +654,8 @@ fn gen_numeric(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> R
         panic!("Numeric op cannot be applied between {} and {}", lty, rty);
     }
 
+    // TODO: check lty
+
     ctx.method_builder.borrow_mut().add_inst(match op {
         BinOp::Add => Inst::Add,
         BinOp::Sub => Inst::Sub,
@@ -570,26 +675,37 @@ fn gen_cmp(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> RValT
         panic!("Cmp op cannot be applied between {} and {}", lty, rty);
     }
 
+    // TODO: check lty
+
     let mut builder = ctx.method_builder.borrow_mut();
 
     match op {
-        BinOp::Eq => builder.add_inst(Inst::CEq),
+        BinOp::Eq => {
+            builder.add_inst(Inst::CEq);
+        }
         BinOp::Ne => {
-            builder.add_inst(Inst::CEq);
-            builder.add_inst(Inst::LdC0);
-            builder.add_inst(Inst::CEq);
+            builder
+                .add_inst(Inst::CEq)
+                .add_inst(Inst::LdC0)
+                .add_inst(Inst::CEq);
         }
-        BinOp::Gt => builder.add_inst(Inst::CGt),
-        BinOp::Le => {
+        BinOp::Gt => {
             builder.add_inst(Inst::CGt);
-            builder.add_inst(Inst::LdC0);
-            builder.add_inst(Inst::CEq);
         }
-        BinOp::Lt => builder.add_inst(Inst::CLt),
-        BinOp::Ge => {
+        BinOp::Le => {
+            builder
+                .add_inst(Inst::CGt)
+                .add_inst(Inst::LdC0)
+                .add_inst(Inst::CEq);
+        }
+        BinOp::Lt => {
             builder.add_inst(Inst::CLt);
-            builder.add_inst(Inst::LdC0);
-            builder.add_inst(Inst::CEq);
+        }
+        BinOp::Ge => {
+            builder
+                .add_inst(Inst::CLt)
+                .add_inst(Inst::LdC0)
+                .add_inst(Inst::CEq);
         }
         _ => unreachable!(),
     }

@@ -161,4 +161,12 @@ impl ValType {
             _ => panic!("Expect rval but found lval"),
         }
     }
+
+    pub fn expect_rval_ref(&self) -> &RValType {
+        match self {
+            Self::Ret(_) => panic!("Expect rval but found return value"),
+            Self::RVal(val) => val,
+            _ => panic!("Expect rval but found lval"),
+        }
+    }
 }

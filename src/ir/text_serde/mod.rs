@@ -200,6 +200,8 @@ impl Inst {
             Inst::Div => write!(f, "div"),
             Inst::Rem => write!(f, "rem"),
 
+            Inst::Neg => write!(f, "neg"),
+
             Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_tbl_entry_repr(*idx)),
             Inst::NewObj(idx) => write!(f, "newobj {}", c.get_tbl_entry_repr(*idx)),
             Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_tbl_entry_repr(*idx)),

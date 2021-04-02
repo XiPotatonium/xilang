@@ -4,9 +4,6 @@ A toy programming language that runs on a simple virtual machine.
 
 ## 1 TODO
 
-* More expressions
-    * unary: - !
-    * logical: && ||
 * Array type
 * GC
 * Pub use

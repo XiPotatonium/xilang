@@ -172,6 +172,11 @@ pub enum Inst {
     /// `..., val1, val2 -> ..., res`
     Rem,
 
+    /// 0x65, neg
+    ///
+    /// neg int or float
+    Neg,
+
     /// 0x6F, callvirt <method>
     ///
     /// Call a virtual method associate with an obj
@@ -274,6 +279,8 @@ impl Inst {
             Inst::Mul => 1,
             Inst::Div => 1,
             Inst::Rem => 1,
+
+            Inst::Neg => 1,
 
             Inst::CallVirt(_) => 5,
             Inst::NewObj(_) => 5,

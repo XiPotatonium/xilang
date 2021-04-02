@@ -609,6 +609,8 @@ impl ISerializable for Inst {
             Inst::Div => 0x5Bu8.serialize(buf),
             Inst::Rem => 0x5Du8.serialize(buf),
 
+            Inst::Neg => 0x65u8.serialize(buf),
+
             Inst::CallVirt(idx) => {
                 0x6Fu8.serialize(buf);
                 idx.serialize(buf);
@@ -695,6 +697,8 @@ impl ISerializable for Inst {
             0x5A => Inst::Mul,
             0x5B => Inst::Div,
             0x5D => Inst::Rem,
+
+            0x65 => Inst::Neg,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
             0x73 => Inst::NewObj(u32::deserialize(buf)),
