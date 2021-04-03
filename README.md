@@ -4,7 +4,7 @@ A toy programming language that runs on a simple virtual machine.
 
 ## 1 TODO
 
-## 1.1 FIX
+### 1.1 FIX
 
 * Local var. 
   * 目前let声明变量如果有同名的变量会发生覆盖，但是实际上不应该产生覆盖，let仅仅是绑定，新的局部变量一定分配新的空间。
@@ -17,9 +17,9 @@ A toy programming language that runs on a simple virtual machine.
 * IrFile encoding. 
   * 目前tbl index是有问题的，CLR并不通过前缀来判断有多个可能table的地址，而是通过一系列特殊的tag(标准II.24.2.6)
 
-## 1.2 RoadMap
+### 1.2 RoadMap
 
-### Ver 0.1.0 (Present)
+#### Ver 0.1.0 (Present)
 
 * OOP:
   * class
@@ -41,17 +41,17 @@ A toy programming language that runs on a simple virtual machine.
 * xilang project:
   * mod
 
-### Ver 0.1.1
+#### Ver 0.1.1
 
 * Dllimport
 * stdlib
   * io
 
-### Ver 0.1.2
+#### Ver 0.1.2
 
 * Class inheritance
 
-### Ver 0.1.3
+#### Ver 0.1.3
 
 * Array
 * String
@@ -60,17 +60,17 @@ A toy programming language that runs on a simple virtual machine.
   * i16/u16
   * u32
 
-### Ver 0.1.4
+#### Ver 0.1.4
 
 * Interface
 
-### Ver 0.1.5
+#### Ver 0.1.5
 
 * Generic
 * stdlib
   * collections
 
-### Ver 0.1.6
+#### Ver 0.1.6
 
 * pub use
 * priv/pub flag
@@ -78,36 +78,36 @@ A toy programming language that runs on a simple virtual machine.
 * stdlib
   * Dllimport attribute
 
-### Ver 0.2.0
+#### Ver 0.2.0
 
 * GC
 * Refactor vm, use unsafe properly
 
-### Ver 0.2.1
+#### Ver 0.2.1
 
 * Refactor lang, make incremental compilation possible
 * xilang project structure
 
-### Ver 0.2.2
+#### Ver 0.2.2
 
 * Built-in type:
   * f64
 * Constant folding
 
-### Ver 0.2.3
+#### Ver 0.2.3
 
 * match expr
 * Default value and StructExprEtCetera
 
-### Ver 0.2.4
+#### Ver 0.2.4
 
 * enum
 
-### Ver 0.2.5
+#### Ver 0.2.5
 
 * union
 
-### Ver 0.3.0
+#### Ver 0.3.0
 
 * for loop
 * Iterator interface
