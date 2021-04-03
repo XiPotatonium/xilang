@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use pest::error::Error;
-use pest::iterators::Pair;
+use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 
 #[derive(Parser)]
@@ -45,24 +45,44 @@ pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
     Ok(Box::new(AST::File(mods, uses, classes)))
 }
 
+fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
+    let mut ret = Vec::new();
+    while let Rule::AttributeLst = iter.peek().unwrap().as_rule() {
+        for attr in iter.next().unwrap().into_inner() {
+            if let Rule::Attribute = attr.as_rule() {
+                let mut attr_iter = attr.into_inner();
+                let attr_id = build_id(attr_iter.next().unwrap());
+                let attr_args = attr_iter.map(|a| build_literal(a)).collect();
+                ret.push(Box::new(AST::CustomAttr(attr_id, attr_args)));
+            } else {
+                unreachable!();
+            }
+        }
+    }
+    ret
+}
+
 fn build_class(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
+    let attr = build_attributes(&mut iter);
     let id = build_id(iter.next().unwrap());
     let mut fields: Vec<Box<AST>> = Vec::new();
     let mut methods: Vec<Box<AST>> = Vec::new();
     let mut init: Option<Box<AST>> = None;
-    for sub in iter {
-        match sub.as_rule() {
+    while let Some(_) = iter.peek() {
+        let item_attr = build_attributes(&mut iter);
+        let class_item = iter.next().unwrap();
+        match class_item.as_rule() {
             Rule::StaticInit => {
                 if let Some(_) = init {
                     panic!("Duplicated static init found in class {}", id);
                 } else {
-                    init = Some(build_block(sub.into_inner().next().unwrap()));
+                    init = Some(build_block(class_item.into_inner().next().unwrap()));
                 }
             }
-            Rule::StaticField => fields.push(build_field(sub, true)),
-            Rule::NonStaticField => fields.push(build_field(sub, false)),
-            Rule::Func => methods.push(build_method(sub)),
+            Rule::StaticField => fields.push(build_field(class_item, true, item_attr)),
+            Rule::NonStaticField => fields.push(build_field(class_item, false, item_attr)),
+            Rule::Func => methods.push(build_method(class_item, item_attr)),
             _ => unreachable!(),
         }
     }
@@ -70,6 +90,7 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
     Box::new(AST::Class(
         id,
         TypeFlag::default(),
+        attr,
         methods,
         fields,
         if let Some(v) = init {
@@ -80,7 +101,7 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
     ))
 }
 
-fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
+fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
     let mut flag = FieldFlag::default();
@@ -88,20 +109,19 @@ fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
         flag.set(FieldFlagTag::Static);
     }
 
-    Box::new(AST::Field(id, flag, build_type(iter.next().unwrap())))
+    Box::new(AST::Field(id, flag, attr, build_type(iter.next().unwrap())))
 }
 
-fn build_method(tree: Pair<Rule>) -> Box<AST> {
+fn build_method(tree: Pair<Rule>, attr: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
     let mut flag = MethodFlag::default();
     flag.set(MethodFlagTag::Static);
 
     let mut ps: Vec<Box<AST>> = Vec::new();
-    let mut sub = iter.next().unwrap();
-    if let Rule::Params = sub.as_rule() {
+    if let Rule::Params = iter.peek().unwrap().as_rule() {
         // Build parameters
-        let mut p_iter = sub.into_inner();
+        let mut p_iter = iter.next().unwrap().into_inner();
         let p0 = p_iter.next().unwrap();
         match p0.as_rule() {
             Rule::KwLSelf => {
@@ -130,18 +150,22 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
                 break;
             }
         }
-        sub = iter.next().unwrap();
     }
 
-    let ret_type = if let Rule::BlockExpr = sub.as_rule() {
-        Box::new(AST::None)
+    let ret_ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
+        build_type(iter.next().unwrap())
     } else {
-        let ret_type = build_type(sub);
-        sub = iter.next().unwrap();
-        ret_type
+        Box::new(AST::None)
     };
 
-    Box::new(AST::Method(id, flag, ret_type, ps, build_block(sub)))
+    let body = iter.next().unwrap();
+    let body = match body.as_rule() {
+        Rule::BlockExpr => build_block(body),
+        Rule::Semi => Box::new(AST::None),
+        _ => unreachable!(),
+    };
+
+    Box::new(AST::Method(id, flag, attr, ret_ty, ps, body))
 }
 
 fn build_pathexpr(tree: Pair<Rule>) -> ModPath {

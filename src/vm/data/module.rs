@@ -1,3 +1,4 @@
+use super::super::native::VMDll;
 use super::{VMClass, VMField, VMMethod};
 
 pub enum VMMemberRef {

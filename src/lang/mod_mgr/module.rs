@@ -189,7 +189,7 @@ impl Module {
             // generate all classes
             let mut class_map: HashMap<String, Rc<RefCell<Class>>> = HashMap::new();
             for class in classes.iter() {
-                if let AST::Class(id, _, _, _, _) = class.as_ref() {
+                if let AST::Class(id, _, _, _, _, _) = class.as_ref() {
                     if sub_mods.contains_key(id) {
                         panic!(
                             "Ambiguous name {} in module {}. Both a sub-module and a class",
@@ -261,10 +261,6 @@ impl Module {
         } else {
             unreachable!();
         }
-    }
-
-    pub fn from_xir() -> Rc<Module> {
-        todo!("TODO: Load mod from xir");
     }
 
     pub fn name(&self) -> &str {
@@ -398,14 +394,14 @@ impl Module {
     pub fn member_pass(&self, c: &ModMgr) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
-                if let AST::Class(class_id, class_flag, ast_methods, ast_fields, static_init) =
+                if let AST::Class(class_id, class_flag, _, ast_methods, ast_fields, static_init) =
                     class.as_ref()
                 {
                     let mut class_mut = self.classes.get(class_id).unwrap().borrow_mut();
                     class_mut.idx = self.builder.borrow_mut().add_class(class_id, class_flag);
 
                     for field in ast_fields.iter() {
-                        if let AST::Field(id, flag, ty) = field.as_ref() {
+                        if let AST::Field(id, flag, _, ty) = field.as_ref() {
                             // Field will have default initialization
                             let ty = self.get_ty(ty, c);
 
@@ -454,7 +450,7 @@ impl Module {
                     }
 
                     for method in ast_methods.iter() {
-                        if let AST::Method(id, flag, ty, ps, _) = method.as_ref() {
+                        if let AST::Method(id, flag, attr, ty, ps, _) = method.as_ref() {
                             let ps = ps
                                 .iter()
                                 .map(|p| {
@@ -568,7 +564,7 @@ impl Module {
     pub fn code_gen(&self, c: &ModMgr, cfg: &XicCfg) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
-                if let AST::Class(id, _, ast_methods, _, ast_init) = class.as_ref() {
+                if let AST::Class(id, _, _, ast_methods, _, ast_init) = class.as_ref() {
                     let class_ref = self.classes.get(id).unwrap().borrow();
                     // gen static init
                     match ast_init.as_ref() {
@@ -621,7 +617,7 @@ impl Module {
                     }
 
                     for method_ast in ast_methods.iter() {
-                        if let AST::Method(id, _, _, ps, block) = method_ast.as_ref() {
+                        if let AST::Method(id, _, _, _, ps, block) = method_ast.as_ref() {
                             let m = class_ref.methods.get(id).unwrap();
                             self.code_gen_method(c, cfg, &class_ref, m, ps, block);
                         } else {

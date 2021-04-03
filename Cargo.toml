@@ -13,6 +13,7 @@ pest = "2.0"
 pest_derive = "2.0"
 regex = "1"
 lazy_static = "1.4.0"
+winapi = { version = "0.3.9", features = ["libloaderapi", "errhandlingapi"] }
 
 [lib]
 name = "xir"

@@ -61,7 +61,7 @@ macro_rules! exec_numeric_op {
                     $lhs.data.i32_ = $lhs.data.i32_ $op $rhs.data.i32_;
                 }
                 SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::F32 | SlotTag::F64 => panic!("Cannot add between float and int"),
                 SlotTag::INative => {
                     $lhs.data.inative_ = $lhs.data.i32_ as isize $op $rhs.data.inative_;
                     $lhs.tag = SlotTag::INative;
@@ -70,13 +70,13 @@ macro_rules! exec_numeric_op {
                 SlotTag::Uninit => panic!("Cannot add unint data"),
             },
             SlotTag::I64 => unimplemented!(),
-            SlotTag::F64 => unimplemented!(),
+            SlotTag::F32 | SlotTag::F64 => unimplemented!(),
             SlotTag::INative => match $rhs.tag {
                 SlotTag::I32 => {
                     $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.i32_ as isize;
                 }
                 SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::F32 | SlotTag::F64 => panic!("Cannot add between float and int"),
                 SlotTag::INative => {
                     $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.inative_;
                 }
@@ -96,30 +96,30 @@ macro_rules! exec_cmp_op {
                 SlotTag::I32 => {
                     $lhs.data.i32_ $op $rhs.data.i32_
                 }
-                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
+                SlotTag::F32 | SlotTag::F64 => panic!("Cannot cmp between float and int"),
                 SlotTag::INative => {
                     ($lhs.data.i32_ as isize) $op $rhs.data.inative_
                 }
-                SlotTag::Ref => panic!("Cannot add ref"),
-                SlotTag::Uninit => panic!("Cannot add unint data"),
+                SlotTag::Ref => panic!("Cannot cmp ref"),
+                SlotTag::Uninit => panic!("Cannot cmp unint data"),
             },
             SlotTag::I64 => unimplemented!(),
-            SlotTag::F64 => unimplemented!(),
+            SlotTag::F32 | SlotTag::F64 => unimplemented!(),
             SlotTag::INative => match $rhs.tag {
                 SlotTag::I32 => {
                     $lhs.data.inative_ $op $rhs.data.i32_ as isize
                 }
-                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
+                SlotTag::F32 | SlotTag::F64 => panic!("Cannot cmp between float and int"),
                 SlotTag::INative => {
                     $lhs.data.inative_ $op $rhs.data.inative_
                 }
-                SlotTag::Ref => panic!("Cannot add ref"),
-                SlotTag::Uninit => panic!("Cannot add unint data"),
+                SlotTag::Ref => panic!("Cannot cmp ref"),
+                SlotTag::Uninit => panic!("Cannot cmp unint data"),
             },
-            SlotTag::Ref => panic!("Cannot add ref"),
-            SlotTag::Uninit => panic!("Cannot add unint data"),
+            SlotTag::Ref => panic!("Cannot cmp ref"),
+            SlotTag::Uninit => panic!("Cannot cmp unint data"),
         }
     };
 }
@@ -312,9 +312,11 @@ impl<'m> TExecutor<'m> {
                     };
 
                     match &callee.ctx {
-                        VMMethodCtx::Mod(_) => {}
-                        VMMethodCtx::Dll(_) => {
-                            unimplemented!();
+                        VMMethodCtx::Mod(_) => {
+                            // managed code
+                        }
+                        VMMethodCtx::Dll(dll_name) => {
+                            // call unmanaged code
                         }
                     }
 
@@ -487,6 +489,9 @@ impl<'m> TExecutor<'m> {
                         }
                         SlotTag::I64 => {
                             lhs.data.i64_ = -lhs.data.i64_;
+                        }
+                        SlotTag::F32 => {
+                            lhs.data.f32_ = -lhs.data.f32_;
                         }
                         SlotTag::F64 => {
                             lhs.data.f64_ = -lhs.data.f64_;

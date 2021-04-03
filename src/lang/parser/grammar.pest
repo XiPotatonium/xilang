@@ -4,13 +4,20 @@ Modules = { "mod" ~ Id ~ Semi }
 
 UseDeclarations = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
 
-Class = { "class" ~ Id ~ "{" ~ (StaticInit | Func | StaticField | NonStaticField)* ~ "}" }
+AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
+Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
+
+Class = { 
+    AttributeLst* ~ "class" ~ Id ~ "{" ~ 
+    (AttributeLst* ~ (StaticInit | Func | StaticField | NonStaticField))* ~ 
+    "}" 
+}
 
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
 StaticInit = { "static" ~ BlockExpr }
-Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ BlockExpr }
+Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
 Params = { (KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
 
 Pattern = { Id | TuplePattern }

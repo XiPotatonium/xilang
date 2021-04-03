@@ -10,12 +10,29 @@ pub enum AST {
     /// path, as
     Use(ModPath, Option<String>),
 
-    /// id, flag, methods: Vec<Func>, fields: Vec<Var>, static-init
-    Class(String, TypeFlag, Vec<Box<AST>>, Vec<Box<AST>>, Box<AST>),
-    /// id, ty, ps: Vec<Var>, body: Box<Block>
-    Method(String, MethodFlag, Box<AST>, Vec<Box<AST>>, Box<AST>),
+    CustomAttr(String, Vec<Box<AST>>),
 
-    Field(String, FieldFlag, Box<AST>),
+    /// id, flag, custom-attr, methods: Vec<Func>, fields: Vec<Var>, static-init
+    Class(
+        String,
+        TypeFlag,
+        Vec<Box<AST>>,
+        Vec<Box<AST>>,
+        Vec<Box<AST>>,
+        Box<AST>,
+    ),
+    /// id, flag, custom-attr, ty, ps: Vec<Var>, body: Box<Block>
+    Method(
+        String,
+        MethodFlag,
+        Vec<Box<AST>>,
+        Box<AST>,
+        Vec<Box<AST>>,
+        Box<AST>,
+    ),
+
+    /// id, flag, custom-attr, ty
+    Field(String, FieldFlag, Vec<Box<AST>>, Box<AST>),
     Param(String, ParamFlag, Box<AST>),
     /// pattern, ty, flag, init: Box<AST>
     Let(Box<AST>, LocalFlag, Box<AST>, Box<AST>),

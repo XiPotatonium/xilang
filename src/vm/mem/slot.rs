@@ -3,28 +3,33 @@ use std::mem::transmute;
 use super::{to_absolute, to_relative, MemTag};
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct Slot {
     pub tag: SlotTag,
     pub data: SlotData,
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub enum SlotTag {
     I32,
     I64,
-    F64,
     INative,
     Ref,
+    F32,
+    F64,
     Uninit,
 }
 
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub union SlotData {
     pub i32_: i32,
-    pub inative_: isize,
     pub i64_: i64,
+    pub inative_: isize,
+    pub f32_: f32,
     pub f64_: f64,
-    pub ref_: usize,
+    pub unative_: usize,
 }
 
 impl Default for Slot {
@@ -40,7 +45,7 @@ impl Slot {
     pub fn null() -> Self {
         Slot {
             tag: SlotTag::Ref,
-            data: SlotData { ref_: 0 },
+            data: SlotData { unative_: 0 },
         }
     }
 
@@ -48,7 +53,7 @@ impl Slot {
         Slot {
             tag: SlotTag::Ref,
             data: SlotData {
-                ref_: to_absolute(tag, offset),
+                unative_: to_absolute(tag, offset),
             },
         }
     }
@@ -62,7 +67,7 @@ impl Slot {
     ///
     pub unsafe fn as_addr(&self) -> (MemTag, usize) {
         if let SlotTag::Ref = self.tag {
-            to_relative(self.data.ref_)
+            to_relative(self.data.unative_)
         } else {
             panic!("Slot is not ptr");
         }

@@ -43,28 +43,31 @@ impl fmt::Display for AST {
                 path.as_str(),
                 if let Some(as_id) = as_id { as_id } else { "" }
             ),
-            Self::Class(id, flag, funcs, fields, init) => write!(
+            Self::CustomAttr(id, args) => write!(f, "{{\"name\":\"(Attr){}\",\"args\":{}}}", id, ASTChildrenWrapper(args)),
+            Self::Class(id, flag, attr, funcs, fields, init) => write!(
                 f,
-                "{{\"name\":\"(class){}\",\"flag\":\"{}\",\"fields\":{},\"init\":{},\"funcs\":{}}}",
+                "{{\"name\":\"(class){}\",\"flag\":\"{}\",\"attr\":{},\"fields\":{},\"init\":{},\"funcs\":{}}}",
                 id,
                 flag,
+                ASTChildrenWrapper(attr),
                 ASTChildrenWrapper(fields),
                 init,
                 ASTChildrenWrapper(funcs)
             ),
-            Self::Method(id, flag, ty, ps, body) => write!(
+            Self::Method(id, flag, attr, ty, ps, body) => write!(
                 f,
-                "{{\"name\":\"(method){}\",\"flag\":\"{}\",\"type\":{},\"ps\":{},\"body\":{}}}",
+                "{{\"name\":\"(method){}\",\"flag\":\"{}\",\"attr\":{},\"type\":{},\"ps\":{},\"body\":{}}}",
                 id,
                 flag,
+                ASTChildrenWrapper(attr),
                 ty,
                 ASTChildrenWrapper(ps),
                 body.as_ref()
             ),
-            Self::Field(id, flag, ty) => write!(
+            Self::Field(id, flag, attr, ty) => write!(
                 f,
-                "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"type\":{}}}",
-                id, flag, ty
+                "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"attr\":{},\"type\":{}}}",
+                id, flag, ASTChildrenWrapper(attr), ty
             ),
             Self::Param(id, flag, ty) => write!(
                 f,

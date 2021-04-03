@@ -199,7 +199,7 @@ impl<'c> Loader<'c> {
                 let flag = MethodFlag::new(method_entry.flag);
 
                 let method = Box::new(if method_entry.body == 0 {
-                    // pinvoke
+                    // declaration, no body
                     unimplemented!();
                 } else {
                     let body = &file.codes[method_entry.body as usize - 1];

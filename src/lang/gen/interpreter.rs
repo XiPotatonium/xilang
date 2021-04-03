@@ -5,9 +5,10 @@ impl AST {
         match self {
             Self::File(_, _, _)
             | Self::Use(_, _)
-            | Self::Class(_, _, _, _, _)
-            | Self::Method(_, _, _, _, _)
-            | Self::Field(_, _, _)
+            | Self::CustomAttr(_, _)
+            | Self::Class(_, _, _, _, _, _)
+            | Self::Method(_, _, _, _, _, _)
+            | Self::Field(_, _, _, _)
             | Self::Param(_, _, _)
             | Self::Let(_, _, _, _)
             | Self::Loop(_)
