@@ -8,8 +8,8 @@ pub struct Method {
     pub ps_flag: Vec<ParamFlag>,
     /// self is not included
     pub ps_ty: Vec<RValType>,
-    /// method idx in class file
-    pub method_idx: u32,
+    /// index into methoddef tbl
+    pub idx: u32,
 }
 
 impl Method {

@@ -8,7 +8,7 @@ use clap::{App, Arg};
 use std::fs;
 use std::time::SystemTime;
 
-use vm::executor::TExecutor;
+use vm::exec::TExecutor;
 use vm::loader::load;
 use vm::mem::SharedMem;
 use vm::VMCfg;

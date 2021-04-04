@@ -28,6 +28,7 @@ A toy programming language that runs on a simple virtual machine.
   * ctor (default constructor for class)
 * Built-in type:
   * i32
+  * bool
 * expr/stmt:
   * return
   * if
@@ -41,17 +42,17 @@ A toy programming language that runs on a simple virtual machine.
 * xilang project:
   * mod
 
-#### Ver 0.1.1
+#### Ver 0.2.0
 
 * Dllimport
 * stdlib
   * io
 
-#### Ver 0.1.2
+#### Ver 0.3.0
 
 * Class inheritance
 
-#### Ver 0.1.3
+#### Ver 0.3.1
 
 * Array
 * String
@@ -60,17 +61,17 @@ A toy programming language that runs on a simple virtual machine.
   * i16/u16
   * u32
 
-#### Ver 0.1.4
+#### Ver 0.4.0
 
 * Interface
 
-#### Ver 0.1.5
+#### Ver 0.5.0
 
 * Generic
 * stdlib
   * collections
 
-#### Ver 0.1.6
+#### Ver 0.6.0
 
 * pub use
 * priv/pub flag
@@ -78,36 +79,36 @@ A toy programming language that runs on a simple virtual machine.
 * stdlib
   * Dllimport attribute
 
-#### Ver 0.2.0
+#### Ver 0.6.1
 
 * GC
 * Refactor vm, use unsafe properly
 
-#### Ver 0.2.1
+#### Ver 0.6.2
 
 * Refactor lang, make incremental compilation possible
 * xilang project structure
 
-#### Ver 0.2.2
+#### Ver 0.6.3
 
 * Built-in type:
   * f64
 * Constant folding
 
-#### Ver 0.2.3
+#### Ver 0.6.4
 
 * match expr
 * Default value and StructExprEtCetera
 
-#### Ver 0.2.4
+#### Ver 0.7.0
 
 * enum
 
-#### Ver 0.2.5
+#### Ver 0.7.1
 
 * union
 
-#### Ver 0.3.0
+#### Ver 0.7.2
 
 * for loop
 * Iterator interface

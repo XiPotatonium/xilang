@@ -1,200 +1,47 @@
-use xir::blob::IrBlob;
+use xir::blob::Blob;
+use xir::file::*;
 use xir::flag::*;
 use xir::inst::Inst;
-use xir::ir_file::*;
+use xir::tok::{to_tok, TokTag};
 
 use std::collections::HashMap;
-use std::mem;
 
-use super::basic_block::{BasicBlock, LLCursor, LinkedList};
-use super::{fn_descriptor, RValType};
+use super::{fn_descriptor, MethodBuilder, RValType};
 
-pub struct MethodBuilder {
-    bb: LinkedList<BasicBlock>,
-    cur_bb: LLCursor<BasicBlock>,
-}
-
-impl MethodBuilder {
-    pub fn new() -> MethodBuilder {
-        let mut bb = LinkedList::new();
-        bb.push_back(BasicBlock::new());
-        let cur_bb = bb.cursor_back_mut();
-
-        MethodBuilder { bb, cur_bb }
-    }
-
-    pub fn insert_after_cur(&mut self) -> LLCursor<BasicBlock> {
-        self.bb
-            .insert_after_cursor(&mut self.cur_bb, BasicBlock::new())
-    }
-
-    pub fn set_cur_bb(&mut self, cur_bb: LLCursor<BasicBlock>) -> LLCursor<BasicBlock> {
-        let mut cur_bb = cur_bb;
-        mem::swap(&mut cur_bb, &mut self.cur_bb);
-        cur_bb
-    }
-
-    pub fn cur_bb_last_is_branch(&self) -> bool {
-        if let Some(inst) = self.cur_bb.as_ref().unwrap().insts.last() {
-            match inst {
-                Inst::BEq(_)
-                | Inst::BGe(_)
-                | Inst::BGt(_)
-                | Inst::BLe(_)
-                | Inst::BLt(_)
-                | Inst::Br(_)
-                | Inst::BrFalse(_)
-                | Inst::BrTrue(_)
-                | Inst::Ret => true,
-                _ => false,
-            }
-        } else {
-            false
-        }
-    }
-}
-
-impl MethodBuilder {
-    pub fn add_inst(&mut self, inst: Inst) -> &mut Self {
-        self.cur_bb.as_mut().unwrap().push(inst);
-        self
-    }
-
-    pub fn add_brfalse(&mut self, target: LLCursor<BasicBlock>) -> &mut Self {
-        let cur_bb = self.cur_bb.as_mut().unwrap();
-        cur_bb.push(Inst::BrFalse(0));
-        if let Some(_) = cur_bb.target {
-            unreachable!();
-        } else {
-            cur_bb.target = Some(target);
-        }
-        self
-    }
-
-    pub fn add_brtrue(&mut self, target: LLCursor<BasicBlock>) -> &mut Self {
-        let cur_bb = self.cur_bb.as_mut().unwrap();
-        cur_bb.push(Inst::BrTrue(0));
-        if let Some(_) = cur_bb.target {
-            unreachable!();
-        } else {
-            cur_bb.target = Some(target);
-        }
-        self
-    }
-
-    pub fn add_br(&mut self, target: LLCursor<BasicBlock>) -> &mut Self {
-        let cur_bb = self.cur_bb.as_mut().unwrap();
-        cur_bb.push(Inst::Br(0));
-        if let Some(_) = cur_bb.target {
-            unreachable!();
-        } else {
-            cur_bb.target = Some(target);
-        }
-        self
-    }
-
-    pub fn add_inst_stloc(&mut self, local_offset: u16) -> &mut Self {
-        self.add_inst(match local_offset {
-            0 => Inst::StLoc0,
-            1 => Inst::StLoc1,
-            2 => Inst::StLoc2,
-            3 => Inst::StLoc3,
-            _ => {
-                if local_offset >= u8::MIN as u16 && local_offset <= u8::MAX as u16 {
-                    Inst::StLocS(local_offset as u8)
-                } else {
-                    Inst::StLoc(local_offset)
-                }
-            }
-        })
-    }
-
-    pub fn add_inst_ldloc(&mut self, local_offset: u16) -> &mut Self {
-        self.add_inst(match local_offset {
-            0 => Inst::LdLoc0,
-            1 => Inst::LdLoc1,
-            2 => Inst::LdLoc2,
-            3 => Inst::LdLoc3,
-            _ => {
-                if local_offset >= u8::MIN as u16 && local_offset <= u8::MAX as u16 {
-                    Inst::LdLocS(local_offset as u8)
-                } else {
-                    Inst::LdLoc(local_offset)
-                }
-            }
-        })
-    }
-
-    pub fn add_inst_ldarg(&mut self, arg_offset: u16) -> &mut Self {
-        self.add_inst(match arg_offset {
-            0 => Inst::LdArg0,
-            1 => Inst::LdArg1,
-            2 => Inst::LdArg2,
-            3 => Inst::LdArg3,
-            _ => {
-                if arg_offset >= u8::MIN as u16 && arg_offset <= u8::MAX as u16 {
-                    Inst::LdArgS(arg_offset as u8)
-                } else {
-                    unimplemented!("ldarg is not implemeneted");
-                }
-            }
-        })
-    }
-
-    pub fn add_inst_starg(&mut self, arg_offset: u16) -> &mut Self {
-        self.add_inst(
-            if arg_offset >= u8::MIN as u16 && arg_offset <= u8::MAX as u16 {
-                Inst::StArgS(arg_offset as u8)
-            } else {
-                unimplemented!("ldarg is not implemeneted");
-            },
-        )
-    }
-
-    /// Push an int value to the stack
-    pub fn add_inst_ldc(&mut self, value: i32) -> &mut Self {
-        self.add_inst(match value {
-            -1 => Inst::LdCM1,
-            0 => Inst::LdC0,
-            1 => Inst::LdC1,
-            2 => Inst::LdC2,
-            3 => Inst::LdC3,
-            4 => Inst::LdC4,
-            5 => Inst::LdC5,
-            6 => Inst::LdC6,
-            7 => Inst::LdC7,
-            8 => Inst::LdC8,
-            _ => {
-                if value >= i8::MIN as i32 && value <= i8::MAX as i32 {
-                    Inst::LdCI4S(value as i8)
-                } else {
-                    Inst::LdCI4(value)
-                }
-            }
-        })
-    }
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FieldOrMethod {
+    /// index into typedef tbl
+    parent: u32,
+    /// index into str heap
+    name: u32,
+    /// index into blob heap
+    sig: u32,
 }
 
 pub struct Builder {
     // use const map to avoid redeclaration
     mod_name_idx: u32,
-    mod_tbl_idx: u32,
-    /// <name> -> tbl idx
+    mod_tbl_idx: u32, // always 1
+
+    /// Name -> TblIdx
     modref_map: HashMap<u32, u32>,
 
-    /// <name> -> tbl idx
+    /// Name -> TblIdx
     type_map: HashMap<u32, u32>,
-    /// <mod>, <name> -> tbl idx
-    typeref_map: HashMap<(u32, u32), u32>,
+    /// TypeRef -> TblIdx
+    typeref_map: HashMap<IrTypeRef, u32>,
 
-    /// <class> <name> <desc> -> tbl idx
-    member_map: HashMap<(u32, u32, u32), u32>,
-    /// <class> <name> <des> -> tbl idx
-    memberref_map: HashMap<(u32, u32, u32), u32>,
+    /// FieldOrMethod -> IdxIntoFieldTbl
+    field_map: HashMap<FieldOrMethod, u32>,
+    method_map: HashMap<FieldOrMethod, u32>,
+    /// MemberRef -> TblIdx
+    memberref_map: HashMap<IrMemberRef, u32>,
 
-    /// str -> str idx
+    /// str -> StrHeapIdx
     str_map: HashMap<String, u32>,
-    /// descriptor -> blobl idx
+    /// str -> UsrStrHeapIdx
+    usr_str_map: HashMap<String, u32>,
+    /// descriptor -> BlobHeapIdx
     blob_map: HashMap<String, u32>,
 
     pub file: IrFile,
@@ -210,10 +57,12 @@ impl Builder {
             type_map: HashMap::new(),
             typeref_map: HashMap::new(),
 
-            member_map: HashMap::new(),
+            field_map: HashMap::new(),
+            method_map: HashMap::new(),
             memberref_map: HashMap::new(),
 
             str_map: HashMap::new(),
+            usr_str_map: HashMap::new(),
             blob_map: HashMap::new(),
 
             file: IrFile::new(),
@@ -224,19 +73,19 @@ impl Builder {
             entrypoint: 0,
         });
         builder.mod_name_idx = name;
-        builder.mod_tbl_idx = builder.file.mod_tbl.len() as u32 | TBL_MOD_TAG;
+        builder.mod_tbl_idx = builder.file.mod_tbl.len() as u32;
         builder
     }
 
     pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u32 {
         let name = self.add_const_str(name);
-        self.file.class_tbl.push(IrClass {
+        self.file.typedef_tbl.push(IrTypeDef {
             name,
             flag: flag.flag,
             fields: (self.file.field_tbl.len() + 1) as u32,
             methods: (self.file.method_tbl.len() + 1) as u32,
         });
-        let ret = self.file.class_tbl.len() as u32 | TBL_CLASS_TAG;
+        let ret = self.file.typedef_tbl.len() as u32;
         self.type_map.insert(name, ret);
         ret
     }
@@ -249,14 +98,17 @@ impl Builder {
         let sig = self.add_const_ty_blob(ty);
         self.file.field_tbl.push(IrField {
             name,
-            signature: sig,
+            sig,
             flag: flag.flag,
         });
-        let ret = self.file.field_tbl.len() as u32 | TBL_FIELD_TAG;
-        self.member_map.insert(
-            (self.file.class_tbl.len() as u32 | TBL_CLASS_TAG, name, sig),
-            ret,
-        );
+        let ret = self.file.field_tbl.len() as u32;
+        let info = FieldOrMethod {
+            parent: self.file.typedef_tbl.len() as u32,
+            name,
+            sig,
+        };
+        // TODO: expect none
+        self.field_map.insert(info, ret);
         ret
     }
 
@@ -276,13 +128,15 @@ impl Builder {
             flag: flag.flag,
             name,
             body: 0,
-            signature: sig,
+            sig,
         });
-        let ret = self.file.method_tbl.len() as u32 | TBL_METHOD_TAG;
-        self.member_map.insert(
-            (self.file.class_tbl.len() as u32 | TBL_CLASS_TAG, name, sig),
-            ret,
-        );
+        let ret = self.file.method_tbl.len() as u32;
+        let info = FieldOrMethod {
+            parent: self.file.typedef_tbl.len() as u32,
+            name,
+            sig,
+        };
+        self.method_map.insert(info, ret);
         ret
     }
 
@@ -291,7 +145,7 @@ impl Builder {
     /// Fill all jump instructions, concat all basic blocks
     ///
     pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, local: u16, fold_br: bool) {
-        let ir_method = &mut self.file.method_tbl[((method_idx & !TBL_TAG_MASK) - 1) as usize];
+        let ir_method = &mut self.file.method_tbl[method_idx as usize - 1];
 
         if fold_br {
             unimplemented!("Fold branch operation is not implemented");
@@ -346,17 +200,25 @@ impl Builder {
         }
     }
 
-    fn to_blob(&mut self, ty: &RValType) -> IrBlob {
+    fn to_blob(&mut self, ty: &RValType) -> Blob {
         match ty {
-            RValType::Bool => IrBlob::Bool,
-            RValType::U8 => IrBlob::U8,
-            RValType::Char => IrBlob::Char,
-            RValType::I32 => IrBlob::I32,
-            RValType::F64 => IrBlob::F64,
-            RValType::Void => IrBlob::Void,
+            RValType::Bool => Blob::Bool,
+            RValType::U8 => Blob::U8,
+            RValType::Char => Blob::Char,
+            RValType::I32 => Blob::I32,
+            RValType::F64 => Blob::F64,
+            RValType::Void => Blob::Void,
             RValType::Never => unreachable!(),
-            RValType::Obj(mod_name, name) => IrBlob::Obj(self.add_const_class(mod_name, name)),
-            RValType::Array(inner) => IrBlob::Array(self.add_const_ty_blob(&inner)),
+            RValType::Obj(mod_name, name) => {
+                let (class_idx, class_tag) = self.add_const_class(mod_name, name);
+                let tok = match class_tag {
+                    TokTag::TypeDef => to_tok(class_idx, TokTag::TypeDef),
+                    TokTag::TypeRef => to_tok(class_idx, TokTag::TypeRef),
+                    _ => unreachable!(),
+                };
+                Blob::Obj(tok)
+            }
+            RValType::Array(inner) => Blob::Array(self.add_const_ty_blob(&inner)),
         }
     }
 
@@ -381,40 +243,50 @@ impl Builder {
             let ps: Vec<u32> = ps.iter().map(|p| self.add_const_ty_blob(p)).collect();
             let ret_ty = self.add_const_ty_blob(ret_ty);
             let ret = self.file.blob_heap.len() as u32;
-            self.file.blob_heap.push(IrBlob::Func(ps, ret_ty));
+            self.file.blob_heap.push(Blob::Func(ps, ret_ty));
             self.blob_map.insert(desc, ret);
             ret
         }
     }
 
-    pub fn add_const_mod(&mut self, name: &str) -> u32 {
+    pub fn add_const_mod(&mut self, name: &str) -> (u32, TokTag) {
         let name = self.add_const_str(name);
         if name == self.mod_name_idx {
             // this module
-            self.mod_tbl_idx
+            (self.mod_tbl_idx, TokTag::Mod)
         } else if let Some(ret) = self.modref_map.get(&name) {
-            *ret
+            (*ret, TokTag::ModRef)
         } else {
             self.file.modref_tbl.push(IrModRef { name });
-            let ret = (self.file.modref_tbl.len() as u32) | TBL_MODREF_TAG;
+            let ret = self.file.modref_tbl.len() as u32;
             self.modref_map.insert(name, ret);
-            ret
+            (ret, TokTag::ModRef)
         }
     }
 
-    pub fn add_const_class(&mut self, mod_name: &str, name: &str) -> u32 {
-        let parent = self.add_const_mod(mod_name);
+    pub fn add_const_class(&mut self, mod_name: &str, name: &str) -> (u32, TokTag) {
+        let (parent_idx, parent_tag) = self.add_const_mod(mod_name);
         let name = self.add_const_str(name);
-        if parent == self.mod_tbl_idx {
-            // class in this module
-            *self.type_map.get(&name).unwrap()
-        } else if let Some(ret) = self.typeref_map.get(&(parent, name)) {
-            *ret
-        } else {
-            self.file.classref_tbl.push(IrClassRef { parent, name });
-            let ret = self.file.classref_tbl.len() as u32 | TBL_CLASSREF_TAG;
-            self.typeref_map.insert((parent, name), ret);
-            ret
+        match parent_tag {
+            TokTag::Mod => {
+                // class in this module
+                (*self.type_map.get(&name).unwrap(), TokTag::TypeDef)
+            }
+            TokTag::ModRef => {
+                let typeref = IrTypeRef {
+                    parent: get_typeref_parent(parent_idx, ResolutionScope::ModRef),
+                    name,
+                };
+                if let Some(ret) = self.typeref_map.get(&typeref) {
+                    (*ret, TokTag::TypeRef)
+                } else {
+                    self.file.typeref_tbl.push(typeref.clone());
+                    let ret = self.file.typeref_tbl.len() as u32;
+                    self.typeref_map.insert(typeref, ret);
+                    (ret, TokTag::TypeRef)
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -424,24 +296,43 @@ impl Builder {
         class_name: &str,
         name: &str,
         sig: u32,
-    ) -> u32 {
-        let parent = self.add_const_class(mod_name, class_name);
+    ) -> (u32, TokTag) {
+        let (parent_idx, parent_tag) = self.add_const_class(mod_name, class_name);
         let name = self.add_const_str(name);
 
-        if parent & TBL_TAG_MASK == TBL_CLASS_TAG {
-            // class in this module
-            *self.member_map.get(&(parent, name, sig)).unwrap()
-        } else if let Some(ret) = self.memberref_map.get(&(parent, name, sig)) {
-            *ret
-        } else {
-            self.file.memberref_tbl.push(IrMemberRef {
-                parent,
-                name,
-                signature: sig,
-            });
-            let ret = self.file.memberref_tbl.len() as u32 | TBL_MEMBERREF_TAG;
-            self.memberref_map.insert((parent, name, sig), ret);
-            ret
+        match parent_tag {
+            TokTag::TypeDef => {
+                // class in this module
+                let info = FieldOrMethod {
+                    parent: parent_idx,
+                    name,
+                    sig,
+                };
+                if let Some(f) = self.field_map.get(&info) {
+                    (*f, TokTag::Field)
+                } else if let Some(m) = self.method_map.get(&info) {
+                    (*m, TokTag::MethodDef)
+                } else {
+                    unreachable!()
+                }
+            }
+            TokTag::TypeRef => {
+                let parent_tagged_idx = to_memberref_parent(parent_idx, MemberRefParent::TypeRef);
+                let memberref = IrMemberRef {
+                    parent: parent_tagged_idx,
+                    name,
+                    sig,
+                };
+                if let Some(ret) = self.memberref_map.get(&memberref) {
+                    (*ret, TokTag::MemberRef)
+                } else {
+                    self.file.memberref_tbl.push(memberref.clone());
+                    let ret = self.file.memberref_tbl.len() as u32;
+                    self.memberref_map.insert(memberref, ret);
+                    (ret, TokTag::MemberRef)
+                }
+            }
+            _ => unreachable!(),
         }
     }
 }

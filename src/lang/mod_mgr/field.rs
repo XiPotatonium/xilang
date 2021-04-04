@@ -5,8 +5,8 @@ pub struct Field {
     pub id: String,
     pub flag: FieldFlag,
     pub ty: RValType,
-    /// field idx in class file
-    pub field_idx: u32,
+    /// index into field tbl
+    pub idx: u32,
 }
 
 impl Field {
@@ -15,7 +15,7 @@ impl Field {
             id: id.to_owned(),
             flag,
             ty,
-            field_idx: idx,
+            idx,
         }
     }
 }

@@ -6,7 +6,8 @@ use super::{CodeGenCtx, LoopCtx, LoopType, RValType, ValType};
 
 use xir::flag::*;
 use xir::inst::Inst;
-use xir::path::IModPath;
+use xir::tok::{to_tok, TokTag};
+use xir::util::path::IModPath;
 use xir::CTOR_NAME;
 
 pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
@@ -141,14 +142,14 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
 
                     let ret = f.ty.clone();
                     let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
-                    let field_idx = ctx
+                    let (field_idx, tok_tag) = ctx
                         .module
                         .builder
                         .borrow_mut()
                         .add_const_member(mod_name, class_name, field_name, sig);
                     ctx.method_builder
                         .borrow_mut()
-                        .add_inst(Inst::LdFld(field_idx));
+                        .add_inst(Inst::LdFld(to_tok(field_idx, tok_tag)));
 
                     ValType::RVal(ret)
                 }
@@ -192,14 +193,14 @@ fn gen_static_access(ctx: &CodeGenCtx, v: ValType) -> ValType {
 
             let ret = f.ty.clone();
             let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
-            let field_idx = ctx
+            let (field_idx, tok_tag) = ctx
                 .module
                 .builder
                 .borrow_mut()
                 .add_const_member(mod_name, class_name, field_name, sig);
             ctx.method_builder
                 .borrow_mut()
-                .add_inst(Inst::LdSFld(field_idx));
+                .add_inst(Inst::LdSFld(to_tok(field_idx, tok_tag)));
 
             ValType::RVal(ret)
         }
@@ -499,15 +500,15 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
                 .builder
                 .borrow_mut()
                 .add_const_fn_blob(&m.ps_ty, &m.ret_ty);
-            let m_idx = ctx
+            let (m_idx, tok_tag) = ctx
                 .module
                 .builder
                 .borrow_mut()
                 .add_const_member(mod_name, class, name, sig);
             let inst = if m.flag.is(MethodFlagTag::Static) {
-                Inst::Call(m_idx)
+                Inst::Call(to_tok(m_idx, tok_tag))
             } else {
-                Inst::CallVirt(m_idx)
+                Inst::CallVirt(to_tok(m_idx, tok_tag))
             };
 
             build_args(ctx, &m.ps_ty, args);
@@ -582,10 +583,11 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
 
             let mut builder = ctx.module.builder.borrow_mut();
             let ctor_sig = builder.add_const_fn_blob(&ctor_ps, &RValType::Void);
-            let ctor_idx = builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
+            let (ctor_idx, tok_tag) =
+                builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
             ctx.method_builder
                 .borrow_mut()
-                .add_inst(Inst::NewObj(ctor_idx));
+                .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));
         }
         RValType::Array(_) => unimplemented!(),
         _ => panic!("Invalid new expression, only new class or array is allowed"),
@@ -633,16 +635,16 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             }
 
             let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&field_ty);
-            let f_idx = ctx.module.builder.borrow_mut().add_const_member(
+            let (f_idx, tok_tag) = ctx.module.builder.borrow_mut().add_const_member(
                 &mod_name,
                 &class_name,
                 &name,
                 sig,
             );
             let inst = if field.flag.is(FieldFlagTag::Static) {
-                Inst::StSFld(f_idx)
+                Inst::StSFld(to_tok(f_idx, tok_tag))
             } else {
-                Inst::StFld(f_idx)
+                Inst::StFld(to_tok(f_idx, tok_tag))
             };
 
             ctx.method_builder.borrow_mut().add_inst(inst);

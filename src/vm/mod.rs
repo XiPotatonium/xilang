@@ -1,4 +1,4 @@
-pub mod executor;
+pub mod exec;
 pub mod loader;
 pub mod mem;
 

@@ -3,18 +3,20 @@ mod builder;
 mod gen;
 mod interpreter;
 mod lval;
+mod method_builder;
 mod op;
 
-pub use self::basic_block::{BasicBlock, LLCursor};
-pub use self::builder::{Builder, MethodBuilder};
-pub use self::gen::gen;
+pub use basic_block::{BasicBlock, LLCursor};
+pub use builder::Builder;
+pub use gen::gen;
+pub use method_builder::MethodBuilder;
 
 use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
 use super::{ast::AST, XicCfg};
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::{cell::RefCell, fmt::write};
 
 pub enum LoopType {
     Loop(RValType),
@@ -54,7 +56,7 @@ impl<'mgr> CodeGenCtx<'mgr> {
 
         self.module.builder.borrow_mut().done(
             &mut self.method_builder.borrow_mut(),
-            self.method.method_idx,
+            self.method.idx,
             local_mut.size(),
             self.cfg.optim >= 1,
         );

@@ -6,7 +6,7 @@ use super::Method;
 pub struct Class {
     pub name: String,
 
-    /// index in module file
+    /// index into typedef tbl
     pub idx: u32,
 
     pub non_static_fields: Vec<String>,

@@ -1,8 +1,9 @@
 // mod ir_parser;
 
-use super::flag::*;
-use super::inst::Inst;
-use super::ir_file::*;
+use super::*;
+use crate::ir::flag::*;
+use crate::ir::inst::Inst;
+use crate::ir::tok::fmt_tok;
 
 use std::fmt;
 
@@ -17,12 +18,12 @@ impl IrFile {
         let flag = FieldFlag::new(field.flag);
         write!(
             f,
-            "\n{}.field {} {} {}",
+            "\n{}.field {} {} ",
             " ".repeat(indent * 4),
             flag,
             self.get_str(field.name),
-            self.get_blob_repr(field.signature)
-        )
+        )?;
+        self.blob_heap[field.sig as usize].fmt(f, self)
     }
 
     pub fn write_method(
@@ -36,12 +37,13 @@ impl IrFile {
         let flag = MethodFlag::new(method.flag);
         write!(
             f,
-            "\n\n{}.method {} {} {}\n",
+            "\n\n{}.method {} {} ",
             " ".repeat(indent * 4),
             flag,
             self.get_str(method.name),
-            self.get_blob_repr(method.signature)
         )?;
+        self.blob_heap[method.sig as usize].fmt(f, self)?;
+        write!(f, "\n")?;
 
         if method.body != 0 {
             // has body
@@ -76,17 +78,15 @@ impl fmt::Display for IrFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            ".version {}.{}\n",
-            self.major_version, self.minor_version
+            ".version {}.{}\n.mod {}",
+            self.major_version,
+            self.minor_version,
+            self.get_str(self.mod_tbl[0].name)
         )?;
-        let entrypoint = if let Some(m) = self.mod_tbl.first() {
-            write!(f, ".mod {}", self.get_str(m.name))?;
-            m.entrypoint & !TBL_TAG_MASK
-        } else {
-            0
-        };
 
-        let (mut field_i, mut method_i) = if let Some(c0) = self.class_tbl.first() {
+        let entrypoint = self.mod_tbl[0].entrypoint;
+
+        let (mut field_i, mut method_i) = if let Some(c0) = self.typedef_tbl.first() {
             (c0.fields as usize - 1, c0.methods as usize - 1)
         } else {
             (self.field_tbl.len(), self.method_tbl.len())
@@ -100,12 +100,12 @@ impl fmt::Display for IrFile {
             self.write_method(f, 0, i, i as u32 + 1 == entrypoint)?;
         }
 
-        for (class_i, class) in self.class_tbl.iter().enumerate() {
-            let (field_lim, method_lim) = if class_i + 1 >= self.class_tbl.len() {
+        for (class_i, class) in self.typedef_tbl.iter().enumerate() {
+            let (field_lim, method_lim) = if class_i + 1 >= self.typedef_tbl.len() {
                 // last class
                 (self.field_tbl.len(), self.method_tbl.len())
             } else {
-                let next_class = &self.class_tbl[class_i + 1];
+                let next_class = &self.typedef_tbl[class_i + 1];
                 (
                     next_class.fields as usize - 1,
                     next_class.methods as usize - 1,
@@ -174,7 +174,10 @@ impl Inst {
             Inst::Dup => write!(f, "dup"),
             Inst::Pop => write!(f, "pop"),
 
-            Inst::Call(idx) => write!(f, "call {}", c.get_tbl_entry_repr(*idx)),
+            Inst::Call(tok) => {
+                write!(f, "call ")?;
+                fmt_tok(*tok, f, c)
+            }
             Inst::Ret => write!(f, "ret"),
 
             Inst::Br(offset) => write!(f, "br IL_{:0>4X}", (i + self.size()) as i32 + offset),
@@ -202,12 +205,30 @@ impl Inst {
 
             Inst::Neg => write!(f, "neg"),
 
-            Inst::CallVirt(idx) => write!(f, "callvirt {}", c.get_tbl_entry_repr(*idx)),
-            Inst::NewObj(idx) => write!(f, "newobj {}", c.get_tbl_entry_repr(*idx)),
-            Inst::LdFld(idx) => write!(f, "ldfld {}", c.get_tbl_entry_repr(*idx)),
-            Inst::StFld(idx) => write!(f, "stfld {}", c.get_tbl_entry_repr(*idx)),
-            Inst::LdSFld(idx) => write!(f, "ldsfld {}", c.get_tbl_entry_repr(*idx)),
-            Inst::StSFld(idx) => write!(f, "stsfld {}", c.get_tbl_entry_repr(*idx)),
+            Inst::CallVirt(tok) => {
+                write!(f, "callvirt ")?;
+                fmt_tok(*tok, f, c)
+            }
+            Inst::NewObj(tok) => {
+                write!(f, "newobj ")?;
+                fmt_tok(*tok, f, c)
+            }
+            Inst::LdFld(tok) => {
+                write!(f, "ldfld ")?;
+                fmt_tok(*tok, f, c)
+            }
+            Inst::StFld(tok) => {
+                write!(f, "stfld ")?;
+                fmt_tok(*tok, f, c)
+            }
+            Inst::LdSFld(tok) => {
+                write!(f, "ldsfld ")?;
+                fmt_tok(*tok, f, c)
+            }
+            Inst::StSFld(tok) => {
+                write!(f, "stsfld ")?;
+                fmt_tok(*tok, f, c)
+            }
         }
     }
 }

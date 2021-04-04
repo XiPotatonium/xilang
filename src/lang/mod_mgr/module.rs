@@ -8,7 +8,8 @@ use std::rc::{Rc, Weak};
 
 use xir::flag::*;
 use xir::inst::Inst;
-use xir::path::{IModPath, ModPath};
+use xir::tok::{to_tok, TokTag};
+use xir::util::path::{IModPath, ModPath};
 use xir::{CCTOR_NAME, CTOR_NAME};
 
 use super::super::ast::AST;
@@ -20,7 +21,7 @@ use super::{Arg, Class, Field, Locals, Method, ModMgr};
 // use macro to avoid borrow mutable self twice, SB rust
 macro_rules! declare_method {
     ($class: expr, $builder: expr, $id: expr, $flag: expr, $ret_ty: expr, $ps: expr) => {
-        let method_idx = $builder.borrow_mut().add_method($id, &$ps, &$ret_ty, $flag);
+        let idx = $builder.borrow_mut().add_method($id, &$ps, &$ret_ty, $flag);
 
         if let Some(_) = $class.methods.insert(
             $id.to_owned(),
@@ -29,7 +30,7 @@ macro_rules! declare_method {
                 ps_ty: $ps,
                 ps_flag: vec![],
                 flag: $flag.clone(),
-                method_idx,
+                idx,
             }),
         ) {
             // TODO: use expect_none once it becomes stable
@@ -474,8 +475,7 @@ impl Module {
                                     && m.flag.is(MethodFlagTag::Static)
                                 {
                                     // pub Program::main()
-                                    self.builder.borrow_mut().file.mod_tbl[0].entrypoint =
-                                        m.method_idx;
+                                    self.builder.borrow_mut().file.mod_tbl[0].entrypoint = m.idx;
                                 }
                             }
                         }
@@ -602,15 +602,16 @@ impl Module {
                                 .zip(class_ref.non_static_fields.iter())
                             {
                                 method_builder.add_inst_ldarg(i as u16);
-                                method_builder.add_inst(Inst::StFld(
-                                    class_ref.fields.get(f_id).unwrap().field_idx,
-                                ));
+                                method_builder.add_inst(Inst::StFld(to_tok(
+                                    class_ref.fields.get(f_id).unwrap().idx,
+                                    TokTag::Field,
+                                )));
                             }
                         }
                         method_builder.add_inst(Inst::Ret);
                         self.builder.borrow_mut().done(
                             &mut method_builder,
-                            m.method_idx,
+                            m.idx,
                             0,
                             cfg.optim >= 1,
                         );

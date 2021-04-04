@@ -107,9 +107,10 @@ pub enum Inst {
     /// `..., val -> ...`
     Pop,
 
-    /// 0x28, call <func>
+    /// 0x28, call <tok>
     ///
-    /// Call a func, See ECMA-335 page 368
+    /// Call a func, See ECMA-335 page 368.
+    /// tok is MethodDef/MemberRef/MethodSpec
     ///
     /// `..., arg0, arg1 ... argN -> ..., retVal`
     Call(u32),
@@ -177,13 +178,13 @@ pub enum Inst {
     /// neg int or float
     Neg,
 
-    /// 0x6F, callvirt <method>
+    /// 0x6F, callvirt <tok>
     ///
     /// Call a virtual method associate with an obj
     ///
     /// `..., obj, arg1, ..., argN -> ..., retVal`
     CallVirt(u32),
-    /// 0x73, new <ctor>
+    /// 0x73, new <tok>
     ///
     /// Call a creator, return obj addr
     ///
@@ -191,7 +192,7 @@ pub enum Inst {
     NewObj(u32),
     /// 0x7B, ldfld <field>
     ///
-    /// Load a field onto the stack
+    /// Load a field onto the stack, <field> is Field/MemberRef
     ///
     /// `..., obj -> ..., val`
     LdFld(u32),

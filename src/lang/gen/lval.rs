@@ -2,7 +2,7 @@ use super::super::ast::AST;
 use super::{gen, CodeGenCtx, RValType, ValType};
 
 use xir::flag::*;
-use xir::path::{IModPath, ModPath};
+use xir::util::path::{IModPath, ModPath};
 
 use std::rc::Weak;
 

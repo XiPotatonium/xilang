@@ -1,7 +1,7 @@
 use super::data::{VMMethod, VMMethodCtx, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
-use xir::ir_file::{TBL_FIELD_TAG, TBL_MEMBERREF_TAG, TBL_METHOD_TAG, TBL_TAG_MASK};
+use xir::tok::{get_tok_tag, TokTag};
 
 use std::mem::transmute;
 
@@ -300,15 +300,18 @@ impl<'m> TExecutor<'m> {
                 // call
                 0x28 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
                     let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
 
+                    let (tag, idx) = get_tok_tag(tok);
+
                     let callee = match tag {
-                        TBL_METHOD_TAG => ctx.methods[idx].as_ref(),
-                        TBL_MEMBERREF_TAG => ctx.memberref[idx].expect_method().as_ref().unwrap(),
-                        _ => unreachable!(),
+                        TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => ctx.memberref[idx as usize - 1]
+                            .expect_method()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unimplemented!(),
                     };
 
                     match &callee.ctx {
@@ -506,15 +509,18 @@ impl<'m> TExecutor<'m> {
                 // callvirt
                 0x6F => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
                     let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
 
+                    let (tag, idx) = get_tok_tag(tok);
+
                     let callee = match tag {
-                        TBL_METHOD_TAG => ctx.methods[idx].as_ref(),
-                        TBL_MEMBERREF_TAG => ctx.memberref[idx].expect_method().as_ref().unwrap(),
-                        _ => unreachable!(),
+                        TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => ctx.memberref[idx as usize - 1]
+                            .expect_method()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unimplemented!(),
                     };
                     callee.ctx.expect_mod();
 
@@ -529,15 +535,18 @@ impl<'m> TExecutor<'m> {
                 // newobj
                 0x73 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
                     let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
 
+                    let (tag, idx) = get_tok_tag(tok);
+
                     let callee = match tag {
-                        TBL_METHOD_TAG => ctx.methods[idx].as_ref(),
-                        TBL_MEMBERREF_TAG => ctx.memberref[idx].expect_method().as_ref().unwrap(),
-                        _ => unreachable!(),
+                        TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => ctx.memberref[idx as usize - 1]
+                            .expect_method()
+                            .as_ref()
+                            .unwrap(),
+                        _ => unimplemented!(),
                     };
                     callee.ctx.expect_mod();
 
@@ -556,30 +565,29 @@ impl<'m> TExecutor<'m> {
                 // ldfld
                 0x7B => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
                     let (mem_tag, offset) = cur_state.stack.pop().as_addr();
                     if let MemTag::HeapMem = mem_tag {
                     } else {
                         panic!("Operand of ldfld is not a heap addr");
                     }
 
+                    let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TBL_FIELD_TAG => {
-                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
-                        }
-                        TBL_MEMBERREF_TAG => cur_state
+                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                            [idx as usize - 1]
+                            .as_ref(),
+                        TokTag::MemberRef => cur_state
                             .method
                             .ctx
                             .expect_mod()
                             .as_ref()
                             .unwrap()
-                            .memberref[idx]
+                            .memberref[idx as usize - 1]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
-                        _ => unreachable!(),
+                        _ => unimplemented!(),
                     };
 
                     let offset = offset + f.addr;
@@ -609,9 +617,7 @@ impl<'m> TExecutor<'m> {
                 // stfld
                 0x7D => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
                     let v = cur_state.stack.pop();
                     let (mem_tag, offset) = cur_state.stack.pop().as_addr();
                     if let MemTag::HeapMem = mem_tag {
@@ -619,21 +625,22 @@ impl<'m> TExecutor<'m> {
                         panic!("Operand of stfld is not a heap addr");
                     }
 
+                    let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TBL_FIELD_TAG => {
-                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
-                        }
-                        TBL_MEMBERREF_TAG => cur_state
+                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                            [idx as usize - 1]
+                            .as_ref(),
+                        TokTag::MemberRef => cur_state
                             .method
                             .ctx
                             .expect_mod()
                             .as_ref()
                             .unwrap()
-                            .memberref[idx]
+                            .memberref[idx as usize - 1]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
-                        _ => unreachable!(),
+                        _ => unimplemented!(),
                     };
 
                     let offset = offset + f.addr;
@@ -663,25 +670,24 @@ impl<'m> TExecutor<'m> {
                 // ldsfld
                 0x7E => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
 
+                    let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TBL_FIELD_TAG => {
-                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
-                        }
-                        TBL_MEMBERREF_TAG => cur_state
+                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                            [idx as usize - 1]
+                            .as_ref(),
+                        TokTag::MemberRef => cur_state
                             .method
                             .ctx
                             .expect_mod()
                             .as_ref()
                             .unwrap()
-                            .memberref[idx]
+                            .memberref[idx as usize - 1]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
-                        _ => unreachable!(),
+                        _ => unimplemented!(),
                     };
 
                     let (mem_tag, offset) = to_relative(f.addr);
@@ -715,26 +721,25 @@ impl<'m> TExecutor<'m> {
                 // stfld
                 0x80 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let idx = cur_state.consume_u32();
-                    let tag = idx & TBL_TAG_MASK;
-                    let idx = (idx & !TBL_TAG_MASK) as usize - 1;
+                    let tok = cur_state.consume_u32();
                     let v = cur_state.stack.pop();
 
+                    let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TBL_FIELD_TAG => {
-                            cur_state.method.ctx.expect_mod().as_ref().unwrap().fields[idx].as_ref()
-                        }
-                        TBL_MEMBERREF_TAG => cur_state
+                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                            [idx as usize - 1]
+                            .as_ref(),
+                        TokTag::MemberRef => cur_state
                             .method
                             .ctx
                             .expect_mod()
                             .as_ref()
                             .unwrap()
-                            .memberref[idx]
+                            .memberref[idx as usize - 1]
                             .expect_field()
                             .as_ref()
                             .unwrap(),
-                        _ => unreachable!(),
+                        _ => unimplemented!(),
                     };
 
                     let (mem_tag, offset) = to_relative(f.addr);

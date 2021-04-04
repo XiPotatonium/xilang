@@ -2,10 +2,11 @@ use super::data::*;
 use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
 use super::VMCfg;
 
-use xir::blob::IrBlob;
+use xir::blob::Blob;
+use xir::file::*;
 use xir::flag::*;
-use xir::ir_file::*;
-use xir::path::{IModPath, ModPath};
+use xir::tok::{get_tok_tag, TokTag};
+use xir::util::path::{IModPath, ModPath};
 use xir::CCTOR_NAME;
 
 use std::collections::HashMap;
@@ -14,26 +15,26 @@ use std::mem::size_of;
 use std::path::PathBuf;
 use std::ptr::null;
 
-fn blob_size(blob: &IrBlob) -> usize {
+fn blob_size(blob: &Blob) -> usize {
     match blob {
-        IrBlob::Void => panic!("Void type has no heap size"),
-        IrBlob::Bool => size_of::<i32>(),
-        IrBlob::Char => size_of::<u16>(),
-        IrBlob::U8 => size_of::<u8>(),
-        IrBlob::I8 => size_of::<i8>(),
-        IrBlob::U16 => size_of::<u16>(),
-        IrBlob::I16 => size_of::<i16>(),
-        IrBlob::U32 => size_of::<u32>(),
-        IrBlob::I32 => size_of::<i32>(),
-        IrBlob::U64 => size_of::<u64>(),
-        IrBlob::I64 => size_of::<i64>(),
-        IrBlob::UNative => size_of::<usize>(),
-        IrBlob::INative => size_of::<isize>(),
-        IrBlob::F32 => size_of::<f32>(),
-        IrBlob::F64 => size_of::<f64>(),
-        IrBlob::Obj(_) => size_of::<usize>(),
-        IrBlob::Func(_, _) => unimplemented!("Size of IrBlob::Func is not implemented"),
-        IrBlob::Array(_) => size_of::<usize>(),
+        Blob::Void => panic!("Void type has no heap size"),
+        Blob::Bool => size_of::<i32>(),
+        Blob::Char => size_of::<u16>(),
+        Blob::U8 => size_of::<u8>(),
+        Blob::I8 => size_of::<i8>(),
+        Blob::U16 => size_of::<u16>(),
+        Blob::I16 => size_of::<i16>(),
+        Blob::U32 => size_of::<u32>(),
+        Blob::I32 => size_of::<i32>(),
+        Blob::U64 => size_of::<u64>(),
+        Blob::I64 => size_of::<i64>(),
+        Blob::UNative => size_of::<usize>(),
+        Blob::INative => size_of::<isize>(),
+        Blob::F32 => size_of::<f32>(),
+        Blob::F64 => size_of::<f64>(),
+        Blob::Obj(_) => size_of::<usize>(),
+        Blob::Func(_, _) => unimplemented!("Size of IrBlob::Func is not implemented"),
+        Blob::Array(_) => size_of::<usize>(),
     }
 }
 
@@ -44,8 +45,8 @@ pub fn load(
 ) -> (Vec<*const VMMethod>, *const VMMethod) {
     let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
-    let root_name = f.mod_name().unwrap().to_owned();
-    let entrypoint = (f.mod_tbl[0].entrypoint & !TBL_TAG_MASK) as usize;
+    let root_name = f.mod_name().to_owned();
+    let entrypoint = f.mod_tbl[0].entrypoint as usize;
     if entrypoint == 0 {
         panic!("{} has no entrypoint", entry.display());
     }
@@ -79,50 +80,44 @@ impl<'c> Loader<'c> {
             cctor_name: 0,
             cctors: Vec::new(),
         };
-        loader.cctor_name = loader.add_const_str(String::from(CCTOR_NAME));
+        loader.cctor_name = loader.add_const_string(String::from(CCTOR_NAME));
         loader
     }
 
-    fn to_vm_ty(&self, blob_heap: &Vec<IrBlob>, this_mod: &VMModule, idx: u32) -> VMType {
+    fn to_vm_ty(&self, blob_heap: &Vec<Blob>, this_mod: &VMModule, idx: u32) -> VMType {
         let sig = &blob_heap[idx as usize];
 
         match sig {
-            IrBlob::Void => VMType::Void,
-            IrBlob::Bool => VMType::Bool,
-            IrBlob::Char => VMType::Char,
-            IrBlob::U8 => VMType::U8,
-            IrBlob::I8 => VMType::I8,
-            IrBlob::U16 => VMType::U16,
-            IrBlob::I16 => VMType::I16,
-            IrBlob::U32 => VMType::U32,
-            IrBlob::I32 => VMType::I32,
-            IrBlob::U64 => VMType::U64,
-            IrBlob::I64 => VMType::I64,
-            IrBlob::UNative => VMType::UNative,
-            IrBlob::INative => VMType::INative,
-            IrBlob::F32 => VMType::F32,
-            IrBlob::F64 => VMType::F64,
-            IrBlob::Obj(idx) => {
-                let tag = *idx & TBL_TAG_MASK;
-                let idx = (*idx & !TBL_TAG_MASK) as usize;
-                let idx = if idx == 0 {
-                    panic!("");
-                } else {
-                    idx - 1
-                };
-
+            Blob::Void => VMType::Void,
+            Blob::Bool => VMType::Bool,
+            Blob::Char => VMType::Char,
+            Blob::U8 => VMType::U8,
+            Blob::I8 => VMType::I8,
+            Blob::U16 => VMType::U16,
+            Blob::I16 => VMType::I16,
+            Blob::U32 => VMType::U32,
+            Blob::I32 => VMType::I32,
+            Blob::U64 => VMType::U64,
+            Blob::I64 => VMType::I64,
+            Blob::UNative => VMType::UNative,
+            Blob::INative => VMType::INative,
+            Blob::F32 => VMType::F32,
+            Blob::F64 => VMType::F64,
+            Blob::Obj(tok) => {
+                let (tag, idx) = get_tok_tag(*tok);
+                let idx = idx as usize - 1;
                 VMType::Obj(match tag {
-                    TBL_CLASS_TAG => this_mod.classes[idx].as_ref() as *const VMClass,
-                    TBL_CLASSREF_TAG => this_mod.classref[idx],
-                    _ => panic!(""),
+                    TokTag::TypeDef => this_mod.classes[idx].as_ref() as *const VMClass,
+                    TokTag::TypeRef => this_mod.classref[idx],
+                    _ => unreachable!(),
                 })
             }
-            IrBlob::Func(_, _) => panic!(),
-            IrBlob::Array(inner) => self.to_vm_ty(blob_heap, this_mod, *inner),
+            Blob::Func(_, _) => panic!(),
+            Blob::Array(inner) => self.to_vm_ty(blob_heap, this_mod, *inner),
         }
     }
 
-    pub fn add_const_str(&mut self, s: String) -> u32 {
+    pub fn add_const_string(&mut self, s: String) -> u32 {
         if let Some(ret) = self.str_map.get(&s) {
             *ret
         } else {
@@ -147,7 +142,7 @@ impl<'c> Loader<'c> {
         let str_heap: Vec<u32> = file
             .str_heap
             .into_iter()
-            .map(|s| self.add_const_str(s))
+            .map(|s| self.add_const_string(s))
             .collect();
 
         // 1. Fill classes methods and fields that defined in this file
@@ -155,7 +150,7 @@ impl<'c> Loader<'c> {
         let mut methods: Vec<Box<VMMethod>> = Vec::new();
         let mut fields: Vec<Box<VMField>> = Vec::new();
 
-        let (mut field_i, mut method_i) = if let Some(c0) = file.class_tbl.first() {
+        let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
             (c0.fields as usize - 1, c0.methods as usize - 1)
         } else {
             (file.field_tbl.len(), file.method_tbl.len())
@@ -171,12 +166,12 @@ impl<'c> Loader<'c> {
             unimplemented!("Load method that has no class parent is not implemented");
         }
 
-        for (class_i, class_entry) in file.class_tbl.iter().enumerate() {
-            let (field_lim, method_lim) = if class_i + 1 >= file.class_tbl.len() {
+        for (class_i, class_entry) in file.typedef_tbl.iter().enumerate() {
+            let (field_lim, method_lim) = if class_i + 1 >= file.typedef_tbl.len() {
                 // last class
                 (file.field_tbl.len(), file.method_tbl.len())
             } else {
-                let next_class = &file.class_tbl[class_i + 1];
+                let next_class = &file.typedef_tbl[class_i + 1];
                 (
                     next_class.fields as usize - 1,
                     next_class.methods as usize - 1,
@@ -232,7 +227,7 @@ impl<'c> Loader<'c> {
                 let field_entry = &file.field_tbl[field_i];
 
                 let flag = FieldFlag::new(field_entry.flag);
-                let field_size = blob_size(&file.blob_heap[field_entry.signature as usize]);
+                let field_size = blob_size(&file.blob_heap[field_entry.sig as usize]);
                 // TODO alignment
                 let offset = if flag.is(FieldFlagTag::Static) {
                     static_field_offset += field_size;
@@ -395,18 +390,23 @@ impl<'c> Loader<'c> {
                     mod_modref.push(self.mem.mods.get(&name).unwrap().as_ref() as *const VMModule);
                 }
 
-                // 3.2 link classref
-                let mod_classref = &mut this_mod.as_mut().unwrap().classref;
-                for classref in file.classref_tbl.iter() {
-                    let name = str_heap[classref.name as usize];
-                    let parent_idx = (classref.parent & !TBL_TAG_MASK) as usize - 1;
-                    assert_eq!(classref.parent & TBL_TAG_MASK, TBL_MODREF_TAG);
-                    let parent = mod_modref[parent_idx].as_ref().unwrap();
-                    let class = parent.classes.iter().find(|&c| c.as_ref().name == name);
-                    if let Some(class) = class {
-                        mod_classref.push(class.as_ref() as *const VMClass);
-                    } else {
-                        panic!("External symbol not found");
+                // 3.2 link typeref
+                let mod_typeref = &mut this_mod.as_mut().unwrap().classref;
+                for typeref in file.typeref_tbl.iter() {
+                    let name = str_heap[typeref.name as usize];
+                    let (parent_tag, parent_idx) = typeref.get_parent();
+                    match parent_tag {
+                        ResolutionScope::Mod => unimplemented!(), // this is ok
+                        ResolutionScope::ModRef => {
+                            let parent = mod_modref[parent_idx as usize - 1].as_ref().unwrap();
+                            let class = parent.classes.iter().find(|&c| c.as_ref().name == name);
+                            if let Some(class) = class {
+                                mod_typeref.push(class.as_ref() as *const VMClass);
+                            } else {
+                                panic!("External symbol not found");
+                            }
+                        }
+                        ResolutionScope::TypeRef => unimplemented!(),
                     }
                 }
 
@@ -414,12 +414,13 @@ impl<'c> Loader<'c> {
                 let mod_memberref = &mut this_mod.as_mut().unwrap().memberref;
                 for memberref in file.memberref_tbl.iter() {
                     let name = str_heap[memberref.name as usize];
-                    let parent_idx = (memberref.parent & !TBL_TAG_MASK) as usize - 1;
                     let mut found = false;
 
-                    let sig = &file.blob_heap[memberref.signature as usize];
+                    let sig = &file.blob_heap[memberref.sig as usize];
+                    let (parent_tag, parent_idx) = memberref.get_parent();
+                    let parent_idx = parent_idx as usize - 1;
 
-                    if let IrBlob::Func(ps, ret) = sig {
+                    if let Blob::Func(ps, ret) = sig {
                         // this member ref is a function
                         let mut ps_ty: Vec<VMType> = Vec::new();
                         for p in ps.iter() {
@@ -432,9 +433,9 @@ impl<'c> Loader<'c> {
                         let ret_ty =
                             self.to_vm_ty(&file.blob_heap, this_mod.as_ref().unwrap(), *ret);
 
-                        match memberref.parent & TBL_TAG_MASK {
-                            TBL_CLASSREF_TAG => {
-                                for m in mod_classref[parent_idx].as_ref().unwrap().methods.iter() {
+                        match parent_tag {
+                            MemberRefParent::TypeRef => {
+                                for m in mod_typeref[parent_idx].as_ref().unwrap().methods.iter() {
                                     let m_ref = m.as_ref().unwrap();
                                     if m_ref.name == name
                                         && ret_ty == m_ref.ret_ty
@@ -456,7 +457,7 @@ impl<'c> Loader<'c> {
                                     }
                                 }
                             }
-                            TBL_MODREF_TAG => {
+                            MemberRefParent::ModRef => {
                                 unimplemented!(
                                     "Member that has no class parent is not implemented"
                                 );
@@ -468,11 +469,11 @@ impl<'c> Loader<'c> {
                         let sig = self.to_vm_ty(
                             &file.blob_heap,
                             this_mod.as_ref().unwrap(),
-                            memberref.signature,
+                            memberref.sig,
                         );
-                        match memberref.parent & TBL_TAG_MASK {
-                            TBL_CLASSREF_TAG => {
-                                for f in mod_classref[parent_idx].as_ref().unwrap().fields.iter() {
+                        match parent_tag {
+                            MemberRefParent::TypeRef => {
+                                for f in mod_typeref[parent_idx].as_ref().unwrap().fields.iter() {
                                     let f_ref = f.as_ref().unwrap();
                                     if f_ref.name == name && sig == f_ref.ty {
                                         // field found
@@ -482,7 +483,7 @@ impl<'c> Loader<'c> {
                                     }
                                 }
                             }
-                            TBL_MODREF_TAG => {
+                            MemberRefParent::ModRef => {
                                 unimplemented!(
                                     "Member that has no class parent is not implemented"
                                 );
@@ -505,11 +506,8 @@ impl<'c> Loader<'c> {
                 .iter_mut()
                 .zip(file.field_tbl.iter())
             {
-                field.ty = self.to_vm_ty(
-                    &file.blob_heap,
-                    this_mod.as_ref().unwrap(),
-                    field_entry.signature,
-                );
+                field.ty =
+                    self.to_vm_ty(&file.blob_heap, this_mod.as_ref().unwrap(), field_entry.sig);
             }
 
             // 3.5 fill method type info
@@ -520,8 +518,8 @@ impl<'c> Loader<'c> {
                 .iter_mut()
                 .zip(file.method_tbl.iter())
             {
-                let sig = &file.blob_heap[method_entry.signature as usize];
-                if let IrBlob::Func(ps, ret) = sig {
+                let sig = &file.blob_heap[method_entry.sig as usize];
+                if let Blob::Func(ps, ret) = sig {
                     method.ret_ty =
                         self.to_vm_ty(&file.blob_heap, this_mod.as_ref().unwrap(), *ret);
                     for p in ps.iter() {

@@ -1,5 +1,5 @@
 use super::AST;
-use xir::path::IModPath;
+use xir::util::path::IModPath;
 
 use std::fmt;
 

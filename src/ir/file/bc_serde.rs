@@ -2,22 +2,22 @@ use std::io::Read;
 use std::mem::transmute;
 use std::slice::Iter;
 
-use super::blob::IrBlob;
-use super::inst::Inst;
-use super::ir_file::*;
+use super::*;
+use crate::blob::Blob;
+use crate::inst::Inst;
 
 impl IrFile {
     pub fn to_binary(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
 
-        self.minor_version.serialize(&mut buf);
         self.major_version.serialize(&mut buf);
+        self.minor_version.serialize(&mut buf);
 
         self.mod_tbl.serialize(&mut buf);
         self.modref_tbl.serialize(&mut buf);
 
-        self.class_tbl.serialize(&mut buf);
-        self.classref_tbl.serialize(&mut buf);
+        self.typedef_tbl.serialize(&mut buf);
+        self.typeref_tbl.serialize(&mut buf);
 
         self.field_tbl.serialize(&mut buf);
         self.method_tbl.serialize(&mut buf);
@@ -27,6 +27,7 @@ impl IrFile {
         self.implmap_tbl.serialize(&mut buf);
 
         self.str_heap.serialize(&mut buf);
+        self.usr_str_heap.serialize(&mut buf);
         self.blob_heap.serialize(&mut buf);
 
         self.codes.serialize(&mut buf);
@@ -37,8 +38,8 @@ impl IrFile {
     pub fn from_binary(stream: Box<dyn Read>) -> IrFile {
         let mut buf = Deserializer::new(Box::new(stream.bytes().map(|r| r.unwrap())));
 
-        let minor_version = u16::deserialize(&mut buf);
         let major_version = u16::deserialize(&mut buf);
+        let minor_version = u16::deserialize(&mut buf);
 
         if major_version != MAJOR_VERSION || minor_version != MINOR_VERSION {
             println!(
@@ -60,6 +61,7 @@ impl IrFile {
         let implmap_tbl = Vec::deserialize(&mut buf);
 
         let str_heap = Vec::deserialize(&mut buf);
+        let usr_str_heap = Vec::deserialize(&mut buf);
         let blob_heap = Vec::deserialize(&mut buf);
 
         let codes = Vec::deserialize(&mut buf);
@@ -71,8 +73,8 @@ impl IrFile {
             mod_tbl,
             modref_tbl,
 
-            class_tbl: type_tbl,
-            classref_tbl: typeref_tbl,
+            typedef_tbl: type_tbl,
+            typeref_tbl,
 
             field_tbl,
             method_tbl,
@@ -81,6 +83,7 @@ impl IrFile {
             implmap_tbl,
 
             str_heap,
+            usr_str_heap,
             blob_heap,
 
             codes,
@@ -255,16 +258,16 @@ impl_vec_serde!(String);
 impl_vec_serde!(u32);
 impl_vec_serde!(IrMod);
 impl_vec_serde!(IrModRef);
-impl_vec_serde!(IrClass);
-impl_vec_serde!(IrClassRef);
+impl_vec_serde!(IrTypeDef);
+impl_vec_serde!(IrTypeRef);
 impl_vec_serde!(IrField);
 impl_vec_serde!(IrMethod);
 impl_vec_serde!(IrMemberRef);
 impl_vec_serde!(IrImplMap);
 impl_vec_serde!(CorILMethod);
-impl_vec_serde!(IrBlob);
+impl_vec_serde!(Blob);
 
-impl ISerializable for IrClass {
+impl ISerializable for IrTypeDef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.flag.serialize(buf);
@@ -273,12 +276,12 @@ impl ISerializable for IrClass {
         self.methods.serialize(buf);
     }
 
-    fn deserialize(buf: &mut dyn IDeserializer) -> IrClass {
+    fn deserialize(buf: &mut dyn IDeserializer) -> IrTypeDef {
         let name = u32::deserialize(buf);
         let flag = u32::deserialize(buf);
         let fields = u32::deserialize(buf);
         let methods = u32::deserialize(buf);
-        IrClass {
+        IrTypeDef {
             name,
             flag,
             fields,
@@ -287,7 +290,7 @@ impl ISerializable for IrClass {
     }
 }
 
-impl ISerializable for IrClassRef {
+impl ISerializable for IrTypeRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.parent.serialize(buf);
         self.name.serialize(buf);
@@ -297,7 +300,7 @@ impl ISerializable for IrClassRef {
         let parent = u32::deserialize(buf);
         let name = u32::deserialize(buf);
 
-        IrClassRef { parent, name }
+        IrTypeRef { parent, name }
     }
 }
 
@@ -305,7 +308,7 @@ impl ISerializable for IrField {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.flag.serialize(buf);
         self.name.serialize(buf);
-        self.signature.serialize(buf);
+        self.sig.serialize(buf);
     }
 
     fn deserialize(buf: &mut dyn IDeserializer) -> IrField {
@@ -316,7 +319,7 @@ impl ISerializable for IrField {
         IrField {
             flag,
             name,
-            signature: descriptor,
+            sig: descriptor,
         }
     }
 }
@@ -324,7 +327,7 @@ impl ISerializable for IrField {
 impl ISerializable for IrMethod {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
-        self.signature.serialize(buf);
+        self.sig.serialize(buf);
         self.body.serialize(buf);
 
         self.flag.serialize(buf);
@@ -341,7 +344,7 @@ impl ISerializable for IrMethod {
             flag,
             name,
             body,
-            signature,
+            sig: signature,
         }
     }
 }
@@ -350,7 +353,7 @@ impl ISerializable for IrMemberRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.parent.serialize(buf);
         self.name.serialize(buf);
-        self.signature.serialize(buf);
+        self.sig.serialize(buf);
     }
 
     fn deserialize(buf: &mut dyn IDeserializer) -> Self {
@@ -360,7 +363,7 @@ impl ISerializable for IrMemberRef {
         IrMemberRef {
             parent,
             name,
-            signature,
+            sig: signature,
         }
     }
 }
@@ -430,34 +433,34 @@ impl ISerializable for CorILMethod {
     }
 }
 
-impl ISerializable for IrBlob {
+impl ISerializable for Blob {
     fn serialize(&self, buf: &mut Vec<u8>) {
         match self {
-            IrBlob::Void => 0x00u8.serialize(buf),
-            IrBlob::Bool => 0x01u8.serialize(buf),
-            IrBlob::Char => 0x02u8.serialize(buf),
-            IrBlob::U8 => 0x03u8.serialize(buf),
-            IrBlob::I8 => 0x04u8.serialize(buf),
-            IrBlob::U16 => 0x05u8.serialize(buf),
-            IrBlob::I16 => 0x06u8.serialize(buf),
-            IrBlob::U32 => 0x07u8.serialize(buf),
-            IrBlob::I32 => 0x08u8.serialize(buf),
-            IrBlob::U64 => 0x09u8.serialize(buf),
-            IrBlob::I64 => 0x0Au8.serialize(buf),
-            IrBlob::UNative => 0x0Bu8.serialize(buf),
-            IrBlob::INative => 0x0Cu8.serialize(buf),
-            IrBlob::F32 => 0x0Du8.serialize(buf),
-            IrBlob::F64 => 0x0Eu8.serialize(buf),
-            IrBlob::Obj(idx) => {
+            Blob::Void => 0x00u8.serialize(buf),
+            Blob::Bool => 0x01u8.serialize(buf),
+            Blob::Char => 0x02u8.serialize(buf),
+            Blob::U8 => 0x03u8.serialize(buf),
+            Blob::I8 => 0x04u8.serialize(buf),
+            Blob::U16 => 0x05u8.serialize(buf),
+            Blob::I16 => 0x06u8.serialize(buf),
+            Blob::U32 => 0x07u8.serialize(buf),
+            Blob::I32 => 0x08u8.serialize(buf),
+            Blob::U64 => 0x09u8.serialize(buf),
+            Blob::I64 => 0x0Au8.serialize(buf),
+            Blob::UNative => 0x0Bu8.serialize(buf),
+            Blob::INative => 0x0Cu8.serialize(buf),
+            Blob::F32 => 0x0Du8.serialize(buf),
+            Blob::F64 => 0x0Eu8.serialize(buf),
+            Blob::Obj(idx) => {
                 0x0Fu8.serialize(buf);
                 idx.serialize(buf);
             }
-            IrBlob::Func(ps, ret) => {
+            Blob::Func(ps, ret) => {
                 0x10u8.serialize(buf);
                 ps.serialize(buf);
                 ret.serialize(buf);
             }
-            IrBlob::Array(content) => {
+            Blob::Array(content) => {
                 0x11u8.serialize(buf);
                 content.serialize(buf);
             }
@@ -467,28 +470,28 @@ impl ISerializable for IrBlob {
     fn deserialize(buf: &mut dyn IDeserializer) -> Self {
         let code = u8::deserialize(buf);
         match code {
-            0x00 => IrBlob::Void,
-            0x01 => IrBlob::Bool,
-            0x02 => IrBlob::Char,
-            0x03 => IrBlob::U8,
-            0x04 => IrBlob::I8,
-            0x05 => IrBlob::U16,
-            0x06 => IrBlob::I16,
-            0x07 => IrBlob::U32,
-            0x08 => IrBlob::I32,
-            0x09 => IrBlob::U64,
-            0x0A => IrBlob::I64,
-            0x0B => IrBlob::UNative,
-            0x0C => IrBlob::INative,
-            0x0D => IrBlob::F32,
-            0x0E => IrBlob::F64,
-            0x0F => IrBlob::Obj(u32::deserialize(buf)),
+            0x00 => Blob::Void,
+            0x01 => Blob::Bool,
+            0x02 => Blob::Char,
+            0x03 => Blob::U8,
+            0x04 => Blob::I8,
+            0x05 => Blob::U16,
+            0x06 => Blob::I16,
+            0x07 => Blob::U32,
+            0x08 => Blob::I32,
+            0x09 => Blob::U64,
+            0x0A => Blob::I64,
+            0x0B => Blob::UNative,
+            0x0C => Blob::INative,
+            0x0D => Blob::F32,
+            0x0E => Blob::F64,
+            0x0F => Blob::Obj(u32::deserialize(buf)),
             0x10 => {
                 let ps = Vec::deserialize(buf);
                 let ret = u32::deserialize(buf);
-                IrBlob::Func(ps, ret)
+                Blob::Func(ps, ret)
             }
-            0x11 => IrBlob::Array(u32::deserialize(buf)),
+            0x11 => Blob::Array(u32::deserialize(buf)),
             _ => panic!("Cannot recognize blob with code {:0X}", code),
         }
     }

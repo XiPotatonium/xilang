@@ -1,6 +1,6 @@
 use super::super::ast::AST;
 use xir::flag::*;
-use xir::path::ModPath;
+use xir::util::path::ModPath;
 
 use std::fs;
 use std::path::Path;

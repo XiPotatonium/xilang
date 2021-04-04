@@ -40,10 +40,6 @@ impl SharedMem {
             str_pool: Vec::new(),
         }
     }
-
-    pub fn get_str(&self, i: u32) -> &str {
-        &self.str_pool[i as usize]
-    }
 }
 
 const ADDR_SIZE: usize = size_of::<usize>() * 8;
