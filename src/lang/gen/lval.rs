@@ -1,7 +1,7 @@
 use super::super::ast::AST;
 use super::{gen, CodeGenCtx, RValType, ValType};
 
-use xir::flag::*;
+use xir::attrib::*;
 use xir::util::path::{IModPath, ModPath};
 
 use std::rc::Weak;
@@ -181,7 +181,7 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
             let class_ref = mod_rc.classes.get(&name).unwrap().borrow();
             if expect_method {
                 if let Some(m) = class_ref.methods.get(rhs) {
-                    if m.flag.is(MethodFlagTag::Static) {
+                    if m.flag.is(MethodAttribFlag::Static) {
                         ValType::Method(mod_name, name, rhs.to_owned())
                     } else {
                         panic!("Cannot static access non-static method {}.{}", name, rhs);
@@ -191,7 +191,7 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
                 }
             } else {
                 if let Some(f) = class_ref.fields.get(rhs) {
-                    if f.flag.is(FieldFlagTag::Static) {
+                    if f.attrib.is(FieldAttribFlag::Static) {
                         ValType::Field(mod_name, name, rhs.to_owned())
                     } else {
                         panic!("Cannot static access non-static filed {}.{}", name, rhs);
@@ -218,7 +218,7 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
                     let class_ref = mod_rc.classes.get(&name).unwrap().borrow();
                     if expect_method {
                         if let Some(m) = class_ref.methods.get(rhs) {
-                            if m.flag.is(MethodFlagTag::Static) {
+                            if m.flag.is(MethodAttribFlag::Static) {
                                 panic!("Cannot obj access static method {}::{}", name, rhs);
                             } else {
                                 ValType::Method(mod_name, name, rhs.to_owned())
@@ -228,7 +228,7 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
                         }
                     } else {
                         if let Some(f) = class_ref.fields.get(rhs) {
-                            if f.flag.is(FieldFlagTag::Static) {
+                            if f.attrib.is(FieldAttribFlag::Static) {
                                 panic!("Cannot obj access static filed {}::{}", name, rhs);
                             } else {
                                 ValType::Field(mod_name, name, rhs.to_owned())

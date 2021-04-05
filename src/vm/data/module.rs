@@ -24,7 +24,28 @@ impl VMMemberRef {
     }
 }
 
-pub struct VMModule {
+pub enum VMModule {
+    IL(VMILModule),
+    Native(VMDll),
+}
+
+impl VMModule {
+    pub fn expect_il(&self) -> &VMILModule {
+        match self {
+            VMModule::IL(module) => module,
+            VMModule::Native(_) => panic!(),
+        }
+    }
+
+    pub fn expect_il_mut(&mut self) -> &mut VMILModule {
+        match self {
+            VMModule::IL(module) => module,
+            VMModule::Native(_) => panic!(),
+        }
+    }
+}
+
+pub struct VMILModule {
     pub modref: Vec<*const VMModule>,
 
     /// name -> class idx

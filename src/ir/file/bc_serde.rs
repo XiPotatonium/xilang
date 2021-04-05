@@ -261,7 +261,7 @@ impl_vec_serde!(IrModRef);
 impl_vec_serde!(IrTypeDef);
 impl_vec_serde!(IrTypeRef);
 impl_vec_serde!(IrField);
-impl_vec_serde!(IrMethod);
+impl_vec_serde!(IrMethodDef);
 impl_vec_serde!(IrMemberRef);
 impl_vec_serde!(IrImplMap);
 impl_vec_serde!(CorILMethod);
@@ -324,27 +324,30 @@ impl ISerializable for IrField {
     }
 }
 
-impl ISerializable for IrMethod {
+impl ISerializable for IrMethodDef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.sig.serialize(buf);
         self.body.serialize(buf);
 
         self.flag.serialize(buf);
+        self.impl_flag.serialize(buf);
     }
 
-    fn deserialize(buf: &mut dyn IDeserializer) -> IrMethod {
+    fn deserialize(buf: &mut dyn IDeserializer) -> IrMethodDef {
         let name = u32::deserialize(buf);
         let signature = u32::deserialize(buf);
         let body = u32::deserialize(buf);
 
         let flag = u16::deserialize(buf);
+        let impl_flag = u16::deserialize(buf);
 
-        IrMethod {
-            flag,
+        IrMethodDef {
             name,
             body,
             sig: signature,
+            flag,
+            impl_flag,
         }
     }
 }

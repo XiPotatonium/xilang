@@ -11,7 +11,7 @@ pub struct Class {
 
     pub non_static_fields: Vec<String>,
     pub fields: HashMap<String, Box<Field>>,
-    /// overload is not allowed
+    /// Overload is currently not supported
     pub methods: HashMap<String, Box<Method>>,
 }
 

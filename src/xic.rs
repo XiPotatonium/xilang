@@ -14,6 +14,8 @@ use lang::XicCfg;
 use clap::{App, Arg};
 use lazy_static::lazy_static;
 
+use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -24,44 +26,47 @@ lazy_static! {
 }
 
 fn main() {
-    let cfg: XicCfg;
-
-    {
-        let matches =
-            App::new("xic")
-                .version("0.1.0")
-                .author("Xi")
-                .about("Hello world! This is xic")
-                .arg(
-                    Arg::with_name("root")
-                        .help("Root path")
-                        .required(true)
-                        .index(1),
-                )
-                .arg(
-                    Arg::with_name("output")
-                        .help("Output directory. Default to be <root> if not specified")
-                        .short("o")
-                        .long("output")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("ext")
-                        .help("External module paths")
-                        .short("i")
-                        .long("import")
-                        .takes_value(true),
-                )
-                .arg(
-                    Arg::with_name("optim")
-                        .help("Optimization level: 0 | 1")
-                        .short("O")
-                        .takes_value(true),
-                )
-                .arg(Arg::with_name("v").short("v").multiple(true).help(
-                    "Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json",
-                ))
-                .get_matches();
+    let cfg = {
+        let matches = App::new("xic")
+            .version("0.1.0")
+            .author("Xi")
+            .about("Hello world! This is xic")
+            .arg(
+                Arg::with_name("root")
+                    .help("Root path")
+                    .required(true)
+                    .index(1),
+            )
+            .arg(
+                Arg::with_name("output")
+                    .help("Output directory. Default to be <root> if not specified")
+                    .short("o")
+                    .long("output")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name("ext")
+                    .help("External module paths")
+                    .short("i")
+                    .long("import")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name("optim")
+                    .help("Optimization level: 0 | 1")
+                    .short("O")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name("v")
+                    .long("verbose")
+                    .short("v")
+                    .multiple(true)
+                    .help(
+                        "Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json",
+                    ),
+            )
+            .get_matches();
 
         let ext_paths = matches.value_of("ext").unwrap_or("");
         let root_path = matches.value_of("root").unwrap();
@@ -83,17 +88,26 @@ fn main() {
             panic!("Invalid root file name {}", root_fname);
         }
 
-        let ext_paths = if ext_paths.len() == 0 {
-            Vec::new()
+        let mut ext_paths = if ext_paths.len() == 0 {
+            HashSet::new()
         } else {
             ext_paths
                 .split(';')
-                .map(|x| x.to_owned())
-                .collect::<Vec<String>>()
+                .map(|x| PathBuf::from(x).canonicalize().unwrap())
+                .collect::<HashSet<PathBuf>>()
         };
+        let mut std_path = env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned();
+        std_path.push("std/std.xibc");
+        ext_paths.insert(std_path.canonicalize().unwrap());
 
-        cfg = XicCfg {
-            ext_paths,
+        XicCfg {
+            ext_paths: ext_paths.into_iter().collect::<Vec<PathBuf>>(),
             root_dir: root_dir.clone(),
             crate_name,
             root_path,
@@ -104,8 +118,17 @@ fn main() {
             },
             optim,
             verbose: matches.occurrences_of("v") as usize,
-        };
-    }
+        }
+    };
+
+    println!(
+        "External modules: {}",
+        cfg.ext_paths
+            .iter()
+            .map(|p| p.to_str().unwrap())
+            .collect::<Vec<&str>>()
+            .join(";")
+    );
 
     let start_time = SystemTime::now();
     let mut module_mgr = ModMgr::new(&cfg);

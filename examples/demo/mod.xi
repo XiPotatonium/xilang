@@ -1,4 +1,5 @@
 mod hello_world;
+mod algo;
 
 class Demo {
     static TAG: i32;

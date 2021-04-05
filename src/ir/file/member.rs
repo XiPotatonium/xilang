@@ -69,7 +69,7 @@ pub struct IrField {
     /// index into blob heap
     pub sig: u32,
 
-    /// IrFieldFlag
+    /// IrFieldAttrib
     pub flag: u16,
 }
 
@@ -80,7 +80,7 @@ impl IrFmt for IrField {
     }
 }
 
-pub struct IrMethod {
+pub struct IrMethodDef {
     /// index into str heap
     pub name: u32,
     /// index into blob heap
@@ -88,11 +88,13 @@ pub struct IrMethod {
     /// index into code tbl, similar to RVA
     pub body: u32,
 
-    /// IrMethodFlag
+    /// IrMethodAttrib
     pub flag: u16,
+    /// IrMethodImplAttrib
+    pub impl_flag: u16,
 }
 
-impl IrFmt for IrMethod {
+impl IrFmt for IrMethodDef {
     fn fmt(&self, f: &mut std::fmt::Formatter, ctx: &IrFile) -> std::fmt::Result {
         write!(f, "{}: ", ctx.get_str(self.name))?;
         ctx.blob_heap[self.sig as usize].fmt(f, ctx)
@@ -100,11 +102,41 @@ impl IrFmt for IrMethod {
 }
 
 pub struct IrImplMap {
-    /// index into methoddef tbl
+    /// index into MemberForwarded tbl
     pub member: u32,
     /// index into str heap
     pub name: u32,
     /// index into modref tbl
     pub scope: u32,
+    /// IrPInvokeAttrib
     pub flag: u16,
+}
+
+impl IrImplMap {
+    pub fn get_member(&self) -> (MemberForwarded, u32) {
+        let tag = self.member & MEMBER_FORWARDED_TAG_MASK;
+        let idx = self.member >> MEMBER_FORWARDED_TAG_SIZE;
+        (
+            match tag {
+                0 => MemberForwarded::Field,
+                1 => MemberForwarded::MethodDef,
+                _ => unreachable!(),
+            },
+            idx,
+        )
+    }
+}
+
+const MEMBER_FORWARDED_TAG_SIZE: u32 = 1;
+const MEMBER_FORWARDED_TAG_MASK: u32 = (0x1 << MEMBER_FORWARDED_TAG_SIZE) - 1; // 0x1
+
+/// 1 bits tag
+#[derive(Debug, PartialEq, Eq)]
+pub enum MemberForwarded {
+    Field = 0, // actually unreachable
+    MethodDef = 1,
+}
+
+pub fn to_implmap_member(raw_idx: u32, tag: MemberForwarded) -> u32 {
+    (raw_idx << MEMBER_FORWARDED_TAG_SIZE) | (tag as u32)
 }

@@ -1,6 +1,6 @@
+use xir::attrib::*;
 use xir::blob::Blob;
 use xir::file::*;
-use xir::flag::*;
 use xir::inst::Inst;
 use xir::tok::{to_tok, TokTag};
 
@@ -16,6 +16,14 @@ struct FieldOrMethod {
     name: u32,
     /// index into blob heap
     sig: u32,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct ImplMapInfo {
+    /// index into modref tbl, external mod
+    scope: u32,
+    /// index into str heap, external fn name
+    name: u32,
 }
 
 pub struct Builder {
@@ -36,6 +44,9 @@ pub struct Builder {
     method_map: HashMap<FieldOrMethod, u32>,
     /// MemberRef -> TblIdx
     memberref_map: HashMap<IrMemberRef, u32>,
+
+    /// ImplMap -> TblIdx
+    implmap_map: HashMap<ImplMapInfo, u32>,
 
     /// str -> StrHeapIdx
     str_map: HashMap<String, u32>,
@@ -61,6 +72,8 @@ impl Builder {
             method_map: HashMap::new(),
             memberref_map: HashMap::new(),
 
+            implmap_map: HashMap::new(),
+
             str_map: HashMap::new(),
             usr_str_map: HashMap::new(),
             blob_map: HashMap::new(),
@@ -77,11 +90,11 @@ impl Builder {
         builder
     }
 
-    pub fn add_class(&mut self, name: &str, flag: &TypeFlag) -> u32 {
+    pub fn add_class(&mut self, name: &str, flag: &TypeAttrib) -> u32 {
         let name = self.add_const_str(name);
         self.file.typedef_tbl.push(IrTypeDef {
             name,
-            flag: flag.flag,
+            flag: flag.attrib,
             fields: (self.file.field_tbl.len() + 1) as u32,
             methods: (self.file.method_tbl.len() + 1) as u32,
         });
@@ -93,13 +106,13 @@ impl Builder {
     /// Add a field of this class
     ///
     /// Field parent is the newly added class or none if no class has been added
-    pub fn add_field(&mut self, name: &str, ty: &RValType, flag: &FieldFlag) -> u32 {
+    pub fn add_field(&mut self, name: &str, ty: &RValType, flag: &FieldAttrib) -> u32 {
         let name = self.add_const_str(name);
         let sig = self.add_const_ty_blob(ty);
         self.file.field_tbl.push(IrField {
             name,
             sig,
-            flag: flag.flag,
+            flag: flag.attrib,
         });
         let ret = self.file.field_tbl.len() as u32;
         let info = FieldOrMethod {
@@ -120,15 +133,17 @@ impl Builder {
         name: &str,
         ps: &Vec<RValType>,
         ret_ty: &RValType,
-        flag: &MethodFlag,
+        flag: &MethodAttrib,
+        impl_flag: &MethodImplAttrib,
     ) -> u32 {
         let name = self.add_const_str(name);
         let sig = self.add_const_fn_blob(ps, ret_ty);
-        self.file.method_tbl.push(IrMethod {
-            flag: flag.flag,
+        self.file.method_tbl.push(IrMethodDef {
             name,
             body: 0,
             sig,
+            flag: flag.attrib,
+            impl_flag: impl_flag.attrib,
         });
         let ret = self.file.method_tbl.len() as u32;
         let info = FieldOrMethod {
@@ -333,6 +348,43 @@ impl Builder {
                 }
             }
             _ => unreachable!(),
+        }
+    }
+
+    /// mod_name: external module name
+    ///
+    /// name: external function name
+    ///
+    /// forwarded: forwarded method idx, index into methoddef tbl
+    ///
+    /// return: index into ImplMap tbl
+    pub fn add_extern_fn(
+        &mut self,
+        mod_name: &str,
+        name: &str,
+        flag: &PInvokeAttrib,
+        forwarded: u32,
+    ) -> u32 {
+        let (scope, scope_tag) = self.add_const_mod(mod_name);
+        assert_eq!(scope_tag, TokTag::ModRef);
+        let name = self.add_const_str(name);
+        let implmap_info = ImplMapInfo { scope, name };
+        if let Some(idx) = self.implmap_map.get(&implmap_info) {
+            let idx = *idx;
+            if self.file.implmap_tbl[idx as usize - 1].flag != flag.attrib {
+                panic!("");
+            }
+            idx
+        } else {
+            self.file.implmap_tbl.push(IrImplMap {
+                member: to_implmap_member(forwarded, MemberForwarded::MethodDef),
+                name,
+                scope,
+                flag: flag.attrib,
+            });
+            let ret = self.file.implmap_tbl.len() as u32;
+            self.implmap_map.insert(implmap_info, ret);
+            ret
         }
     }
 }

@@ -1,5 +1,5 @@
 use super::super::ast::AST;
-use xir::flag::*;
+use xir::attrib::*;
 use xir::util::path::ModPath;
 
 use std::fs;
@@ -89,7 +89,7 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
 
     Box::new(AST::Class(
         id,
-        TypeFlag::default(),
+        TypeAttrib::new_class(TypeAttribVisFlag::Pub.into()),
         attr,
         methods,
         fields,
@@ -104,9 +104,9 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
 fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
-    let mut flag = FieldFlag::default();
+    let mut flag = FieldAttrib::from(FieldAttribFlag::Pub.into());
     if is_static {
-        flag.set(FieldFlagTag::Static);
+        flag.set(FieldAttribFlag::Static);
     }
 
     Box::new(AST::Field(id, flag, attr, build_type(iter.next().unwrap())))
@@ -115,8 +115,7 @@ fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AS
 fn build_method(tree: Pair<Rule>, attr: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let id = build_id(iter.next().unwrap());
-    let mut flag = MethodFlag::default();
-    flag.set(MethodFlagTag::Static);
+    let mut flag = MethodAttrib::from(MethodAttribFlag::Pub.into());
 
     let mut ps: Vec<Box<AST>> = Vec::new();
     if let Rule::Params = iter.peek().unwrap().as_rule() {
@@ -126,13 +125,13 @@ fn build_method(tree: Pair<Rule>, attr: Vec<Box<AST>>) -> Box<AST> {
         match p0.as_rule() {
             Rule::KwLSelf => {
                 // non-static method
-                flag.unset(MethodFlagTag::Static);
             }
             Rule::Id => {
                 // static method
+                flag.set(MethodAttribFlag::Static);
                 ps.push(Box::new(AST::Param(
                     build_id(p0),
-                    ParamFlag::default(),
+                    ParamAttrib::from(0),
                     build_type(p_iter.next().unwrap()),
                 )));
             }
@@ -143,13 +142,16 @@ fn build_method(tree: Pair<Rule>, attr: Vec<Box<AST>>) -> Box<AST> {
             if let Some(p_id) = p_iter.next() {
                 ps.push(Box::new(AST::Param(
                     build_id(p_id),
-                    ParamFlag::default(),
+                    ParamAttrib::from(0),
                     build_type(p_iter.next().unwrap()),
                 )));
             } else {
                 break;
             }
         }
+    } else {
+        // no param
+        flag.set(MethodAttribFlag::Static);
     }
 
     let ret_ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
@@ -267,11 +269,11 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     match clause.as_rule() {
                         Rule::Semi => {
                             // no init
-                            AST::Let(pattern, LocalFlag::default(), ty, Box::new(AST::None))
+                            AST::Let(pattern, LocalAttrib::from(0), ty, Box::new(AST::None))
                         }
                         Rule::Eq => AST::Let(
                             pattern,
-                            LocalFlag::default(),
+                            LocalAttrib::from(0),
                             ty,
                             build_expr(iter.next().unwrap()),
                         ),
@@ -282,7 +284,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     // no type but has init
                     AST::Let(
                         pattern,
-                        LocalFlag::default(),
+                        LocalAttrib::from(0),
                         Box::new(AST::None),
                         build_expr(iter.next().unwrap()),
                     )
@@ -291,7 +293,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     // no type and no init
                     AST::Let(
                         pattern,
-                        LocalFlag::default(),
+                        LocalAttrib::from(0),
                         Box::new(AST::None),
                         Box::new(AST::None),
                     )

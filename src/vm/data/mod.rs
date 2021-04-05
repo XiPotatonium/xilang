@@ -5,8 +5,8 @@ mod module;
 
 pub use self::class::VMClass;
 pub use self::field::VMField;
-pub use self::method::{VMMethod, VMMethodCtx};
-pub use self::module::{VMMemberRef, VMModule};
+pub use self::method::{VMMethod, VMMethodILImpl, VMMethodImpl, VMMethodNativeImpl};
+pub use self::module::{VMILModule, VMMemberRef, VMModule};
 
 #[derive(PartialEq, Eq)]
 pub enum VMType {

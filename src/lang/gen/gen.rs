@@ -4,9 +4,9 @@ use super::lval::{gen_lval, gen_path_lval};
 use super::op::BinOp;
 use super::{CodeGenCtx, LoopCtx, LoopType, RValType, ValType};
 
-use xir::flag::*;
+use xir::attrib::*;
 use xir::inst::Inst;
-use xir::tok::{to_tok, TokTag};
+use xir::tok::to_tok;
 use xir::util::path::IModPath;
 use xir::CTOR_NAME;
 
@@ -124,7 +124,9 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
         AST::OpLogAnd(lhs, rhs) => ValType::RVal(gen_and(ctx, lhs, rhs)),
         AST::OpLogOr(lhs, rhs) => ValType::RVal(gen_or(ctx, lhs, rhs)),
         AST::OpAdd(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Add, lhs, rhs)),
+        AST::OpSub(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Sub, lhs, rhs)),
         AST::OpMul(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Mul, lhs, rhs)),
+        AST::OpDiv(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Div, lhs, rhs)),
         AST::OpMod(lhs, rhs) => ValType::RVal(gen_numeric(ctx, BinOp::Mod, lhs, rhs)),
         AST::OpNe(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Ne, lhs, rhs)),
         AST::OpEq(lhs, rhs) => ValType::RVal(gen_cmp(ctx, BinOp::Eq, lhs, rhs)),
@@ -422,7 +424,7 @@ fn gen_loop(ctx: &CodeGenCtx, body: &Box<AST>) -> RValType {
 fn gen_let(
     ctx: &CodeGenCtx,
     pattern: &Box<AST>,
-    flag: &LocalFlag,
+    flag: &LocalAttrib,
     ty: &Box<AST>,
     init: &Box<AST>,
 ) -> RValType {
@@ -505,7 +507,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
                 .builder
                 .borrow_mut()
                 .add_const_member(mod_name, class, name, sig);
-            let inst = if m.flag.is(MethodFlagTag::Static) {
+            let inst = if m.flag.is(MethodAttribFlag::Static) {
                 Inst::Call(to_tok(m_idx, tok_tag))
             } else {
                 Inst::CallVirt(to_tok(m_idx, tok_tag))
@@ -641,7 +643,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 &name,
                 sig,
             );
-            let inst = if field.flag.is(FieldFlagTag::Static) {
+            let inst = if field.attrib.is(FieldAttribFlag::Static) {
                 Inst::StSFld(to_tok(f_idx, tok_tag))
             } else {
                 Inst::StFld(to_tok(f_idx, tok_tag))

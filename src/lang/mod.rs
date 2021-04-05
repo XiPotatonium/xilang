@@ -7,7 +7,7 @@ mod gen;
 use std::path::PathBuf;
 
 pub struct XicCfg {
-    pub ext_paths: Vec<String>,
+    pub ext_paths: Vec<PathBuf>,
     pub crate_name: String,
     pub root_dir: PathBuf,
     pub root_path: PathBuf,

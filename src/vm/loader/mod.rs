@@ -1,19 +1,20 @@
 use super::data::*;
 use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
+use super::native::VMDll;
 use super::VMCfg;
 
+use xir::attrib::*;
 use xir::blob::Blob;
 use xir::file::*;
-use xir::flag::*;
 use xir::tok::{get_tok_tag, TokTag};
 use xir::util::path::{IModPath, ModPath};
 use xir::CCTOR_NAME;
 
-use std::collections::HashMap;
 use std::fs;
 use std::mem::size_of;
 use std::path::PathBuf;
 use std::ptr::null;
+use std::{collections::HashMap, ffi::OsStr};
 
 fn blob_size(blob: &Blob) -> usize {
     match blob {
@@ -57,7 +58,8 @@ pub fn load(
 
     (
         loader.cctors,
-        mem.mods.get(&root).unwrap().methods[entrypoint - 1].as_ref() as *const VMMethod,
+        mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref()
+            as *const VMMethod,
     )
 }
 
@@ -84,7 +86,7 @@ impl<'c> Loader<'c> {
         loader
     }
 
-    fn to_vm_ty(&self, blob_heap: &Vec<Blob>, this_mod: &VMModule, idx: u32) -> VMType {
+    fn to_vm_ty(&self, blob_heap: &Vec<Blob>, this_mod: &VMILModule, idx: u32) -> VMType {
         let sig = &blob_heap[idx as usize];
 
         match sig {
@@ -131,13 +133,11 @@ impl<'c> Loader<'c> {
     fn load(&mut self, file: IrFile) -> u32 {
         // println!("{}\n\n\n\n\n\n\n", file);
 
-        let external_mods: Vec<String> = file
-            .modref_tbl
-            .iter()
-            .map(|entry| file.str_heap[entry.name as usize].clone())
-            .collect();
         // Some external mods is not loadable modules but dlls
-        let mut external_mods_mask: Vec<bool> = vec![true; external_mods.len()];
+        let mut external_mods_mask: Vec<bool> = vec![true; file.modref_tbl.len()];
+        for implmap in file.implmap_tbl.iter() {
+            external_mods_mask[implmap.scope as usize] = false;
+        }
 
         let str_heap: Vec<u32> = file
             .str_heap
@@ -178,7 +178,7 @@ impl<'c> Loader<'c> {
                 )
             };
 
-            let class_flag = TypeFlag::new(class_entry.flag);
+            let class_flag = TypeAttrib::from(class_entry.flag);
             let class_name = str_heap[class_entry.name as usize];
             let mut class_methods: Vec<*const VMMethod> = Vec::new();
             let mut class_fields: Vec<*const VMField> = Vec::new();
@@ -191,26 +191,48 @@ impl<'c> Loader<'c> {
                 let method_entry = &file.method_tbl[method_i];
                 let name = str_heap[method_entry.name as usize];
 
-                let flag = MethodFlag::new(method_entry.flag);
+                let flag = MethodAttrib::from(method_entry.flag);
+                let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
 
-                let method = Box::new(if method_entry.body == 0 {
-                    // declaration, no body
-                    unimplemented!();
-                } else {
-                    let body = &file.codes[method_entry.body as usize - 1];
-                    // Currently virtual method is not implemented
-                    // Callvirt actually call non virtual method, which offset = 0
-                    VMMethod {
-                        ctx: VMMethodCtx::Mod(null()),
-                        name,
-                        flag,
-                        offset: 0,
-                        locals: body.local as usize,
-                        insts: body.insts.to_owned(),
-                        // fill in link stage
-                        ret_ty: VMType::Unk,
-                        ps_ty: Vec::new(),
+                let method_impl = match impl_flag.code_ty() {
+                    MethodImplAttribCodeTypeFlag::IL => {
+                        assert_ne!(method_entry.body, 0);
+                        let body = &file.codes[method_entry.body as usize - 1];
+                        // Currently virtual method is not implemented
+                        // Callvirt actually call non virtual method, which offset = 0
+                        VMMethodImpl::IL(VMMethodILImpl {
+                            offset: 0,
+                            locals: body.local as usize,
+                            insts: body.insts.to_owned(),
+                        })
                     }
+                    MethodImplAttribCodeTypeFlag::Native => {
+                        // O(N), might need optimization
+                        let impl_map = file
+                            .implmap_tbl
+                            .iter()
+                            .find(|&i| {
+                                let (member_tag, member_idx) = i.get_member();
+                                assert_eq!(member_tag, MemberForwarded::MethodDef);
+                                member_idx as usize - 1 == method_i
+                            })
+                            .unwrap();
+                        VMMethodImpl::Native(VMMethodNativeImpl {
+                            name: str_heap[impl_map.name as usize],
+                            flag: PInvokeAttrib::from(impl_map.flag),
+                        })
+                    }
+                };
+
+                let method = Box::new(VMMethod {
+                    ctx: null(),
+                    name,
+                    flag,
+                    impl_flag,
+                    // fill in link stage
+                    ret_ty: VMType::Unk,
+                    ps_ty: Vec::new(),
+                    method_impl,
                 });
 
                 if name == self.cctor_name {
@@ -226,10 +248,10 @@ impl<'c> Loader<'c> {
             while field_i < field_lim {
                 let field_entry = &file.field_tbl[field_i];
 
-                let flag = FieldFlag::new(field_entry.flag);
+                let flag = FieldAttrib::from(field_entry.flag);
                 let field_size = blob_size(&file.blob_heap[field_entry.sig as usize]);
                 // TODO alignment
-                let offset = if flag.is(FieldFlagTag::Static) {
+                let offset = if flag.is(FieldAttribFlag::Static) {
                     static_field_offset += field_size;
                     static_field_offset
                 } else {
@@ -239,7 +261,7 @@ impl<'c> Loader<'c> {
 
                 let field = Box::new(VMField {
                     name: str_heap[field_entry.name as usize],
-                    flag,
+                    attrib: flag,
                     // fill in link stage
                     ty: VMType::Unk,
                     addr: offset,
@@ -252,7 +274,7 @@ impl<'c> Loader<'c> {
 
             let mut class = Box::new(VMClass {
                 name: class_name,
-                flag: class_flag,
+                attrib: class_flag,
                 fields: class_fields,
                 methods: class_methods,
                 obj_size: non_static_field_offset,
@@ -282,7 +304,7 @@ impl<'c> Loader<'c> {
                 .into_iter()
                 .map(|i| fields_len - i - 1)
             {
-                if fields[i].flag.is(FieldFlagTag::Static) {
+                if fields[i].attrib.is(FieldAttribFlag::Static) {
                     fields[i].addr += addr + vtbl_size;
                 }
             }
@@ -291,7 +313,7 @@ impl<'c> Loader<'c> {
         }
 
         let mod_name_addr = str_heap[file.mod_tbl[0].name as usize];
-        let mut this_mod = Box::new(VMModule {
+        let mut this_mod = Box::new(VMModule::IL(VMILModule {
             classes,
 
             methods,
@@ -301,15 +323,10 @@ impl<'c> Loader<'c> {
             memberref: vec![],
             modref: vec![],
             classref: vec![],
-        });
+        }));
         let this_mod_ptr = this_mod.as_ref() as *const VMModule;
-        for method in this_mod.methods.iter_mut() {
-            match &mut method.ctx {
-                VMMethodCtx::Mod(m) => {
-                    *m = this_mod_ptr;
-                }
-                VMMethodCtx::Dll(_) => {}
-            }
+        for method in this_mod.expect_il_mut().methods.iter_mut() {
+            method.ctx = this_mod_ptr;
         }
 
         if let Some(_) = self.mem.mods.insert(mod_name_addr, this_mod) {
@@ -317,17 +334,39 @@ impl<'c> Loader<'c> {
         }
 
         // 2. Recursive load dependencies
-        for (external_mod_path, mask) in external_mods.iter().zip(external_mods_mask.into_iter()) {
+        for (external_mod, mask) in file.modref_tbl.iter().zip(external_mods_mask.into_iter()) {
+            let external_mod_path_str_idx = str_heap[external_mod.name as usize];
+            let external_mod_path = self.mem.get_str(external_mod_path_str_idx);
             if mask == false {
                 // some external mods is not xir mod, they are dlls
+                if !self.mem.mods.contains_key(&external_mod_path_str_idx) {
+                    let candidates = self.find_mod(external_mod_path);
+                    if candidates.len() != 0 {
+                        panic!(
+                            "Ambiguous external mod {}:\n{}",
+                            external_mod_path,
+                            candidates
+                                .iter()
+                                .map(|p| p.to_str().unwrap())
+                                .collect::<Vec<&str>>()
+                                .join("\n")
+                        );
+                    }
+                    self.mem.mods.insert(
+                        external_mod_path_str_idx,
+                        Box::new(VMModule::Native(
+                            VMDll::new_ascii(candidates[0].to_str().unwrap()).unwrap(),
+                        )),
+                    );
+                }
                 continue;
             }
 
             let path = ModPath::from_str(external_mod_path);
             if path.get_root_name().unwrap() == self.root_name {
-                // a sub module
+                // a sub module of this module
                 let mut sub_mod_path = self.cfg.entry_root.clone();
-                for seg in path.iter().skip(1).take(path.len() - 1) {
+                for seg in path.iter().skip(1).take(path.len() - 2) {
                     sub_mod_path.push(seg);
                     if !sub_mod_path.is_dir() {
                         panic!(
@@ -384,14 +423,14 @@ impl<'c> Loader<'c> {
         unsafe {
             {
                 // 3.1 Link modref
-                let mod_modref = &mut this_mod.as_mut().unwrap().modref;
+                let mod_modref = &mut this_mod.as_mut().unwrap().expect_il_mut().modref;
                 for modref in file.modref_tbl.iter() {
                     let name = str_heap[modref.name as usize];
                     mod_modref.push(self.mem.mods.get(&name).unwrap().as_ref() as *const VMModule);
                 }
 
                 // 3.2 link typeref
-                let mod_typeref = &mut this_mod.as_mut().unwrap().classref;
+                let mod_typeref = &mut this_mod.as_mut().unwrap().expect_il_mut().classref;
                 for typeref in file.typeref_tbl.iter() {
                     let name = str_heap[typeref.name as usize];
                     let (parent_tag, parent_idx) = typeref.get_parent();
@@ -399,7 +438,11 @@ impl<'c> Loader<'c> {
                         ResolutionScope::Mod => unimplemented!(), // this is ok
                         ResolutionScope::ModRef => {
                             let parent = mod_modref[parent_idx as usize - 1].as_ref().unwrap();
-                            let class = parent.classes.iter().find(|&c| c.as_ref().name == name);
+                            let class = parent
+                                .expect_il()
+                                .classes
+                                .iter()
+                                .find(|&c| c.as_ref().name == name);
                             if let Some(class) = class {
                                 mod_typeref.push(class.as_ref() as *const VMClass);
                             } else {
@@ -411,7 +454,7 @@ impl<'c> Loader<'c> {
                 }
 
                 // 3.3 link member ref
-                let mod_memberref = &mut this_mod.as_mut().unwrap().memberref;
+                let mod_memberref = &mut this_mod.as_mut().unwrap().expect_il_mut().memberref;
                 for memberref in file.memberref_tbl.iter() {
                     let name = str_heap[memberref.name as usize];
                     let mut found = false;
@@ -426,12 +469,15 @@ impl<'c> Loader<'c> {
                         for p in ps.iter() {
                             ps_ty.push(self.to_vm_ty(
                                 &file.blob_heap,
-                                this_mod.as_ref().unwrap(),
+                                this_mod.as_ref().unwrap().expect_il(),
                                 *p,
                             ));
                         }
-                        let ret_ty =
-                            self.to_vm_ty(&file.blob_heap, this_mod.as_ref().unwrap(), *ret);
+                        let ret_ty = self.to_vm_ty(
+                            &file.blob_heap,
+                            this_mod.as_ref().unwrap().expect_il(),
+                            *ret,
+                        );
 
                         match parent_tag {
                             MemberRefParent::TypeRef => {
@@ -468,7 +514,7 @@ impl<'c> Loader<'c> {
                         // this member ref is a field
                         let sig = self.to_vm_ty(
                             &file.blob_heap,
-                            this_mod.as_ref().unwrap(),
+                            this_mod.as_ref().unwrap().expect_il(),
                             memberref.sig,
                         );
                         match parent_tag {
@@ -502,30 +548,38 @@ impl<'c> Loader<'c> {
             for (field, field_entry) in this_mod
                 .as_mut()
                 .unwrap()
+                .expect_il_mut()
                 .fields
                 .iter_mut()
                 .zip(file.field_tbl.iter())
             {
-                field.ty =
-                    self.to_vm_ty(&file.blob_heap, this_mod.as_ref().unwrap(), field_entry.sig);
+                field.ty = self.to_vm_ty(
+                    &file.blob_heap,
+                    this_mod.as_ref().unwrap().expect_il(),
+                    field_entry.sig,
+                );
             }
 
             // 3.5 fill method type info
             for (method, method_entry) in this_mod
                 .as_mut()
                 .unwrap()
+                .expect_il_mut()
                 .methods
                 .iter_mut()
                 .zip(file.method_tbl.iter())
             {
                 let sig = &file.blob_heap[method_entry.sig as usize];
                 if let Blob::Func(ps, ret) = sig {
-                    method.ret_ty =
-                        self.to_vm_ty(&file.blob_heap, this_mod.as_ref().unwrap(), *ret);
+                    method.ret_ty = self.to_vm_ty(
+                        &file.blob_heap,
+                        this_mod.as_ref().unwrap().expect_il(),
+                        *ret,
+                    );
                     for p in ps.iter() {
                         method.ps_ty.push(self.to_vm_ty(
                             &file.blob_heap,
-                            this_mod.as_ref().unwrap(),
+                            this_mod.as_ref().unwrap().expect_il(),
                             *p,
                         ));
                     }
@@ -536,5 +590,27 @@ impl<'c> Loader<'c> {
         }
 
         mod_name_addr
+    }
+
+    /// fname is file name of mod. If mod is named "Foo", then fname is something like "Foo.xibc"
+    fn find_mod(&self, fname: &str) -> Vec<PathBuf> {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        for ext in self.cfg.ext_paths.iter() {
+            let os_fname = OsStr::new(fname);
+            if ext.is_dir() {
+                let mut candidate_path = ext.clone();
+                candidate_path.push(fname);
+                if candidate_path.is_file() {
+                    // hit
+                    candidates.push(candidate_path);
+                }
+            } else if ext.is_file() {
+                if ext.file_name().unwrap() == os_fname {
+                    // hit
+                    candidates.push(ext.clone());
+                }
+            }
+        }
+        candidates
     }
 }

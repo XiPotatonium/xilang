@@ -1,0 +1,6 @@
+﻿Language: Cpp
+BasedOnStyle: LLVM
+UseTab: Never 
+IndentWidth: 4 
+AllowShortIfStatementsOnASingleLine: false
+AccessModifierOffset: -4

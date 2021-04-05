@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::rc::{Rc, Weak};
 
-use xir::flag::*;
+use xir::attrib::*;
 use xir::inst::Inst;
 use xir::tok::{to_tok, TokTag};
 use xir::util::path::{IModPath, ModPath};
@@ -20,23 +20,32 @@ use super::{Arg, Class, Field, Locals, Method, ModMgr};
 
 // use macro to avoid borrow mutable self twice, SB rust
 macro_rules! declare_method {
-    ($class: expr, $builder: expr, $id: expr, $flag: expr, $ret_ty: expr, $ps: expr) => {
-        let idx = $builder.borrow_mut().add_method($id, &$ps, &$ret_ty, $flag);
+    ($class: expr, $builder: expr, $id: expr, $flag: expr, $impl_flag: expr, $ret_ty: expr, $ps: expr) => {{
+        let idx = $builder
+            .borrow_mut()
+            .add_method($id, &$ps, &$ret_ty, $flag, $impl_flag);
 
-        if let Some(_) = $class.methods.insert(
-            $id.to_owned(),
-            Box::new(Method {
-                ret_ty: $ret_ty,
-                ps_ty: $ps,
-                ps_flag: vec![],
-                flag: $flag.clone(),
-                idx,
-            }),
-        ) {
+        let method = Box::new(Method {
+            ret_ty: $ret_ty,
+            ps_ty: $ps,
+            ps_flag: vec![],
+            flag: $flag.clone(),
+            impl_flag: $impl_flag.clone(),
+            idx,
+        });
+        // let sig = format!("{}{}", $id, method.descriptor());
+
+        if let Some(old_method) = $class.methods.insert($id.to_owned(), method) {
             // TODO: use expect_none once it becomes stable
-            panic!("Duplicated method {} in class {}", $id, $class.name);
+            panic!(
+                "Duplicated method {}{} in class {}",
+                $id,
+                old_method.descriptor(),
+                $class.name
+            );
         }
-    };
+        idx
+    }};
 }
 
 pub struct Module {
@@ -278,6 +287,7 @@ impl Module {
 
     /// Display module and its sub-modules
     pub fn tree(&self, depth: usize) {
+        // FIX: bug in display, wrong algorithm
         if depth > 0 {
             print!("{}+---", "|   ".repeat(depth - 1));
         }
@@ -411,7 +421,7 @@ impl Module {
 
                             let field = Box::new(Field::new(id, *flag, ty, idx));
 
-                            if !flag.is(FieldFlagTag::Static) {
+                            if !flag.is(FieldAttribFlag::Static) {
                                 // non-static field
                                 class_mut.non_static_fields.push(id.to_owned());
                             }
@@ -427,9 +437,24 @@ impl Module {
                         AST::Block(_) => {
                             let ret_ty = RValType::Void;
                             let ps: Vec<RValType> = vec![];
-                            let mut flag = MethodFlag::default();
-                            flag.set(MethodFlagTag::Static);
-                            declare_method!(class_mut, self.builder, CCTOR_NAME, &flag, ret_ty, ps);
+                            let flag = MethodAttrib::from(
+                                u16::from(MethodAttribFlag::Pub)
+                                    | u16::from(MethodAttribFlag::Static)
+                                    | u16::from(MethodAttribFlag::RTSpecialName),
+                            );
+                            let impl_flag = MethodImplAttrib::new(
+                                MethodImplAttribCodeTypeFlag::IL,
+                                MethodImplAttribManagedFlag::Managed,
+                            );
+                            declare_method!(
+                                class_mut,
+                                self.builder,
+                                CCTOR_NAME,
+                                &flag,
+                                &impl_flag,
+                                ret_ty,
+                                ps
+                            );
                         }
                         AST::None => (),
                         _ => unreachable!("Parser error"),
@@ -445,13 +470,28 @@ impl Module {
                         for f in class_mut.non_static_fields.iter() {
                             ps.push(class_mut.fields.get(f).unwrap().ty.clone());
                         }
-                        let mut flag = MethodFlag::default();
-                        flag.set(MethodFlagTag::Static);
-                        declare_method!(class_mut, self.builder, CTOR_NAME, &flag, ret_ty, ps);
+                        let flag = MethodAttrib::from(
+                            u16::from(MethodAttribFlag::Pub)
+                                | u16::from(MethodAttribFlag::Static)
+                                | u16::from(MethodAttribFlag::RTSpecialName),
+                        );
+                        let impl_flag = MethodImplAttrib::new(
+                            MethodImplAttribCodeTypeFlag::IL,
+                            MethodImplAttribManagedFlag::Managed,
+                        );
+                        declare_method!(
+                            class_mut,
+                            self.builder,
+                            CTOR_NAME,
+                            &flag,
+                            &impl_flag,
+                            ret_ty,
+                            ps
+                        );
                     }
 
                     for method in ast_methods.iter() {
-                        if let AST::Method(id, flag, attr, ty, ps, _) = method.as_ref() {
+                        if let AST::Method(id, flag, attrs, ty, ps, _) = method.as_ref() {
                             let ps = ps
                                 .iter()
                                 .map(|p| {
@@ -463,7 +503,74 @@ impl Module {
                                 })
                                 .collect();
                             let ret_ty = self.get_ty(ty, c);
-                            declare_method!(class_mut, self.builder, id, flag, ret_ty, ps);
+                            let mut impl_flag = MethodImplAttrib::new(
+                                MethodImplAttribCodeTypeFlag::IL,
+                                MethodImplAttribManagedFlag::Managed,
+                            );
+                            for attr in attrs.iter() {
+                                if let AST::CustomAttr(id, args) = attr.as_ref() {
+                                    if id == "Dllimport" {
+                                        // TODO: use real attribute object
+                                        // Currently it's adhoc
+                                        assert_eq!(
+                                            args.len(),
+                                            1,
+                                            "Invalid arg for Dllimport attribute"
+                                        );
+                                        if let AST::String(v) = args[0].as_ref() {
+                                            impl_flag
+                                                .set_code_ty(MethodImplAttribCodeTypeFlag::Native);
+                                            impl_flag.set_managed(
+                                                MethodImplAttribManagedFlag::Unmanaged,
+                                            );
+                                        } else {
+                                            panic!("Invalid arg for Dllimport attribute");
+                                        }
+                                    } else {
+                                        panic!("Unrecognizable custom attribute {}", id);
+                                    }
+                                } else {
+                                    unreachable!();
+                                }
+                            }
+
+                            let method_idx = declare_method!(
+                                class_mut,
+                                self.builder,
+                                id,
+                                flag,
+                                &impl_flag,
+                                ret_ty,
+                                ps
+                            );
+                            for (id, args) in attrs.iter().map(|attr| {
+                                if let AST::CustomAttr(id, args) = attr.as_ref() {
+                                    (id, args)
+                                } else {
+                                    unreachable!()
+                                }
+                            }) {
+                                if id == "Dllimport" {
+                                    // TODO: use real attribute object
+                                    // Currently it's adhoc
+                                    if let AST::String(v) = args[0].as_ref() {
+                                        let pinvoke_attrib = PInvokeAttrib::new(
+                                            PInvokeAttribCharsetFlag::Ansi,
+                                            PInvokeAttribCallConvFlag::CDecl,
+                                        );
+                                        self.builder.borrow_mut().add_extern_fn(
+                                            v,
+                                            id,
+                                            &pinvoke_attrib,
+                                            method_idx,
+                                        );
+                                    } else {
+                                        unreachable!();
+                                    }
+                                } else {
+                                    unreachable!();
+                                }
+                            }
                         }
                     }
 
@@ -471,8 +578,8 @@ impl Module {
                         if let Some(m) = class_mut.methods.get("main") {
                             if let RValType::Void = m.ret_ty {
                                 if m.ps_ty.len() == 0
-                                    && m.flag.is(MethodFlagTag::Pub)
-                                    && m.flag.is(MethodFlagTag::Static)
+                                    && m.flag.is(MethodAttribFlag::Pub)
+                                    && m.flag.is(MethodAttribFlag::Static)
                                 {
                                     // pub Program::main()
                                     self.builder.borrow_mut().file.mod_tbl[0].entrypoint = m.idx;
@@ -505,12 +612,12 @@ impl Module {
         block: &Box<AST>,
     ) {
         let mut args_map: HashMap<String, Arg> = HashMap::new();
-        if !m.flag.is(MethodFlagTag::Static) {
+        if !m.flag.is(MethodAttribFlag::Static) {
             // non-static method param "self"
             args_map.insert(
                 String::from("self"),
                 Arg::new(
-                    Default::default(),
+                    ParamAttrib::from(0),
                     RValType::Obj(self.fullname().to_owned(), class.name.clone()),
                     args_map.len() as u16,
                 ),
@@ -619,8 +726,12 @@ impl Module {
 
                     for method_ast in ast_methods.iter() {
                         if let AST::Method(id, _, _, _, ps, block) = method_ast.as_ref() {
-                            let m = class_ref.methods.get(id).unwrap();
-                            self.code_gen_method(c, cfg, &class_ref, m, ps, block);
+                            if let AST::None = block.as_ref() {
+                                // extern function
+                            } else {
+                                let m = class_ref.methods.get(id).unwrap();
+                                self.code_gen_method(c, cfg, &class_ref, m, ps, block);
+                            }
                         } else {
                             unreachable!("Parser error");
                         }

@@ -1,6 +1,6 @@
+pub mod attrib;
 pub mod blob;
 pub mod file;
-pub mod flag;
 pub mod inst;
 pub mod tok;
 pub mod util;

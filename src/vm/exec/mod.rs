@@ -1,4 +1,4 @@
-use super::data::{VMMethod, VMMethodCtx, VMType};
+use super::data::{VMMethod, VMMethodILImpl, VMModule, VMType};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
 use xir::tok::{get_tok_tag, TokTag};
@@ -8,6 +8,7 @@ use std::mem::transmute;
 struct MethodState<'m> {
     ip: usize,
     method: &'m VMMethod,
+    method_impl: &'m VMMethodILImpl,
     stack: Stack,
     locals: Vec<Slot>,
     args: Vec<Slot>,
@@ -16,34 +17,35 @@ struct MethodState<'m> {
 impl<'m> MethodState<'m> {
     pub fn consume_u8(&mut self) -> u8 {
         self.ip += 1;
-        self.method.insts[self.ip - 1]
+        self.method_impl.insts[self.ip - 1]
     }
 
     pub fn consume_u16(&mut self) -> u16 {
         self.ip += 2;
-        ((self.method.insts[self.ip - 2] as u16) << 8) + (self.method.insts[self.ip - 1] as u16)
+        ((self.method_impl.insts[self.ip - 2] as u16) << 8)
+            + (self.method_impl.insts[self.ip - 1] as u16)
     }
 
     pub fn consume_u32(&mut self) -> u32 {
         self.ip += 4;
-        ((self.method.insts[self.ip - 4] as u32) << 24)
-            + ((self.method.insts[self.ip - 3] as u32) << 16)
-            + ((self.method.insts[self.ip - 2] as u32) << 8)
-            + (self.method.insts[self.ip - 1] as u32)
+        ((self.method_impl.insts[self.ip - 4] as u32) << 24)
+            + ((self.method_impl.insts[self.ip - 3] as u32) << 16)
+            + ((self.method_impl.insts[self.ip - 2] as u32) << 8)
+            + (self.method_impl.insts[self.ip - 1] as u32)
     }
 
     pub fn consume_i8(&mut self) -> i8 {
         self.ip += 1;
-        unsafe { transmute(self.method.insts[self.ip - 1]) }
+        unsafe { transmute(self.method_impl.insts[self.ip - 1]) }
     }
 
     pub fn consume_i32(&mut self) -> i32 {
         self.ip += 4;
         let bytes = [
-            self.method.insts[self.ip - 4],
-            self.method.insts[self.ip - 3],
-            self.method.insts[self.ip - 2],
-            self.method.insts[self.ip - 1],
+            self.method_impl.insts[self.ip - 4],
+            self.method_impl.insts[self.ip - 3],
+            self.method_impl.insts[self.ip - 2],
+            self.method_impl.insts[self.ip - 1],
         ];
         i32::from_be_bytes(bytes)
     }
@@ -61,7 +63,7 @@ macro_rules! exec_numeric_op {
                     $lhs.data.i32_ = $lhs.data.i32_ $op $rhs.data.i32_;
                 }
                 SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F32 | SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::F => panic!("Cannot add between float and int"),
                 SlotTag::INative => {
                     $lhs.data.inative_ = $lhs.data.i32_ as isize $op $rhs.data.inative_;
                     $lhs.tag = SlotTag::INative;
@@ -70,13 +72,13 @@ macro_rules! exec_numeric_op {
                 SlotTag::Uninit => panic!("Cannot add unint data"),
             },
             SlotTag::I64 => unimplemented!(),
-            SlotTag::F32 | SlotTag::F64 => unimplemented!(),
+            SlotTag::F => unimplemented!(),
             SlotTag::INative => match $rhs.tag {
                 SlotTag::I32 => {
                     $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.i32_ as isize;
                 }
                 SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F32 | SlotTag::F64 => panic!("Cannot add between float and int"),
+                SlotTag::F => panic!("Cannot add between float and int"),
                 SlotTag::INative => {
                     $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.inative_;
                 }
@@ -97,7 +99,7 @@ macro_rules! exec_cmp_op {
                     $lhs.data.i32_ $op $rhs.data.i32_
                 }
                 SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                SlotTag::F32 | SlotTag::F64 => panic!("Cannot cmp between float and int"),
+                SlotTag::F => panic!("Cannot cmp between float and int"),
                 SlotTag::INative => {
                     ($lhs.data.i32_ as isize) $op $rhs.data.inative_
                 }
@@ -105,13 +107,13 @@ macro_rules! exec_cmp_op {
                 SlotTag::Uninit => panic!("Cannot cmp unint data"),
             },
             SlotTag::I64 => unimplemented!(),
-            SlotTag::F32 | SlotTag::F64 => unimplemented!(),
+            SlotTag::F => unimplemented!(),
             SlotTag::INative => match $rhs.tag {
                 SlotTag::I32 => {
                     $lhs.data.inative_ $op $rhs.data.i32_ as isize
                 }
                 SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                SlotTag::F32 | SlotTag::F64 => panic!("Cannot cmp between float and int"),
+                SlotTag::F => panic!("Cannot cmp between float and int"),
                 SlotTag::INative => {
                     $lhs.data.inative_ $op $rhs.data.inative_
                 }
@@ -134,12 +136,14 @@ impl<'m> TExecutor<'m> {
 
     unsafe fn call(&mut self, args: Vec<Slot>, method: &'m VMMethod) {
         // Currently there is no verification of the arg type
+        let method_impl = method.method_impl.expect_il();
         self.states.push(MethodState {
             stack: Stack::new(),
-            locals: vec![Slot::default(); method.locals],
+            locals: vec![Slot::default(); method_impl.locals],
             args,
             ip: 0,
             method,
+            method_impl,
         });
     }
 
@@ -301,7 +305,7 @@ impl<'m> TExecutor<'m> {
                 0x28 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
+                    let ctx = cur_state.method.ctx.as_ref().unwrap().expect_il();
 
                     let (tag, idx) = get_tok_tag(tok);
 
@@ -314,22 +318,23 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    match &callee.ctx {
-                        VMMethodCtx::Mod(_) => {
-                            // managed code
-                        }
-                        VMMethodCtx::Dll(dll_name) => {
-                            // call unmanaged code
-                        }
-                    }
-
                     let args = self
                         .states
                         .last_mut()
                         .unwrap()
                         .stack
                         .pop_n(callee.ps_ty.len());
-                    self.call(args, callee);
+                    match callee.ctx.as_ref().unwrap() {
+                        VMModule::IL(_) => {
+                            self.call(args, callee);
+                        }
+                        VMModule::Native(dll) => {
+                            // currently there is no multi-slot user defined type
+                            let mut ret: Vec<Slot> = Vec::new();
+                            dll.call(mem.get_str(callee.name), &args, &mut ret);
+                            self.states.last_mut().unwrap().stack.append(ret);
+                        }
+                    }
                 }
                 // ret
                 0x2A => {
@@ -493,11 +498,8 @@ impl<'m> TExecutor<'m> {
                         SlotTag::I64 => {
                             lhs.data.i64_ = -lhs.data.i64_;
                         }
-                        SlotTag::F32 => {
-                            lhs.data.f32_ = -lhs.data.f32_;
-                        }
-                        SlotTag::F64 => {
-                            lhs.data.f64_ = -lhs.data.f64_;
+                        SlotTag::F => {
+                            unimplemented!();
                         }
                         SlotTag::INative => {
                             lhs.data.inative_ = -lhs.data.inative_;
@@ -510,7 +512,7 @@ impl<'m> TExecutor<'m> {
                 0x6F => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
+                    let ctx = cur_state.method.ctx.as_ref().unwrap().expect_il();
 
                     let (tag, idx) = get_tok_tag(tok);
 
@@ -522,12 +524,7 @@ impl<'m> TExecutor<'m> {
                             .unwrap(),
                         _ => unimplemented!(),
                     };
-                    callee.ctx.expect_mod();
-
-                    if callee.offset != 0 {
-                        // virtual method
-                        unimplemented!("Calling a virtual method is not implemented");
-                    }
+                    // TODO: make sure callee is virtual
 
                     let args = cur_state.stack.pop_n(callee.ps_ty.len() + 1);
                     self.call(args, callee);
@@ -536,7 +533,7 @@ impl<'m> TExecutor<'m> {
                 0x73 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = cur_state.method.ctx.expect_mod().as_ref().unwrap();
+                    let ctx = cur_state.method.ctx.as_ref().unwrap().expect_il();
 
                     let (tag, idx) = get_tok_tag(tok);
 
@@ -548,7 +545,7 @@ impl<'m> TExecutor<'m> {
                             .unwrap(),
                         _ => unimplemented!(),
                     };
-                    callee.ctx.expect_mod();
+                    // TODO: make sure callee is .ctor
 
                     let mut args: Vec<Slot> = Vec::new();
                     if let VMType::Obj(class) = &callee.ps_ty[0] {
@@ -574,19 +571,16 @@ impl<'m> TExecutor<'m> {
 
                     let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
                             [idx as usize - 1]
                             .as_ref(),
-                        TokTag::MemberRef => cur_state
-                            .method
-                            .ctx
-                            .expect_mod()
-                            .as_ref()
-                            .unwrap()
-                            .memberref[idx as usize - 1]
-                            .expect_field()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => {
+                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
+                                [idx as usize - 1]
+                                .expect_field()
+                                .as_ref()
+                                .unwrap()
+                        }
                         _ => unimplemented!(),
                     };
 
@@ -627,19 +621,16 @@ impl<'m> TExecutor<'m> {
 
                     let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
                             [idx as usize - 1]
                             .as_ref(),
-                        TokTag::MemberRef => cur_state
-                            .method
-                            .ctx
-                            .expect_mod()
-                            .as_ref()
-                            .unwrap()
-                            .memberref[idx as usize - 1]
-                            .expect_field()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => {
+                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
+                                [idx as usize - 1]
+                                .expect_field()
+                                .as_ref()
+                                .unwrap()
+                        }
                         _ => unimplemented!(),
                     };
 
@@ -674,19 +665,16 @@ impl<'m> TExecutor<'m> {
 
                     let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
                             [idx as usize - 1]
                             .as_ref(),
-                        TokTag::MemberRef => cur_state
-                            .method
-                            .ctx
-                            .expect_mod()
-                            .as_ref()
-                            .unwrap()
-                            .memberref[idx as usize - 1]
-                            .expect_field()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => {
+                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
+                                [idx as usize - 1]
+                                .expect_field()
+                                .as_ref()
+                                .unwrap()
+                        }
                         _ => unimplemented!(),
                     };
 
@@ -726,19 +714,16 @@ impl<'m> TExecutor<'m> {
 
                     let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.expect_mod().as_ref().unwrap().fields
+                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
                             [idx as usize - 1]
                             .as_ref(),
-                        TokTag::MemberRef => cur_state
-                            .method
-                            .ctx
-                            .expect_mod()
-                            .as_ref()
-                            .unwrap()
-                            .memberref[idx as usize - 1]
-                            .expect_field()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => {
+                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
+                                [idx as usize - 1]
+                                .expect_field()
+                                .as_ref()
+                                .unwrap()
+                        }
                         _ => unimplemented!(),
                     };
 

@@ -1,4 +1,4 @@
-use crate::ir::file::{IrFile, IrFmt};
+use crate::file::{IrFile, IrFmt};
 use crate::ir::tok::fmt_tok;
 use std::fmt;
 

@@ -1,10 +1,10 @@
-use xir::flag::TypeFlag;
+use xir::attrib::TypeAttrib;
 
 use super::{VMField, VMMethod};
 
 pub struct VMClass {
     pub name: u32,
-    pub flag: TypeFlag,
+    pub attrib: TypeAttrib,
 
     // ownership of methods and fields is at parent module
     pub methods: Vec<*const VMMethod>,

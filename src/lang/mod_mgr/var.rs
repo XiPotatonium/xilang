@@ -1,4 +1,4 @@
-use xir::flag::*;
+use xir::attrib::*;
 
 use super::super::gen::RValType;
 
@@ -6,14 +6,14 @@ use std::collections::HashMap;
 
 pub struct Var {
     pub id: String,
-    pub flag: LocalFlag,
+    pub flag: LocalAttrib,
     pub ty: RValType,
     pub offset: u16,
     pub initialized: bool,
 }
 
 impl Var {
-    pub fn new(id: &str, flag: LocalFlag, ty: RValType, offset: u16, initialized: bool) -> Var {
+    pub fn new(id: &str, flag: LocalAttrib, ty: RValType, offset: u16, initialized: bool) -> Var {
         Var {
             id: id.to_owned(),
             flag,
@@ -25,14 +25,14 @@ impl Var {
 }
 
 pub struct Arg {
-    pub flag: ParamFlag,
+    pub attrib: ParamAttrib,
     pub ty: RValType,
     pub offset: u16,
 }
 
 impl Arg {
-    pub fn new(flag: ParamFlag, ty: RValType, offset: u16) -> Arg {
-        Arg { flag, ty, offset }
+    pub fn new(attrib: ParamAttrib, ty: RValType, offset: u16) -> Arg {
+        Arg { attrib, ty, offset }
     }
 }
 
@@ -57,7 +57,7 @@ impl Locals {
         self.sym_tbl.pop().expect("Cannot pop empty stack");
     }
 
-    pub fn add(&mut self, id: &str, ty: RValType, flag: LocalFlag, initialized: bool) -> u16 {
+    pub fn add(&mut self, id: &str, ty: RValType, flag: LocalAttrib, initialized: bool) -> u16 {
         let last_frame = self.sym_tbl.last_mut().unwrap();
         if last_frame.contains_key(id) {
             // Overwrite old value

@@ -1,32 +1,49 @@
-use xir::flag::MethodFlag;
+use xir::attrib::{MethodAttrib, MethodImplAttrib, PInvokeAttrib};
 
 use super::{VMModule, VMType};
 
 pub struct VMMethod {
-    pub ctx: VMMethodCtx,
+    pub ctx: *const VMModule,
 
     pub name: u32,
 
-    pub flag: MethodFlag,
+    pub flag: MethodAttrib,
+    pub impl_flag: MethodImplAttrib,
+
     pub ps_ty: Vec<VMType>,
     pub ret_ty: VMType,
 
-    /// if this is a virtual method, offset is the index in vtbl
+    pub method_impl: VMMethodImpl,
+}
+
+pub enum VMMethodImpl {
+    IL(VMMethodILImpl),
+    Native(VMMethodNativeImpl),
+}
+
+impl VMMethodImpl {
+    pub fn expect_il(&self) -> &VMMethodILImpl {
+        match self {
+            VMMethodImpl::IL(method_impl) => method_impl,
+            VMMethodImpl::Native(_) => panic!(),
+        }
+    }
+
+    pub fn expect_il_mut(&mut self) -> &mut VMMethodILImpl {
+        match self {
+            VMMethodImpl::IL(method_impl) => method_impl,
+            VMMethodImpl::Native(_) => panic!(),
+        }
+    }
+}
+
+pub struct VMMethodILImpl {
     pub offset: u32,
     pub locals: usize,
     pub insts: Vec<u8>,
 }
 
-pub enum VMMethodCtx {
-    Mod(*const VMModule),
-    Dll(u32),
-}
-
-impl VMMethodCtx {
-    pub fn expect_mod(&self) -> *const VMModule {
-        match self {
-            VMMethodCtx::Mod(m) => *m,
-            VMMethodCtx::Dll(_) => panic!(),
-        }
-    }
+pub struct VMMethodNativeImpl {
+    pub name: u32,
+    pub flag: PInvokeAttrib,
 }

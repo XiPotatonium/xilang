@@ -6,7 +6,10 @@ mod ty;
 
 use super::blob::Blob;
 pub use code::CorILMethod;
-pub use member::{to_memberref_parent, IrField, IrImplMap, IrMemberRef, IrMethod, MemberRefParent};
+pub use member::{
+    to_implmap_member, to_memberref_parent, IrField, IrImplMap, IrMemberRef, IrMethodDef,
+    MemberForwarded, MemberRefParent,
+};
 pub use ty::{get_typeref_parent, IrTypeDef, IrTypeRef, ResolutionScope};
 
 use std::fmt;
@@ -28,7 +31,7 @@ pub struct IrFile {
     pub typeref_tbl: Vec<IrTypeRef>,
 
     pub field_tbl: Vec<IrField>,
-    pub method_tbl: Vec<IrMethod>,
+    pub method_tbl: Vec<IrMethodDef>,
 
     pub memberref_tbl: Vec<IrMemberRef>,
 

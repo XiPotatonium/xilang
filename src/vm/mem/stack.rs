@@ -37,6 +37,11 @@ impl Stack {
         self.data.push(v);
     }
 
+    pub fn append(&mut self, vs: Vec<Slot>) {
+        let mut vs = vs;
+        self.data.append(&mut vs);
+    }
+
     pub fn push_i32(&mut self, v: i32) {
         self.data.push(Slot {
             tag: SlotTag::I32,

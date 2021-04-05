@@ -31,7 +31,6 @@ impl ModMgr {
         mod_path.push(&cfg.crate_name);
 
         // TODO external module paths
-        println!("External module paths: {}", cfg.ext_paths.join(";"));
 
         // prepare output dir
         if cfg.out_dir.exists() {

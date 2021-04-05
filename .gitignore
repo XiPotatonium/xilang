@@ -6,3 +6,6 @@
 *.ast.json
 *.xibc
 *.xir
+
+/std-dll/.vs
+/std-dll/out

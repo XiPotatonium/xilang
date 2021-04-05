@@ -1,7 +1,7 @@
 // mod ir_parser;
 
 use super::*;
-use crate::ir::flag::*;
+use crate::ir::attrib::*;
 use crate::ir::inst::Inst;
 use crate::ir::tok::fmt_tok;
 
@@ -15,7 +15,7 @@ impl IrFile {
         field_i: usize,
     ) -> fmt::Result {
         let field = &self.field_tbl[field_i];
-        let flag = FieldFlag::new(field.flag);
+        let flag = FieldAttrib::from(field.flag);
         write!(
             f,
             "\n{}.field {} {} ",
@@ -34,16 +34,37 @@ impl IrFile {
         is_entrypoint: bool,
     ) -> fmt::Result {
         let method = &self.method_tbl[method_i];
-        let flag = MethodFlag::new(method.flag);
-        write!(
-            f,
-            "\n\n{}.method {} {} ",
-            " ".repeat(indent * 4),
-            flag,
-            self.get_str(method.name),
-        )?;
+        let flag = MethodAttrib::from(method.flag);
+        let impl_flag = MethodImplAttrib::from(method.impl_flag);
+
+        write!(f, "\n\n{}.method {} ", " ".repeat(indent * 4), flag)?;
+
+        if method.body == 0 {
+            // this is an external method
+            // See ECMA-335 II.15.5.2
+
+            // O(N) search, might need optimization
+            let implmap_info = self.implmap_tbl.iter().find(|&info| {
+                let (m_tag, m_idx) = info.get_member();
+                MemberForwarded::MethodDef == m_tag && m_idx as usize == method_i + 1
+            });
+
+            if let Some(implmap_info) = implmap_info {
+                let flag = PInvokeAttrib::from(implmap_info.flag);
+                write!(
+                    f,
+                    "pinvokeimpl(\"{}\" {}) ",
+                    self.get_str(self.modref_tbl[implmap_info.scope as usize - 1].name),
+                    flag
+                )?;
+            } else {
+                panic!("No implmap found for method {}", self.get_str(method.name));
+            }
+        }
+
+        write!(f, "{}", self.get_str(method.name))?;
         self.blob_heap[method.sig as usize].fmt(f, self)?;
-        write!(f, "\n")?;
+        write!(f, " {}", impl_flag)?;
 
         if method.body != 0 {
             // has body
@@ -51,11 +72,11 @@ impl IrFile {
 
             write!(
                 f,
-                "{}.maxstacks\t{}",
+                " {{\n{}.maxstacks\t{}",
                 " ".repeat(indent * 8),
                 body.max_stack
             )?;
-            write!(f, "{}.locals\t{}", " ".repeat(indent * 8), body.local)?;
+            write!(f, "\n{}.locals\t{}", " ".repeat(indent * 8), body.local)?;
             if is_entrypoint {
                 write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
             }
@@ -68,9 +89,10 @@ impl IrFile {
                 inst.fmt(f, self, offset)?;
                 offset += inst.size();
             }
+            write!(f, "\n{}}}", " ".repeat(indent * 4))
+        } else {
+            write!(f, " {{}}\n")
         }
-
-        Ok(())
     }
 }
 
@@ -112,7 +134,7 @@ impl fmt::Display for IrFile {
                 )
             };
 
-            let flag = TypeFlag::new(class.flag);
+            let flag = TypeAttrib::from(class.flag);
             write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name))?;
 
             while field_i < field_lim {

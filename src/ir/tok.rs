@@ -2,16 +2,16 @@ use super::file::{IrFile, IrFmt};
 
 use std::fmt;
 
-pub const TOK_TAG_MASK: u32 = 0xFF;
-pub const TOK_TAG_MASK_SIZE: u32 = 16;
-pub const TOK_MOD_TAG: u32 = 0x00;
-pub const TOK_MODREF_TAG: u32 = 0x1A;
-pub const TOK_TYPEDEF_TAG: u32 = 0x02;
-pub const TOK_TYPEREF_TAG: u32 = 0x01;
-pub const TOK_FIELD_TAG: u32 = 0x04;
-pub const TOK_METHOD_TAG: u32 = 0x06;
-pub const TOK_MEMBERREF_TAG: u32 = 0x0A;
-pub const TOK_IMPLMAP_TAG: u32 = 0x1C;
+const TOK_TAG_MASK: u32 = 0xFF;
+const TOK_TAG_MASK_SIZE: u32 = 16;
+const TOK_MOD_TAG: u32 = 0x00;
+const TOK_MODREF_TAG: u32 = 0x1A;
+const TOK_TYPEDEF_TAG: u32 = 0x02;
+const TOK_TYPEREF_TAG: u32 = 0x01;
+const TOK_FIELD_TAG: u32 = 0x04;
+const TOK_METHOD_TAG: u32 = 0x06;
+const TOK_MEMBERREF_TAG: u32 = 0x0A;
+const TOK_IMPLMAP_TAG: u32 = 0x1C;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokTag {

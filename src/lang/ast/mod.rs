@@ -1,6 +1,6 @@
 mod disp;
 
-use xir::flag::*;
+use xir::attrib::*;
 use xir::util::path::ModPath;
 
 pub enum AST {
@@ -12,30 +12,30 @@ pub enum AST {
 
     CustomAttr(String, Vec<Box<AST>>),
 
-    /// id, flag, custom-attr, methods: Vec<Func>, fields: Vec<Var>, static-init
+    /// id, attrib, custom-attrib, methods: Vec<Func>, fields: Vec<Var>, static-init
     Class(
         String,
-        TypeFlag,
+        TypeAttrib,
         Vec<Box<AST>>,
         Vec<Box<AST>>,
         Vec<Box<AST>>,
         Box<AST>,
     ),
-    /// id, flag, custom-attr, ty, ps: Vec<Var>, body: Box<Block>
+    /// id, attrib, custom-attrib, ty, ps: Vec<Var>, body: Box<Block>
     Method(
         String,
-        MethodFlag,
+        MethodAttrib,
         Vec<Box<AST>>,
         Box<AST>,
         Vec<Box<AST>>,
         Box<AST>,
     ),
 
-    /// id, flag, custom-attr, ty
-    Field(String, FieldFlag, Vec<Box<AST>>, Box<AST>),
-    Param(String, ParamFlag, Box<AST>),
+    /// id, attrib, custom-attrib, ty
+    Field(String, FieldAttrib, Vec<Box<AST>>, Box<AST>),
+    Param(String, ParamAttrib, Box<AST>),
     /// pattern, ty, flag, init: Box<AST>
-    Let(Box<AST>, LocalFlag, Box<AST>, Box<AST>),
+    Let(Box<AST>, LocalAttrib, Box<AST>, Box<AST>),
 
     ExprStmt(Box<AST>),
 

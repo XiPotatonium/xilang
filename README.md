@@ -10,12 +10,9 @@ A toy programming language that runs on a simple virtual machine.
   * 目前let声明变量如果有同名的变量会发生覆盖，但是实际上不应该产生覆盖，let仅仅是绑定，新的局部变量一定分配新的空间。
   * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，需要考证栈到底是怎么实现的，有没有slot。
   * 局部变量的类型信息需要在blob记录
-* 修正之前的OOP设计错误
-  * 支持重载
 * 更贴近CLR标准的Blob
   * 除了上面说的局部变量信息，其他Blob设计(例如函数签名)也应当逐渐接近CLR标准，不过不需要采用它那个样子的编码
-* IrFile encoding. 
-  * 目前tbl index是有问题的，CLR并不通过前缀来判断有多个可能table的地址，而是通过一系列特殊的tag(标准II.24.2.6)
+* 使用Param Tbl
 
 ### 1.2 RoadMap
 
@@ -24,8 +21,8 @@ A toy programming language that runs on a simple virtual machine.
 * OOP:
   * class
   * static/non-static method/field
-  * cctor (static constructor for class)
-  * ctor (default constructor for class)
+  * cctor
+  * ctor (default constructor)
 * Built-in type:
   * i32
   * bool
@@ -86,7 +83,9 @@ A toy programming language that runs on a simple virtual machine.
 
 #### Ver 0.6.2
 
-* Refactor lang, make incremental compilation possible
+* Refactor lang
+  * make incremental compilation possible
+  * Overload
 * xilang project structure
 
 #### Ver 0.6.3
@@ -123,7 +122,8 @@ USAGE:
 
 FLAGS:
     -h, --help       Prints help information
-    -v               Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json
+        --no_std     Build without stdlib
+    -v, --verbose    Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json
     -V, --version    Prints version information
 
 OPTIONS:

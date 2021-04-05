@@ -9,7 +9,6 @@ pub use self::stack::Stack;
 pub use self::static_area::{StaticArea, VTblEntry};
 
 use super::data::VMModule;
-use super::native::VMDll;
 
 use std::collections::HashMap;
 use std::mem::{size_of, transmute};
@@ -20,7 +19,6 @@ pub struct SharedMem {
     pub static_area: StaticArea,
 
     pub mods: HashMap<u32, Box<VMModule>>,
-    pub dlls: HashMap<u32, Box<VMDll>>,
 
     pub str_pool: Vec<String>,
 }
@@ -36,9 +34,12 @@ impl SharedMem {
             heap: Heap::new(HEAP_DEFAULT_SIZE),
             static_area: StaticArea::new(STATIC_DEFAULT_SIZE),
             mods: HashMap::new(),
-            dlls: HashMap::new(),
             str_pool: Vec::new(),
         }
+    }
+
+    pub fn get_str(&self, i: u32) -> &str {
+        &self.str_pool[i as usize]
     }
 }
 

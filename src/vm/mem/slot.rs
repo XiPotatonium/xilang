@@ -16,8 +16,7 @@ pub enum SlotTag {
     I64,
     INative,
     Ref,
-    F32,
-    F64,
+    F,
     Uninit,
 }
 
@@ -27,8 +26,6 @@ pub union SlotData {
     pub i32_: i32,
     pub i64_: i64,
     pub inative_: isize,
-    pub f32_: f32,
-    pub f64_: f64,
     pub unative_: usize,
 }
 
