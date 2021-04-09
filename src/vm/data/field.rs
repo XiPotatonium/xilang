@@ -1,11 +1,11 @@
 use xir::attrib::FieldAttrib;
 
-use super::VMType;
+use super::VMBuiltinType;
 
 pub struct VMField {
     pub name: u32,
     pub attrib: FieldAttrib,
-    pub ty: VMType,
+    pub ty: VMBuiltinType,
 
     /// for static field, this is address in memory;
     /// for non static field, this is the offset to the start of object

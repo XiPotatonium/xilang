@@ -1,6 +1,6 @@
 use xir::attrib::{MethodAttrib, MethodImplAttrib, PInvokeAttrib};
 
-use super::{VMModule, VMType};
+use super::{VMBuiltinType, VMModule};
 
 pub struct VMMethod {
     pub ctx: *const VMModule,
@@ -10,8 +10,8 @@ pub struct VMMethod {
     pub flag: MethodAttrib,
     pub impl_flag: MethodImplAttrib,
 
-    pub ps_ty: Vec<VMType>,
-    pub ret_ty: VMType,
+    pub ps_ty: Vec<VMBuiltinType>,
+    pub ret_ty: VMBuiltinType,
 
     pub method_impl: VMMethodImpl,
 }
@@ -28,13 +28,6 @@ impl VMMethodImpl {
             VMMethodImpl::Native(_) => panic!(),
         }
     }
-
-    pub fn expect_il_mut(&mut self) -> &mut VMMethodILImpl {
-        match self {
-            VMMethodImpl::IL(method_impl) => method_impl,
-            VMMethodImpl::Native(_) => panic!(),
-        }
-    }
 }
 
 pub struct VMMethodILImpl {
@@ -44,6 +37,8 @@ pub struct VMMethodILImpl {
 }
 
 pub struct VMMethodNativeImpl {
+    // index of modref (dll)
+    pub scope: usize,
     pub name: u32,
     pub flag: PInvokeAttrib,
 }

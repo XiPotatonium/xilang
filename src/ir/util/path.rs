@@ -202,7 +202,7 @@ impl IModPath for ModPath {
     fn range(&self, start: usize, end: usize) -> ModPathSlice {
         assert!(end > start, "Invalid range [{}..{}]", start, end);
         assert!(
-            end > self.len(),
+            end <= self.len(),
             "[{}..{}] out of range [0..{}]",
             start,
             end,
@@ -301,7 +301,7 @@ impl<'p> IModPath for ModPathSlice<'p> {
     fn range(&self, start: usize, end: usize) -> ModPathSlice {
         assert!(end > start, "Invalid range [{}..{}]", start, end);
         assert!(
-            end > self.len(),
+            end <= self.len(),
             "[{}..{}] out of range [0..{}]",
             start,
             end,

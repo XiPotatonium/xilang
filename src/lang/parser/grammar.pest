@@ -1,7 +1,7 @@
-File = { SOI ~ Modules* ~ UseDeclarations* ~ Class* ~ EOI }
+File = { SOI ~ (Modules | ExternMod | UseDeclarations)* ~ Class* ~ EOI }
 
 Modules = { "mod" ~ Id ~ Semi }
-
+ExternMod = {"extern" ~ "mod" ~ Id ~ Semi}
 UseDeclarations = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
 
 AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }

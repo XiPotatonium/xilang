@@ -28,7 +28,7 @@ lazy_static! {
 fn main() {
     let cfg = {
         let matches = App::new("xic")
-            .version("0.1.0")
+            .version("0.2.0")
             .author("Xi")
             .about("Hello world! This is xic")
             .arg(
@@ -66,6 +66,12 @@ fn main() {
                         "Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json",
                     ),
             )
+            .arg(
+                Arg::with_name("no_std")
+                    .help("Do not reference stdlib (used in compiling stdlib)")
+                    .long("no_std")
+                    .takes_value(false),
+            )
             .get_matches();
 
         let ext_paths = matches.value_of("ext").unwrap_or("");
@@ -73,7 +79,7 @@ fn main() {
         let output_dir = matches.value_of("output");
         let root_path = fs::canonicalize(root_path).unwrap();
         if !root_path.is_file() {
-            panic!("Root path {} is not a file", root_path.to_str().unwrap());
+            panic!("Root path {} is not a file", root_path.display());
         }
         let root_dir = root_path.parent().unwrap().to_owned();
         let crate_name = root_dir.file_name().unwrap().to_str().unwrap().to_owned();
@@ -88,7 +94,7 @@ fn main() {
             panic!("Invalid root file name {}", root_fname);
         }
 
-        let mut ext_paths = if ext_paths.len() == 0 {
+        let mut ext_paths_set = if ext_paths.len() == 0 {
             HashSet::new()
         } else {
             ext_paths
@@ -96,18 +102,22 @@ fn main() {
                 .map(|x| PathBuf::from(x).canonicalize().unwrap())
                 .collect::<HashSet<PathBuf>>()
         };
-        let mut std_path = env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_owned();
-        std_path.push("std/std.xibc");
-        ext_paths.insert(std_path.canonicalize().unwrap());
+
+        if !matches.is_present("no_std") {
+            // import std by default if no_std is not present
+            let mut std_path = env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_owned();
+            std_path.push("std/std.xibc");
+            ext_paths_set.insert(std_path.canonicalize().unwrap());
+        }
 
         XicCfg {
-            ext_paths: ext_paths.into_iter().collect::<Vec<PathBuf>>(),
+            ext_paths: ext_paths_set.into_iter().collect(),
             root_dir: root_dir.clone(),
             crate_name,
             root_path,
@@ -121,14 +131,10 @@ fn main() {
         }
     };
 
-    println!(
-        "External modules: {}",
-        cfg.ext_paths
-            .iter()
-            .map(|p| p.to_str().unwrap())
-            .collect::<Vec<&str>>()
-            .join(";")
-    );
+    println!("External modules: ");
+    for p in cfg.ext_paths.iter() {
+        println!("* {}", p.display());
+    }
 
     let start_time = SystemTime::now();
     let mut module_mgr = ModMgr::new(&cfg);
@@ -140,11 +146,6 @@ fn main() {
                 .unwrap()
                 .as_secs_f32()
         );
-    }
-
-    if cfg.verbose >= 1 {
-        println!("Project structure:");
-        module_mgr.tree();
     }
 
     let start_time = SystemTime::now();

@@ -1,4 +1,4 @@
-use super::super::data::{VMClass, VMMethod};
+use super::super::data::{VMMethod, VMType};
 
 use std::mem::size_of;
 
@@ -53,7 +53,7 @@ impl StaticArea {
 
 #[derive(Clone, Copy)]
 pub struct VTblEntry {
-    pub class: *const VMClass,
+    pub class: *const VMType,
     pub num_virt: usize,
     pub num_interface: usize,
 }

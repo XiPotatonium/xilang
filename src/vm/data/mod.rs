@@ -1,15 +1,15 @@
-mod class;
 mod field;
 mod method;
 mod module;
+mod ty;
 
-pub use self::class::VMClass;
 pub use self::field::VMField;
 pub use self::method::{VMMethod, VMMethodILImpl, VMMethodImpl, VMMethodNativeImpl};
 pub use self::module::{VMILModule, VMMemberRef, VMModule};
+pub use self::ty::VMType;
 
 #[derive(PartialEq, Eq)]
-pub enum VMType {
+pub enum VMBuiltinType {
     Void,
     Bool,
     Char,
@@ -25,8 +25,8 @@ pub enum VMType {
     INative,
     F32,
     F64,
-    Obj(*const VMClass),
-    Array(Box<VMType>),
+    Obj(*const VMType),
+    Array(Box<VMBuiltinType>),
     /// to be filled
     Unk,
 }

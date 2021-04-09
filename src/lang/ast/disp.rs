@@ -25,11 +25,15 @@ impl fmt::Display for AST {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // write!(f, "({}, {})", self.x, self.y)
         match self {
-            Self::File(mods, uses, children) => {
+            Self::File(mods, ext, uses, children) => {
                 write!(
                     f,
-                    "{{\"name\":\"(file)\",\"mods\":[{}],\"uses\":{},\"classes\":{}}}",
+                    "{{\"name\":\"(file)\",\"mods\":[{}],\"extern\":[{}],\"uses\":{},\"classes\":{}}}",
                     mods.iter()
+                        .map(|m| format!("\"{}\"", m))
+                        .collect::<Vec<String>>()
+                        .join(","),
+                    ext.iter()
                         .map(|m| format!("\"{}\"", m))
                         .collect::<Vec<String>>()
                         .join(","),

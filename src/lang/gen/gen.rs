@@ -1,4 +1,5 @@
 use super::super::ast::AST;
+use super::super::mod_mgr::FieldRef;
 use super::interpreter::constant_folding;
 use super::lval::{gen_lval, gen_path_lval};
 use super::op::BinOp;
@@ -138,11 +139,19 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
             let lval = gen_lval(ctx, ast, false);
             match &lval {
                 ValType::Field(mod_name, class_name, field_name) => {
-                    let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
-                    let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
-                    let f = class_ref.fields.get(field_name).unwrap();
-
-                    let ret = f.ty.clone();
+                    let ret = match ctx
+                        .mgr
+                        .mod_tbl
+                        .get(mod_name)
+                        .unwrap()
+                        .get_class(class_name)
+                        .unwrap()
+                        .get_field(field_name)
+                        .unwrap()
+                    {
+                        FieldRef::Field(f) => f.ty.clone(),
+                        FieldRef::ExtField(f) => f.ty.clone(),
+                    };
                     let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
                     let (field_idx, tok_tag) = ctx
                         .module
@@ -186,14 +195,23 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
     }
 }
 
+/// Access a static field
 fn gen_static_access(ctx: &CodeGenCtx, v: ValType) -> ValType {
     match &v {
         ValType::Field(mod_name, class_name, field_name) => {
-            let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
-            let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
-            let f = class_ref.fields.get(field_name).unwrap();
-
-            let ret = f.ty.clone();
+            let ret = match ctx
+                .mgr
+                .mod_tbl
+                .get(mod_name)
+                .unwrap()
+                .get_class(class_name)
+                .unwrap()
+                .get_field(field_name)
+                .unwrap()
+            {
+                FieldRef::Field(f) => f.ty.clone(),
+                FieldRef::ExtField(f) => f.ty.clone(),
+            };
             let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
             let (field_idx, tok_tag) = ctx
                 .module
@@ -492,29 +510,30 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
             // TODO priavte and public
 
             // Find method
-            let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
-            let class_ref = mod_rc.classes.get(class).unwrap().borrow();
-            let m = class_ref.methods.get(name).unwrap();
+            let mod_ref = ctx.mgr.mod_tbl.get(mod_name).unwrap();
+            let class_ref = mod_ref.get_class(class).unwrap();
+            let m = class_ref.get_method(name).unwrap();
+            let (m_flag, m_ps_ty, m_ret_ty) = m.get_info();
 
             // Add to class file
             let sig = ctx
                 .module
                 .builder
                 .borrow_mut()
-                .add_const_fn_blob(&m.ps_ty, &m.ret_ty);
+                .add_const_fn_blob(m_ps_ty, m_ret_ty);
             let (m_idx, tok_tag) = ctx
                 .module
                 .builder
                 .borrow_mut()
                 .add_const_member(mod_name, class, name, sig);
-            let inst = if m.flag.is(MethodAttribFlag::Static) {
+            let inst = if m_flag.is(MethodAttribFlag::Static) {
                 Inst::Call(to_tok(m_idx, tok_tag))
             } else {
                 Inst::CallVirt(to_tok(m_idx, tok_tag))
             };
 
-            build_args(ctx, &m.ps_ty, args);
-            (inst, m.ret_ty.clone())
+            build_args(ctx, m_ps_ty, args);
+            (inst, m_ret_ty.clone())
         }
         ValType::Module(_) => panic!(),
         ValType::Class(_, _) => panic!(),
@@ -530,14 +549,20 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
     let ret = ctx.get_ty(ty);
     match &ret {
         RValType::Obj(mod_name, class_name) => {
-            let mod_rc = ctx.mgr.mod_tbl.get(mod_name).unwrap().upgrade().unwrap();
-            let class_ref = mod_rc.classes.get(class_name).unwrap().borrow();
+            let class_ref = ctx
+                .mgr
+                .mod_tbl
+                .get(mod_name)
+                .unwrap()
+                .get_class(class_name)
+                .unwrap();
+            let (_, class_non_static_fields) = class_ref.get_info();
 
-            let mut correct_idx: Vec<i32> = vec![-1; class_ref.non_static_fields.len()];
+            let mut correct_idx: Vec<i32> = vec![-1; class_non_static_fields.len()];
             for (i, field) in fields.iter().enumerate() {
                 if let AST::StructExprField(field_name, _) = field.as_ref() {
                     let mut matched = false;
-                    for (j, dec_field_name) in class_ref.non_static_fields.iter().enumerate() {
+                    for (j, dec_field_name) in class_non_static_fields.iter().enumerate() {
                         if dec_field_name == field_name {
                             correct_idx[j] = i as i32;
                             matched = true;
@@ -550,15 +575,13 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                 }
             }
 
-            let mut ctor_ps: Vec<RValType> = vec![RValType::Obj(
-                mod_rc.fullname().to_owned(),
-                class_ref.name.clone(),
-            )];
+            let mut ctor_ps: Vec<RValType> =
+                vec![RValType::Obj(mod_name.to_owned(), class_name.clone())];
             for (i, idx) in correct_idx.iter().enumerate() {
                 if *idx < 0 {
                     panic!(
                         "{}.{} is not initialized in new expr",
-                        class_name, class_ref.non_static_fields[i]
+                        class_name, class_non_static_fields[i]
                     );
                 }
 
@@ -569,14 +592,18 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                     }
                     .expect_rval();
 
-                    if let Some(field) = class_ref.fields.get(field_name) {
-                        if field.ty != v_ty {
+                    if let Some(field) = class_ref.get_field(field_name) {
+                        let field_ty = match field {
+                            FieldRef::Field(f) => f.ty.clone(),
+                            FieldRef::ExtField(f) => f.ty.clone(),
+                        };
+                        if field_ty != v_ty {
                             panic!(
                                 "Cannot assign {} to {}.{}: {}",
-                                v_ty, class_name, field_name, field.ty
+                                v_ty, class_name, field_name, field_ty
                             );
                         }
-                        ctor_ps.push(field.ty.clone());
+                        ctor_ps.push(field_ty);
                     } else {
                         unreachable!();
                     }
@@ -624,10 +651,20 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         }
         ValType::Field(mod_name, class_name, name) => {
             // TODO private and public
-            let mod_rc = ctx.mgr.mod_tbl.get(&mod_name).unwrap().upgrade().unwrap();
-            let class_ref = mod_rc.classes.get(&class_name).unwrap().borrow();
-            let field = class_ref.fields.get(&name).unwrap();
-            let field_ty = field.ty.clone();
+            let (field_ty, field_flag) = match ctx
+                .mgr
+                .mod_tbl
+                .get(&mod_name)
+                .unwrap()
+                .as_ref()
+                .get_class(&class_name)
+                .unwrap()
+                .get_field(&name)
+                .unwrap()
+            {
+                FieldRef::Field(f) => (f.ty.clone(), f.flag.clone()),
+                FieldRef::ExtField(f) => (f.ty.clone(), f.flag.clone()),
+            };
 
             if field_ty != v_ty {
                 panic!(
@@ -643,7 +680,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 &name,
                 sig,
             );
-            let inst = if field.attrib.is(FieldAttribFlag::Static) {
+            let inst = if field_flag.is(FieldAttribFlag::Static) {
                 Inst::StSFld(to_tok(f_idx, tok_tag))
             } else {
                 Inst::StFld(to_tok(f_idx, tok_tag))

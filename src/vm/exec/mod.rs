@@ -1,4 +1,4 @@
-use super::data::{VMMethod, VMMethodILImpl, VMModule, VMType};
+use super::data::{VMBuiltinType, VMMethod, VMMethodILImpl, VMMethodImpl, VMMethodNativeImpl};
 use super::mem::{to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
 use xir::tok::{get_tok_tag, TokTag};
@@ -130,20 +130,20 @@ impl<'m> TExecutor<'m> {
     pub unsafe fn new(entry: *const VMMethod) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
-        ret.call(vec![], entry.as_ref().unwrap());
+        let entry_ref = entry.as_ref().unwrap();
+        ret.call(vec![], entry_ref, entry_ref.method_impl.expect_il());
         ret
     }
 
-    unsafe fn call(&mut self, args: Vec<Slot>, method: &'m VMMethod) {
+    unsafe fn call(&mut self, args: Vec<Slot>, method: &'m VMMethod, il_impl: &'m VMMethodILImpl) {
         // Currently there is no verification of the arg type
-        let method_impl = method.method_impl.expect_il();
         self.states.push(MethodState {
             stack: Stack::new(),
-            locals: vec![Slot::default(); method_impl.locals],
+            locals: vec![Slot::default(); il_impl.locals],
             args,
             ip: 0,
             method,
-            method_impl,
+            method_impl: il_impl,
         });
     }
 
@@ -324,14 +324,19 @@ impl<'m> TExecutor<'m> {
                         .unwrap()
                         .stack
                         .pop_n(callee.ps_ty.len());
-                    match callee.ctx.as_ref().unwrap() {
-                        VMModule::IL(_) => {
-                            self.call(args, callee);
+                    match &callee.method_impl {
+                        VMMethodImpl::IL(il_impl) => {
+                            self.call(args, callee, il_impl);
                         }
-                        VMModule::Native(dll) => {
+                        VMMethodImpl::Native(VMMethodNativeImpl { scope, .. }) => {
                             // currently there is no multi-slot user defined type
                             let mut ret: Vec<Slot> = Vec::new();
-                            dll.call(mem.get_str(callee.name), &args, &mut ret);
+                            let callee_ctx = callee.ctx.as_ref().unwrap().expect_il();
+                            callee_ctx.modref[*scope]
+                                .as_ref()
+                                .unwrap()
+                                .expect_dll()
+                                .call(mem.get_str(callee.name), &args, &mut ret);
                             self.states.last_mut().unwrap().stack.append(ret);
                         }
                     }
@@ -340,28 +345,28 @@ impl<'m> TExecutor<'m> {
                 0x2A => {
                     let cur_state = self.states.last_mut().unwrap();
                     match cur_state.method.ret_ty {
-                        VMType::Void => {
+                        VMBuiltinType::Void => {
                             self.states.pop();
                             if self.states.is_empty() {
                                 return 0;
                             }
                         }
-                        VMType::Bool
-                        | VMType::Char
-                        | VMType::U8
-                        | VMType::I8
-                        | VMType::U16
-                        | VMType::I16
-                        | VMType::U32
-                        | VMType::I32
-                        | VMType::U64
-                        | VMType::I64
-                        | VMType::UNative
-                        | VMType::INative
-                        | VMType::F32
-                        | VMType::F64
-                        | VMType::Obj(_)
-                        | VMType::Array(_) => {
+                        VMBuiltinType::Bool
+                        | VMBuiltinType::Char
+                        | VMBuiltinType::U8
+                        | VMBuiltinType::I8
+                        | VMBuiltinType::U16
+                        | VMBuiltinType::I16
+                        | VMBuiltinType::U32
+                        | VMBuiltinType::I32
+                        | VMBuiltinType::U64
+                        | VMBuiltinType::I64
+                        | VMBuiltinType::UNative
+                        | VMBuiltinType::INative
+                        | VMBuiltinType::F32
+                        | VMBuiltinType::F64
+                        | VMBuiltinType::Obj(_)
+                        | VMBuiltinType::Array(_) => {
                             let ret_v = cur_state.stack.pop();
                             self.states.pop();
                             if self.states.is_empty() {
@@ -369,7 +374,7 @@ impl<'m> TExecutor<'m> {
                             }
                             self.states.last_mut().unwrap().stack.push(ret_v);
                         }
-                        VMType::Unk => unreachable!(),
+                        VMBuiltinType::Unk => unreachable!(),
                     }
                 }
                 // br
@@ -527,7 +532,7 @@ impl<'m> TExecutor<'m> {
                     // TODO: make sure callee is virtual
 
                     let args = cur_state.stack.pop_n(callee.ps_ty.len() + 1);
-                    self.call(args, callee);
+                    self.call(args, callee, callee.method_impl.expect_il());
                 }
                 // newobj
                 0x73 => {
@@ -548,7 +553,7 @@ impl<'m> TExecutor<'m> {
                     // TODO: make sure callee is .ctor
 
                     let mut args: Vec<Slot> = Vec::new();
-                    if let VMType::Obj(class) = &callee.ps_ty[0] {
+                    if let VMBuiltinType::Obj(class) = &callee.ps_ty[0] {
                         let offset = mem.heap.new_obj(*class);
                         args.push(Slot::new_ref(MemTag::HeapMem, offset));
                         args.append(&mut cur_state.stack.pop_n(callee.ps_ty.len() - 1));
@@ -557,7 +562,7 @@ impl<'m> TExecutor<'m> {
                         panic!("Creator's first param is not a class type");
                     }
 
-                    self.call(args, callee);
+                    self.call(args, callee, callee.method_impl.expect_il());
                 }
                 // ldfld
                 0x7B => {
@@ -587,25 +592,25 @@ impl<'m> TExecutor<'m> {
                     let offset = offset + f.addr;
 
                     match f.ty {
-                        VMType::Void | VMType::Unk => unreachable!(),
-                        VMType::Bool => unimplemented!(),
-                        VMType::Char => unimplemented!(),
-                        VMType::U8 => unimplemented!(),
-                        VMType::I8 => unimplemented!(),
-                        VMType::U16 => unimplemented!(),
-                        VMType::I16 => unimplemented!(),
-                        VMType::U32 => unimplemented!(),
-                        VMType::I32 => {
+                        VMBuiltinType::Void | VMBuiltinType::Unk => unreachable!(),
+                        VMBuiltinType::Bool => unimplemented!(),
+                        VMBuiltinType::Char => unimplemented!(),
+                        VMBuiltinType::U8 => unimplemented!(),
+                        VMBuiltinType::I8 => unimplemented!(),
+                        VMBuiltinType::U16 => unimplemented!(),
+                        VMBuiltinType::I16 => unimplemented!(),
+                        VMBuiltinType::U32 => unimplemented!(),
+                        VMBuiltinType::I32 => {
                             cur_state.stack.push_i32(*mem.heap.access(offset));
                         }
-                        VMType::U64 => unimplemented!(),
-                        VMType::I64 => unimplemented!(),
-                        VMType::UNative => unimplemented!(),
-                        VMType::INative => unimplemented!(),
-                        VMType::F32 => unimplemented!(),
-                        VMType::F64 => unimplemented!(),
-                        VMType::Obj(_) => unimplemented!(),
-                        VMType::Array(_) => unimplemented!(),
+                        VMBuiltinType::U64 => unimplemented!(),
+                        VMBuiltinType::I64 => unimplemented!(),
+                        VMBuiltinType::UNative => unimplemented!(),
+                        VMBuiltinType::INative => unimplemented!(),
+                        VMBuiltinType::F32 => unimplemented!(),
+                        VMBuiltinType::F64 => unimplemented!(),
+                        VMBuiltinType::Obj(_) => unimplemented!(),
+                        VMBuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // stfld
@@ -637,25 +642,25 @@ impl<'m> TExecutor<'m> {
                     let offset = offset + f.addr;
 
                     match f.ty {
-                        VMType::Void | VMType::Unk => unreachable!(),
-                        VMType::Bool => unimplemented!(),
-                        VMType::Char => unimplemented!(),
-                        VMType::U8 => unimplemented!(),
-                        VMType::I8 => unimplemented!(),
-                        VMType::U16 => unimplemented!(),
-                        VMType::I16 => unimplemented!(),
-                        VMType::U32 => unimplemented!(),
-                        VMType::I32 => {
+                        VMBuiltinType::Void | VMBuiltinType::Unk => unreachable!(),
+                        VMBuiltinType::Bool => unimplemented!(),
+                        VMBuiltinType::Char => unimplemented!(),
+                        VMBuiltinType::U8 => unimplemented!(),
+                        VMBuiltinType::I8 => unimplemented!(),
+                        VMBuiltinType::U16 => unimplemented!(),
+                        VMBuiltinType::I16 => unimplemented!(),
+                        VMBuiltinType::U32 => unimplemented!(),
+                        VMBuiltinType::I32 => {
                             *mem.heap.access_mut(offset) = v.data.i32_;
                         }
-                        VMType::U64 => unimplemented!(),
-                        VMType::I64 => unimplemented!(),
-                        VMType::UNative => unimplemented!(),
-                        VMType::INative => unimplemented!(),
-                        VMType::F32 => unimplemented!(),
-                        VMType::F64 => unimplemented!(),
-                        VMType::Obj(_) => unimplemented!(),
-                        VMType::Array(_) => unimplemented!(),
+                        VMBuiltinType::U64 => unimplemented!(),
+                        VMBuiltinType::I64 => unimplemented!(),
+                        VMBuiltinType::UNative => unimplemented!(),
+                        VMBuiltinType::INative => unimplemented!(),
+                        VMBuiltinType::F32 => unimplemented!(),
+                        VMBuiltinType::F64 => unimplemented!(),
+                        VMBuiltinType::Obj(_) => unimplemented!(),
+                        VMBuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // ldsfld
@@ -685,25 +690,25 @@ impl<'m> TExecutor<'m> {
                     }
 
                     match f.ty {
-                        VMType::Void | VMType::Unk => unreachable!(),
-                        VMType::Bool => unimplemented!(),
-                        VMType::Char => unimplemented!(),
-                        VMType::U8 => unimplemented!(),
-                        VMType::I8 => unimplemented!(),
-                        VMType::U16 => unimplemented!(),
-                        VMType::I16 => unimplemented!(),
-                        VMType::U32 => unimplemented!(),
-                        VMType::I32 => {
+                        VMBuiltinType::Void | VMBuiltinType::Unk => unreachable!(),
+                        VMBuiltinType::Bool => unimplemented!(),
+                        VMBuiltinType::Char => unimplemented!(),
+                        VMBuiltinType::U8 => unimplemented!(),
+                        VMBuiltinType::I8 => unimplemented!(),
+                        VMBuiltinType::U16 => unimplemented!(),
+                        VMBuiltinType::I16 => unimplemented!(),
+                        VMBuiltinType::U32 => unimplemented!(),
+                        VMBuiltinType::I32 => {
                             cur_state.stack.push_i32(*mem.heap.access(offset));
                         }
-                        VMType::U64 => unimplemented!(),
-                        VMType::I64 => unimplemented!(),
-                        VMType::UNative => unimplemented!(),
-                        VMType::INative => unimplemented!(),
-                        VMType::F32 => unimplemented!(),
-                        VMType::F64 => unimplemented!(),
-                        VMType::Obj(_) => unimplemented!(),
-                        VMType::Array(_) => unimplemented!(),
+                        VMBuiltinType::U64 => unimplemented!(),
+                        VMBuiltinType::I64 => unimplemented!(),
+                        VMBuiltinType::UNative => unimplemented!(),
+                        VMBuiltinType::INative => unimplemented!(),
+                        VMBuiltinType::F32 => unimplemented!(),
+                        VMBuiltinType::F64 => unimplemented!(),
+                        VMBuiltinType::Obj(_) => unimplemented!(),
+                        VMBuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // stfld
@@ -734,25 +739,25 @@ impl<'m> TExecutor<'m> {
                     }
 
                     match f.ty {
-                        VMType::Void | VMType::Unk => unreachable!(),
-                        VMType::Bool => unimplemented!(),
-                        VMType::Char => unimplemented!(),
-                        VMType::U8 => unimplemented!(),
-                        VMType::I8 => unimplemented!(),
-                        VMType::U16 => unimplemented!(),
-                        VMType::I16 => unimplemented!(),
-                        VMType::U32 => unimplemented!(),
-                        VMType::I32 => {
+                        VMBuiltinType::Void | VMBuiltinType::Unk => unreachable!(),
+                        VMBuiltinType::Bool => unimplemented!(),
+                        VMBuiltinType::Char => unimplemented!(),
+                        VMBuiltinType::U8 => unimplemented!(),
+                        VMBuiltinType::I8 => unimplemented!(),
+                        VMBuiltinType::U16 => unimplemented!(),
+                        VMBuiltinType::I16 => unimplemented!(),
+                        VMBuiltinType::U32 => unimplemented!(),
+                        VMBuiltinType::I32 => {
                             *mem.heap.access_mut(offset) = v.data.i32_;
                         }
-                        VMType::U64 => unimplemented!(),
-                        VMType::I64 => unimplemented!(),
-                        VMType::UNative => unimplemented!(),
-                        VMType::INative => unimplemented!(),
-                        VMType::F32 => unimplemented!(),
-                        VMType::F64 => unimplemented!(),
-                        VMType::Obj(_) => unimplemented!(),
-                        VMType::Array(_) => unimplemented!(),
+                        VMBuiltinType::U64 => unimplemented!(),
+                        VMBuiltinType::I64 => unimplemented!(),
+                        VMBuiltinType::UNative => unimplemented!(),
+                        VMBuiltinType::INative => unimplemented!(),
+                        VMBuiltinType::F32 => unimplemented!(),
+                        VMBuiltinType::F64 => unimplemented!(),
+                        VMBuiltinType::Obj(_) => unimplemented!(),
+                        VMBuiltinType::Array(_) => unimplemented!(),
                     }
                 }
 

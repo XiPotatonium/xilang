@@ -1,21 +1,23 @@
 use core::panic;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
-use std::rc::{Rc, Weak};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use xir::attrib::*;
+use xir::file::IrFile;
 use xir::inst::Inst;
 use xir::tok::{to_tok, TokTag};
 use xir::util::path::{IModPath, ModPath};
 use xir::{CCTOR_NAME, CTOR_NAME};
 
-use super::super::ast::AST;
 use super::super::gen::{gen, Builder, CodeGenCtx, MethodBuilder, RValType, ValType};
 use super::super::parser;
 use super::super::XicCfg;
+use super::ModRef;
+use super::{super::ast::AST, external::load_external_crate};
 use super::{Arg, Class, Field, Locals, Method, ModMgr};
 
 // use macro to avoid borrow mutable self twice, SB rust
@@ -28,7 +30,6 @@ macro_rules! declare_method {
         let method = Box::new(Method {
             ret_ty: $ret_ty,
             ps_ty: $ps,
-            ps_flag: vec![],
             flag: $flag.clone(),
             impl_flag: $impl_flag.clone(),
             idx,
@@ -50,8 +51,10 @@ macro_rules! declare_method {
 
 pub struct Module {
     pub mod_path: ModPath,
-    pub sub_mods: HashMap<String, Rc<Module>>,
+    pub sub_mods: HashSet<String>,
+    /// key: class_name
     pub classes: HashMap<String, Rc<RefCell<Class>>>,
+
     /// Vec<Box<AST::Class>>
     class_asts: Option<Vec<Box<AST>>>,
     is_dir_mod: bool,
@@ -67,9 +70,9 @@ impl Module {
         rel_dir: &Path,
         fpath: &Path,
         is_dir_mod: bool,
-        mod_tbl: &mut HashMap<String, Weak<Module>>,
+        mod_tbl: &mut HashMap<String, Box<ModRef>>,
         cfg: &XicCfg,
-    ) -> Rc<Module> {
+    ) {
         let output_dir = cfg.out_dir.join(rel_dir);
         let mod_self_name = mod_path.get_self_name().unwrap();
 
@@ -85,10 +88,40 @@ impl Module {
             write!(f, "{}", ast).unwrap();
         }
 
-        if let AST::File(mods, uses, classes) = *ast {
+        if let AST::File(mods, exts, uses, classes) = *ast {
+            if mod_path.len() == 1 {
+                // load external modules specified in root module
+                let mut exts_map: HashMap<String, Option<&PathBuf>> = HashMap::new();
+                for ext in exts.iter() {
+                    if let Some(_) = exts_map.insert(ext.to_owned(), None) {
+                        panic!("Declaring duplicated external module {}", ext);
+                    }
+                }
+                for ext_path in cfg.ext_paths.iter() {
+                    let file = IrFile::from_binary(Box::new(fs::File::open(ext_path).unwrap()));
+                    let ext_mod_name = file.mod_name();
+                    // only import declared external modules
+                    if let Some(imported) = exts_map.get_mut(ext_mod_name) {
+                        if let Some(old_path) = imported {
+                            panic!(
+                                "Ambiguous external module {}: {} or {}?",
+                                ext_mod_name,
+                                old_path.display(),
+                                ext_path.display()
+                            );
+                        } else {
+                            *imported = Some(ext_path);
+                        }
+                    }
+                    load_external_crate(mod_tbl, ext_path.parent().unwrap(), file);
+                }
+            } else if exts.len() != 0 {
+                println!("Warning: {} is not root mod. External mod specified in this file won't take effect", fpath.display());
+            }
+
             let mut use_map: HashMap<String, ModPath> = HashMap::new();
             // process sub mods
-            let mut sub_mods: HashMap<String, Rc<Module>> = HashMap::new();
+            let mut sub_mods = HashSet::new();
             let sub_mod_rel_dir = if mod_path.len() == 1 || is_dir_mod {
                 // this is the root mod in this dir
                 // search sub modules in this directory
@@ -104,7 +137,7 @@ impl Module {
             let sub_mod_output_dir = cfg.out_dir.join(&sub_mod_rel_dir);
 
             for sub_mod_name in mods.into_iter() {
-                if sub_mods.contains_key(&sub_mod_name) {
+                if !sub_mods.insert(sub_mod_name.clone()) {
                     panic!(
                         "Sub-module {} is defined multiple times in {}",
                         sub_mod_name,
@@ -155,28 +188,22 @@ impl Module {
                     }
 
                     let sub_mod_rel_dir = sub_mod_rel_dir.join(&sub_mod_name);
-                    sub_mods.insert(
-                        sub_mod_name,
-                        Module::from_xi(
-                            sub_mod_path,
-                            &sub_mod_rel_dir,
-                            &sub_mod_dpath,
-                            true,
-                            mod_tbl,
-                            cfg,
-                        ),
+                    Module::from_xi(
+                        sub_mod_path,
+                        &sub_mod_rel_dir,
+                        &sub_mod_dpath,
+                        true,
+                        mod_tbl,
+                        cfg,
                     );
                 } else if sub_mod_fpath.is_file() {
-                    sub_mods.insert(
-                        sub_mod_name,
-                        Module::from_xi(
-                            sub_mod_path,
-                            &sub_mod_rel_dir,
-                            &sub_mod_fpath,
-                            false,
-                            mod_tbl,
-                            cfg,
-                        ),
+                    Module::from_xi(
+                        sub_mod_path,
+                        &sub_mod_rel_dir,
+                        &sub_mod_fpath,
+                        false,
+                        mod_tbl,
+                        cfg,
                     );
                 } else {
                     panic!(
@@ -189,26 +216,21 @@ impl Module {
                 }
             }
 
-            for sub in sub_mods.values() {
-                // TODO expect none
-                if let Some(_) = mod_tbl.insert(sub.fullname().to_owned(), Rc::downgrade(sub)) {
-                    panic!("Duplicated module {}", sub.fullname());
-                }
-            }
-
             // generate all classes
-            let mut class_map: HashMap<String, Rc<RefCell<Class>>> = HashMap::new();
+            let mut class_map = HashMap::new();
             for class in classes.iter() {
-                if let AST::Class(id, _, _, _, _, _) = class.as_ref() {
-                    if sub_mods.contains_key(id) {
+                if let AST::Class(id, flag, _, _, _, _) = class.as_ref() {
+                    if sub_mods.contains(id) {
                         panic!(
                             "Ambiguous name {} in module {}. Both a sub-module and a class",
                             id, mod_self_name
                         );
                     }
 
-                    let class = Rc::new(RefCell::new(Class::new(id.to_owned(), 0)));
-                    class_map.insert(id.to_owned(), class);
+                    class_map.insert(
+                        id.to_owned(),
+                        Rc::new(RefCell::new(Class::new(id.to_owned(), 0, flag.clone()))),
+                    );
                 } else {
                     unreachable!();
                 }
@@ -258,16 +280,20 @@ impl Module {
                 }
             }
 
-            Rc::new(Module {
-                sub_mods,
+            let this_mod = Module {
                 mod_path,
+                sub_mods,
                 classes: class_map,
                 class_asts: Some(classes),
                 is_dir_mod,
                 use_map,
 
                 builder: RefCell::new(builder),
-            })
+            };
+            mod_tbl.insert(
+                this_mod.fullname().to_owned(),
+                Box::new(ModRef::Mod(this_mod)),
+            );
         } else {
             unreachable!();
         }
@@ -285,19 +311,7 @@ impl Module {
         self.mod_path.len() == 1
     }
 
-    /// Display module and its sub-modules
-    pub fn tree(&self, depth: usize) {
-        // FIX: bug in display, wrong algorithm
-        if depth > 0 {
-            print!("{}+---", "|   ".repeat(depth - 1));
-        }
-        println!("{}", self.name());
-        for (_, sub) in self.sub_mods.iter() {
-            sub.tree(depth + 1);
-        }
-    }
-
-    pub fn dump(&self, out_dir: &Path) {
+    pub fn dump(&self, mgr: &ModMgr, out_dir: &Path) {
         let mut p = out_dir.join(format!("{}.xir", self.name()));
 
         // dump xir
@@ -309,19 +323,23 @@ impl Module {
         let mut f = fs::File::create(&p).unwrap();
         f.write_all(&buf).unwrap();
 
-        for sub in self.sub_mods.values() {
-            if sub.is_dir_mod {
-                // create a new sub dir
-                p.set_file_name(sub.name());
-                if !p.exists() {
-                    fs::create_dir(&p).unwrap();
-                } else if !p.is_dir() {
-                    panic!("{} already exists but it is not a directory", p.display());
-                }
-                sub.dump(&p);
-            } else {
-                sub.dump(out_dir);
+        let out_dir = if self.is_dir_mod {
+            p.set_file_name(self.name());
+            if !p.exists() {
+                fs::create_dir(&p).unwrap();
+            } else if !p.is_dir() {
+                panic!("{} already exists but it is not a directory", p.display());
             }
+            &p
+        } else {
+            out_dir
+        };
+
+        for sub in self.sub_mods.iter() {
+            let mut sub_mod_path = self.mod_path.clone();
+            sub_mod_path.push(sub);
+            let sub = mgr.mod_tbl.get(sub_mod_path.as_str()).unwrap().expect_mod();
+            sub.dump(mgr, out_dir);
         }
     }
 }
@@ -337,8 +355,6 @@ impl Module {
                 unimplemented!();
             }
             AST::Path(class_path) => {
-                // TODO: use
-                // Search in this module and global
                 let (has_crate, super_cnt, class_path) = class_path.canonicalize();
                 let class_id = class_path.get_self_name().unwrap();
                 let mod_path = class_path.get_super();
@@ -352,13 +368,15 @@ impl Module {
                     }
                 } else {
                     let m = if has_crate {
+                        // crate::...
                         let mut m = ModPath::new();
-                        m.push(c.root.name());
+                        m.push(&c.name);
                         for seg in mod_path.iter().skip(1) {
                             m.push(seg);
                         }
                         m
                     } else if super_cnt != 0 {
+                        // super::...
                         let mut m = self.mod_path.as_slice();
                         for _ in (0..super_cnt).into_iter() {
                             m.to_super();
@@ -378,13 +396,12 @@ impl Module {
                             }
                             m
                         } else {
-                            panic!("Cannot find mod {} in mod {}", r, self.fullname());
+                            mod_path.to_owned()
                         }
                     };
 
                     if let Some(m) = c.mod_tbl.get(m.as_str()) {
-                        let m = Weak::upgrade(m).unwrap();
-                        if m.classes.contains_key(class_id) {
+                        if let Some(_) = m.get_class(class_id) {
                             RValType::Obj(m.fullname().to_owned(), class_id.to_owned())
                         } else {
                             panic!("Class {} not found", class_id);
@@ -419,7 +436,7 @@ impl Module {
                             // Build Field in class file
                             let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
 
-                            let field = Box::new(Field::new(id, *flag, ty, idx));
+                            let field = Box::new(Field::new(*flag, ty, idx));
 
                             if !flag.is(FieldAttribFlag::Static) {
                                 // non-static field
@@ -517,7 +534,7 @@ impl Module {
                                             1,
                                             "Invalid arg for Dllimport attribute"
                                         );
-                                        if let AST::String(v) = args[0].as_ref() {
+                                        if let AST::String(_) = args[0].as_ref() {
                                             impl_flag
                                                 .set_code_ty(MethodImplAttribCodeTypeFlag::Native);
                                             impl_flag.set_managed(
@@ -591,11 +608,6 @@ impl Module {
                     unreachable!();
                 }
             }
-        }
-
-        // recursive
-        for sub in self.sub_mods.values() {
-            sub.member_pass(c);
         }
     }
 }
@@ -740,11 +752,6 @@ impl Module {
                     unreachable!();
                 }
             }
-        }
-
-        // recursive
-        for sub in self.sub_mods.values() {
-            sub.code_gen(c, cfg);
         }
     }
 }

@@ -1,12 +1,12 @@
 pub mod ast;
+mod gen;
 pub mod mod_mgr;
 pub mod parser;
-
-mod gen;
 
 use std::path::PathBuf;
 
 pub struct XicCfg {
+    /// path to module root file (.xibc file)
     pub ext_paths: Vec<PathBuf>,
     pub crate_name: String,
     pub root_dir: PathBuf,

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 pub struct VMCfg {
     pub entry_root: PathBuf,
     /// All canonicalized path
-    /// dir or file
+    /// external module root file or dir
     pub ext_paths: Vec<PathBuf>,
     pub diagnose: bool,
 }

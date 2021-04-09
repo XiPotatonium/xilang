@@ -2,7 +2,7 @@ use xir::attrib::TypeAttrib;
 
 use super::{VMField, VMMethod};
 
-pub struct VMClass {
+pub struct VMType {
     pub name: u32,
     pub attrib: TypeAttrib,
 

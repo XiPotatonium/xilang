@@ -15,7 +15,7 @@ pub use ty::{get_typeref_parent, IrTypeDef, IrTypeRef, ResolutionScope};
 use std::fmt;
 
 pub const MAJOR_VERSION: u16 = 0;
-pub const MINOR_VERSION: u16 = 1;
+pub const MINOR_VERSION: u16 = 2;
 
 pub struct IrFile {
     pub major_version: u16,

@@ -4,8 +4,8 @@ use xir::attrib::*;
 use xir::util::path::ModPath;
 
 pub enum AST {
-    /// mods, uses, classes: Vec<AST>
-    File(Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
+    /// mods, ext_mods, uses, classes: Vec<AST>
+    File(Vec<String>, Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
 
     /// path, as
     Use(ModPath, Option<String>),

@@ -1,10 +1,15 @@
 # xilang
 
-A toy programming language that runs on a simple virtual machine.
+A toy OOP programming language that runs on a simple CLR-like virtual machine.
+
+[Development Diary开发日志](https://xipotatonium.github.io/2021/04/04/XilangDev0/)
 
 ## 1 TODO
 
 ### 1.1 FIX
+
+IrFile Loader的逻辑存在问题，无论是VM里的还是Lang里的，external module的递归读取还是要再考虑一下
+另外在lang load的时候就要检查VM的版本
 
 * Local var. 
   * 目前let声明变量如果有同名的变量会发生覆盖，但是实际上不应该产生覆盖，let仅仅是绑定，新的局部变量一定分配新的空间。
@@ -12,11 +17,10 @@ A toy programming language that runs on a simple virtual machine.
   * 局部变量的类型信息需要在blob记录
 * 更贴近CLR标准的Blob
   * 除了上面说的局部变量信息，其他Blob设计(例如函数签名)也应当逐渐接近CLR标准，不过不需要采用它那个样子的编码
-* 使用Param Tbl
 
 ### 1.2 RoadMap
 
-#### Ver 0.1.0 (Present)
+#### Ver 0.1.0
 
 * OOP:
   * class
@@ -39,15 +43,19 @@ A toy programming language that runs on a simple virtual machine.
 * xilang project:
   * mod
 
-#### Ver 0.2.0
+#### Ver 0.2.0 (Present)
 
 * Dllimport
 * stdlib
   * io
+* xilang project:
+  * extern
 
 #### Ver 0.3.0
 
 * Class inheritance
+* Param table
+* Blob
 
 #### Ver 0.3.1
 
@@ -57,6 +65,14 @@ A toy programming language that runs on a simple virtual machine.
   * i8/u8
   * i16/u16
   * u32
+
+#### Ver 0.3.2
+
+* Refactor lang
+  * make incremental compilation possible
+  * Overload
+* xilang project structure
+  * crate
 
 #### Ver 0.4.0
 
@@ -83,31 +99,30 @@ A toy programming language that runs on a simple virtual machine.
 
 #### Ver 0.6.2
 
-* Refactor lang
-  * make incremental compilation possible
-  * Overload
-* xilang project structure
-
-#### Ver 0.6.3
-
 * Built-in type:
   * f64
 * Constant folding
 
-#### Ver 0.6.4
+#### Ver 0.6.3
 
 * match expr
 * Default value and StructExprEtCetera
 
 #### Ver 0.7.0
 
+* struct
+* stdlib
+  * tuple
+
+#### Ver 0.8.0
+
 * enum
 
-#### Ver 0.7.1
+#### Ver 0.8.1
 
 * union
 
-#### Ver 0.7.2
+#### Ver 0.8.2
 
 * for loop
 * Iterator interface

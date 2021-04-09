@@ -6,6 +6,8 @@ mod demo;
 
 class Program {
     fn main() {
+        demo::hello_world::HelloWorld::hi();
+
         let d: demo::Demo = crate::demo::Demo::create(1, 24);
         let a = d.foo(6);               // 32
         let d: i32 = demo::algo::Algorithm::gcd(a, d.value);    // gcd(32, 24)

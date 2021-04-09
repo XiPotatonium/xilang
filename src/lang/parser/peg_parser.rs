@@ -20,12 +20,14 @@ pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
 
     let mut uses: Vec<Box<AST>> = Vec::new();
     let mut mods: Vec<String> = Vec::new();
+    let mut exts: Vec<String> = Vec::new();
     let mut classes: Vec<Box<AST>> = Vec::new();
     for sub in file.into_inner() {
         match sub.as_rule() {
             Rule::EOI => break,
             Rule::Class => classes.push(build_class(sub)),
             Rule::Modules => mods.push(build_id(sub.into_inner().next().unwrap())),
+            Rule::ExternMod => exts.push(build_id(sub.into_inner().next().unwrap())),
             Rule::UseDeclarations => {
                 let mut iter = sub.into_inner();
                 let path = build_pathexpr(iter.next().unwrap());
@@ -42,7 +44,7 @@ pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
         };
     }
 
-    Ok(Box::new(AST::File(mods, uses, classes)))
+    Ok(Box::new(AST::File(mods, exts, uses, classes)))
 }
 
 fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {

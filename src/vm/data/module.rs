@@ -1,5 +1,5 @@
 use super::super::native::VMDll;
-use super::{VMClass, VMField, VMMethod};
+use super::{VMField, VMMethod, VMType};
 
 pub enum VMMemberRef {
     Field(*const VMField),
@@ -43,14 +43,21 @@ impl VMModule {
             VMModule::Native(_) => panic!(),
         }
     }
+
+    pub fn expect_dll(&self) -> &VMDll {
+        match self {
+            VMModule::IL(_) => panic!(),
+            VMModule::Native(dll) => dll,
+        }
+    }
 }
 
 pub struct VMILModule {
     pub modref: Vec<*const VMModule>,
 
     /// name -> class idx
-    pub classes: Vec<Box<VMClass>>,
-    pub classref: Vec<*const VMClass>,
+    pub classes: Vec<Box<VMType>>,
+    pub classref: Vec<*const VMType>,
 
     pub methods: Vec<Box<VMMethod>>,
     pub fields: Vec<Box<VMField>>,

@@ -10,11 +10,12 @@ use xir::tok::{get_tok_tag, TokTag};
 use xir::util::path::{IModPath, ModPath};
 use xir::CCTOR_NAME;
 
+use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
 use std::mem::size_of;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr::null;
-use std::{collections::HashMap, ffi::OsStr};
 
 fn blob_size(blob: &Blob) -> usize {
     match blob {
@@ -46,15 +47,14 @@ pub fn load(
 ) -> (Vec<*const VMMethod>, *const VMMethod) {
     let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
-    let root_name = f.mod_name().to_owned();
     let entrypoint = f.mod_tbl[0].entrypoint as usize;
     if entrypoint == 0 {
         panic!("{} has no entrypoint", entry.display());
     }
 
-    let mut loader = Loader::new(root_name, cfg, mem);
+    let mut loader = Loader::new(cfg, mem);
 
-    let root = loader.load(f);
+    let root = loader.load(f, entry.parent().unwrap());
 
     (
         loader.cctors,
@@ -64,7 +64,6 @@ pub fn load(
 }
 
 struct Loader<'c> {
-    root_name: String,
     cfg: &'c VMCfg,
     mem: &'c mut SharedMem,
     str_map: HashMap<String, u32>,
@@ -73,9 +72,8 @@ struct Loader<'c> {
 }
 
 impl<'c> Loader<'c> {
-    fn new(root_name: String, cfg: &'c VMCfg, mem: &'c mut SharedMem) -> Loader<'c> {
+    fn new(cfg: &'c VMCfg, mem: &'c mut SharedMem) -> Loader<'c> {
         let mut loader = Loader {
-            root_name,
             mem,
             cfg,
             str_map: HashMap::new(),
@@ -83,33 +81,34 @@ impl<'c> Loader<'c> {
             cctors: Vec::new(),
         };
         loader.cctor_name = loader.add_const_string(String::from(CCTOR_NAME));
+
         loader
     }
 
-    fn to_vm_ty(&self, blob_heap: &Vec<Blob>, this_mod: &VMILModule, idx: u32) -> VMType {
+    fn to_vm_ty(&self, blob_heap: &Vec<Blob>, this_mod: &VMILModule, idx: u32) -> VMBuiltinType {
         let sig = &blob_heap[idx as usize];
 
         match sig {
-            Blob::Void => VMType::Void,
-            Blob::Bool => VMType::Bool,
-            Blob::Char => VMType::Char,
-            Blob::U8 => VMType::U8,
-            Blob::I8 => VMType::I8,
-            Blob::U16 => VMType::U16,
-            Blob::I16 => VMType::I16,
-            Blob::U32 => VMType::U32,
-            Blob::I32 => VMType::I32,
-            Blob::U64 => VMType::U64,
-            Blob::I64 => VMType::I64,
-            Blob::UNative => VMType::UNative,
-            Blob::INative => VMType::INative,
-            Blob::F32 => VMType::F32,
-            Blob::F64 => VMType::F64,
+            Blob::Void => VMBuiltinType::Void,
+            Blob::Bool => VMBuiltinType::Bool,
+            Blob::Char => VMBuiltinType::Char,
+            Blob::U8 => VMBuiltinType::U8,
+            Blob::I8 => VMBuiltinType::I8,
+            Blob::U16 => VMBuiltinType::U16,
+            Blob::I16 => VMBuiltinType::I16,
+            Blob::U32 => VMBuiltinType::U32,
+            Blob::I32 => VMBuiltinType::I32,
+            Blob::U64 => VMBuiltinType::U64,
+            Blob::I64 => VMBuiltinType::I64,
+            Blob::UNative => VMBuiltinType::UNative,
+            Blob::INative => VMBuiltinType::INative,
+            Blob::F32 => VMBuiltinType::F32,
+            Blob::F64 => VMBuiltinType::F64,
             Blob::Obj(tok) => {
                 let (tag, idx) = get_tok_tag(*tok);
                 let idx = idx as usize - 1;
-                VMType::Obj(match tag {
-                    TokTag::TypeDef => this_mod.classes[idx].as_ref() as *const VMClass,
+                VMBuiltinType::Obj(match tag {
+                    TokTag::TypeDef => this_mod.classes[idx].as_ref() as *const VMType,
                     TokTag::TypeRef => this_mod.classref[idx],
                     _ => unreachable!(),
                 })
@@ -130,13 +129,11 @@ impl<'c> Loader<'c> {
         }
     }
 
-    fn load(&mut self, file: IrFile) -> u32 {
-        // println!("{}\n\n\n\n\n\n\n", file);
-
+    fn load(&mut self, file: IrFile, root_dir: &Path) -> u32 {
         // Some external mods is not loadable modules but dlls
-        let mut external_mods_mask: Vec<bool> = vec![true; file.modref_tbl.len()];
+        let mut ext_mods_mask: Vec<bool> = vec![true; file.modref_tbl.len()];
         for implmap in file.implmap_tbl.iter() {
-            external_mods_mask[implmap.scope as usize] = false;
+            ext_mods_mask[implmap.scope as usize - 1] = false;
         }
 
         let str_heap: Vec<u32> = file
@@ -146,7 +143,7 @@ impl<'c> Loader<'c> {
             .collect();
 
         // 1. Fill classes methods and fields that defined in this file
-        let mut classes: Vec<Box<VMClass>> = Vec::new();
+        let mut classes: Vec<Box<VMType>> = Vec::new();
         let mut methods: Vec<Box<VMMethod>> = Vec::new();
         let mut fields: Vec<Box<VMField>> = Vec::new();
 
@@ -218,6 +215,7 @@ impl<'c> Loader<'c> {
                             })
                             .unwrap();
                         VMMethodImpl::Native(VMMethodNativeImpl {
+                            scope: impl_map.scope as usize - 1,
                             name: str_heap[impl_map.name as usize],
                             flag: PInvokeAttrib::from(impl_map.flag),
                         })
@@ -230,7 +228,7 @@ impl<'c> Loader<'c> {
                     flag,
                     impl_flag,
                     // fill in link stage
-                    ret_ty: VMType::Unk,
+                    ret_ty: VMBuiltinType::Unk,
                     ps_ty: Vec::new(),
                     method_impl,
                 });
@@ -263,7 +261,7 @@ impl<'c> Loader<'c> {
                     name: str_heap[field_entry.name as usize],
                     attrib: flag,
                     // fill in link stage
-                    ty: VMType::Unk,
+                    ty: VMBuiltinType::Unk,
                     addr: offset,
                 });
                 class_fields.push(field.as_ref() as *const VMField);
@@ -272,7 +270,7 @@ impl<'c> Loader<'c> {
                 field_i += 1;
             }
 
-            let mut class = Box::new(VMClass {
+            let mut class = Box::new(VMType {
                 name: class_name,
                 attrib: class_flag,
                 fields: class_fields,
@@ -287,7 +285,7 @@ impl<'c> Loader<'c> {
                     MemTag::StaticMem,
                     self.mem.static_area.add_class(
                         VTblEntry {
-                            class: class.as_ref() as *const VMClass,
+                            class: class.as_ref() as *const VMType,
                             num_virt: 0,
                             num_interface: 0,
                         },
@@ -312,7 +310,8 @@ impl<'c> Loader<'c> {
             classes.push(class);
         }
 
-        let mod_name_addr = str_heap[file.mod_tbl[0].name as usize];
+        let this_mod_fullname_addr = str_heap[file.mod_tbl[0].name as usize];
+        let this_mod_path = ModPath::from_str(self.mem.get_str(this_mod_fullname_addr));
         let mut this_mod = Box::new(VMModule::IL(VMILModule {
             classes,
 
@@ -329,22 +328,78 @@ impl<'c> Loader<'c> {
             method.ctx = this_mod_ptr;
         }
 
-        if let Some(_) = self.mem.mods.insert(mod_name_addr, this_mod) {
+        if let Some(_) = self.mem.mods.insert(this_mod_fullname_addr, this_mod) {
             panic!("Duplicated module name");
         }
 
         // 2. Recursive load dependencies
-        for (external_mod, mask) in file.modref_tbl.iter().zip(external_mods_mask.into_iter()) {
-            let external_mod_path_str_idx = str_heap[external_mod.name as usize];
-            let external_mod_path = self.mem.get_str(external_mod_path_str_idx);
+        for (ext_mod, mask) in file.modref_tbl.iter().zip(ext_mods_mask.into_iter()) {
+            let ext_mod_fullname_addr = str_heap[ext_mod.name as usize];
+            if self.mem.mods.contains_key(&ext_mod_fullname_addr) {
+                continue;
+            }
+
+            let ext_mod_fullname = self.mem.get_str(ext_mod_fullname_addr);
             if mask == false {
                 // some external mods is not xir mod, they are dlls
-                if !self.mem.mods.contains_key(&external_mod_path_str_idx) {
-                    let candidates = self.find_mod(external_mod_path);
-                    if candidates.len() != 0 {
+                let candidates = self.find_mod(&ext_mod_fullname);
+                if candidates.len() == 0 {
+                    panic!("Cannot find external mod {}", ext_mod_fullname);
+                } else if candidates.len() != 1 {
+                    panic!(
+                        "Ambiguous external mod {}:\n{}",
+                        ext_mod_fullname,
+                        candidates
+                            .iter()
+                            .map(|p| p.to_str().unwrap())
+                            .collect::<Vec<&str>>()
+                            .join("\n")
+                    );
+                }
+                self.mem.mods.insert(
+                    ext_mod_fullname_addr,
+                    Box::new(VMModule::Native(
+                        VMDll::new_ascii(candidates[0].to_str().unwrap()).unwrap(),
+                    )),
+                );
+            } else {
+                let path = ModPath::from_str(ext_mod_fullname);
+                if path.get_root_name().unwrap() == this_mod_path.get_root_name().unwrap() {
+                    // module in the same crate
+                    let mut sub_mod_path = root_dir.to_owned();
+                    for seg in path.iter().skip(1) {
+                        sub_mod_path.push(seg);
+                    }
+
+                    sub_mod_path.set_extension("xibc");
+                    if sub_mod_path.is_file() {
+                        let sub_mod_file =
+                            IrFile::from_binary(Box::new(fs::File::open(&sub_mod_path).unwrap()));
+                        if sub_mod_file.mod_name() != ext_mod_fullname {
+                            panic!(
+                                "Inconsistent submodule. Expect {} but found {} in submodule {}",
+                                ext_mod_fullname,
+                                sub_mod_file.mod_name(),
+                                sub_mod_path.display()
+                            );
+                        }
+                        self.load(sub_mod_file, root_dir);
+                    } else {
+                        panic!(
+                            "Cannot find module {}: {} is not file",
+                            path,
+                            sub_mod_path.display()
+                        );
+                    }
+                } else {
+                    // external module
+                    let candidates = self.find_mod(&format!("{}.xibc", ext_mod_fullname));
+                    if candidates.len() == 0 {
+                        panic!("Cannot find external mod {}", ext_mod_fullname);
+                    } else if candidates.len() != 1 {
                         panic!(
                             "Ambiguous external mod {}:\n{}",
-                            external_mod_path,
+                            ext_mod_fullname,
                             candidates
                                 .iter()
                                 .map(|p| p.to_str().unwrap())
@@ -352,74 +407,28 @@ impl<'c> Loader<'c> {
                                 .join("\n")
                         );
                     }
-                    self.mem.mods.insert(
-                        external_mod_path_str_idx,
-                        Box::new(VMModule::Native(
-                            VMDll::new_ascii(candidates[0].to_str().unwrap()).unwrap(),
-                        )),
-                    );
-                }
-                continue;
-            }
-
-            let path = ModPath::from_str(external_mod_path);
-            if path.get_root_name().unwrap() == self.root_name {
-                // a sub module of this module
-                let mut sub_mod_path = self.cfg.entry_root.clone();
-                for seg in path.iter().skip(1).take(path.len() - 2) {
-                    sub_mod_path.push(seg);
-                    if !sub_mod_path.is_dir() {
+                    let sub_mod_file =
+                        IrFile::from_binary(Box::new(fs::File::open(&candidates[0]).unwrap()));
+                    if sub_mod_file.mod_name() != ext_mod_fullname {
                         panic!(
-                            "Cannot found sub module {}: {} is not dir",
-                            external_mod_path,
-                            sub_mod_path.display()
+                            "Inconsistent submodule. Expect {} but found {} in submodule {}",
+                            ext_mod_fullname,
+                            sub_mod_file.mod_name(),
+                            candidates[0].display()
                         );
                     }
-                }
-
-                let mod_name = path.get_self_name().unwrap();
-                sub_mod_path.push(format!("{}.xibc", mod_name));
-                if sub_mod_path.is_file() {
-                    self.load(IrFile::from_binary(Box::new(
-                        fs::File::open(&sub_mod_path).unwrap(),
-                    )));
-                } else {
-                    sub_mod_path.set_file_name(mod_name);
-                    if sub_mod_path.is_dir() {
-                        sub_mod_path.push(format!("{}.xibc", mod_name));
-                        if sub_mod_path.is_file() {
-                            self.load(IrFile::from_binary(Box::new(
-                                fs::File::open(&sub_mod_path).unwrap(),
-                            )));
-                        } else {
-                            panic!(
-                                "Cannot found sub module {}: {} is not file",
-                                external_mod_path,
-                                sub_mod_path.display()
-                            );
-                        }
-                    } else {
-                        panic!(
-                            "Cannot found sub module {}: {} is not dir",
-                            external_mod_path,
-                            sub_mod_path.display()
-                        );
-                    }
-                }
-            } else {
-                // external module
-                let found = false;
-                for _ in self.cfg.ext_paths.iter() {
-                    unimplemented!("External path is not implemented");
-                }
-                if !found {
-                    panic!("Cannot found external module {}", external_mod_path);
+                    self.load(sub_mod_file, candidates[0].parent().unwrap());
                 }
             }
         }
 
         // 3. Link extenal symbols
-        let this_mod = self.mem.mods.get_mut(&mod_name_addr).unwrap().as_mut() as *mut VMModule;
+        let this_mod = self
+            .mem
+            .mods
+            .get_mut(&this_mod_fullname_addr)
+            .unwrap()
+            .as_mut() as *mut VMModule;
         unsafe {
             {
                 // 3.1 Link modref
@@ -444,7 +453,7 @@ impl<'c> Loader<'c> {
                                 .iter()
                                 .find(|&c| c.as_ref().name == name);
                             if let Some(class) = class {
-                                mod_typeref.push(class.as_ref() as *const VMClass);
+                                mod_typeref.push(class.as_ref() as *const VMType);
                             } else {
                                 panic!("External symbol not found");
                             }
@@ -465,7 +474,7 @@ impl<'c> Loader<'c> {
 
                     if let Blob::Func(ps, ret) = sig {
                         // this member ref is a function
-                        let mut ps_ty: Vec<VMType> = Vec::new();
+                        let mut ps_ty: Vec<VMBuiltinType> = Vec::new();
                         for p in ps.iter() {
                             ps_ty.push(self.to_vm_ty(
                                 &file.blob_heap,
@@ -589,17 +598,16 @@ impl<'c> Loader<'c> {
             }
         }
 
-        mod_name_addr
+        this_mod_fullname_addr
     }
 
     /// fname is file name of mod. If mod is named "Foo", then fname is something like "Foo.xibc"
-    fn find_mod(&self, fname: &str) -> Vec<PathBuf> {
+    fn find_mod<S: AsRef<OsStr>>(&self, fname: &S) -> Vec<PathBuf> {
+        let os_fname = OsStr::new(fname);
         let mut candidates: Vec<PathBuf> = Vec::new();
         for ext in self.cfg.ext_paths.iter() {
-            let os_fname = OsStr::new(fname);
             if ext.is_dir() {
-                let mut candidate_path = ext.clone();
-                candidate_path.push(fname);
+                let candidate_path = ext.join(os_fname);
                 if candidate_path.is_file() {
                     // hit
                     candidates.push(candidate_path);

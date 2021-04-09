@@ -4,17 +4,17 @@ use super::{gen, CodeGenCtx, RValType, ValType};
 use xir::attrib::*;
 use xir::util::path::{IModPath, ModPath};
 
-use std::rc::Weak;
-
 /// Similar to Module.get_ty
 pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> ValType {
     let (has_crate, super_cnt, path) = path.canonicalize();
 
     let (mut p, mut segs) = if has_crate {
+        // crate::...
         let mut p = ModPath::new();
-        p.push(ctx.mgr.root.name());
+        p.push(&ctx.mgr.name);
         (p, path.iter().skip(1))
     } else if super_cnt != 0 {
+        // super::...
         let mut p = ctx.module.mod_path.as_slice();
         for _ in (0..super_cnt).into_iter() {
             p.to_super();
@@ -23,8 +23,10 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
     } else {
         let r = path.get_root_name().unwrap();
         if let Some(p) = ctx.module.use_map.get(r) {
+            // item in sub module or any using module
             (p.to_owned(), path.iter().skip(1))
         } else if let Some(c) = ctx.module.classes.get(r) {
+            // fields or method in class within this module
             if path.len() == 1 {
                 return ValType::Class(ctx.module.fullname().to_owned(), r.to_string());
             } else {
@@ -54,6 +56,10 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                 }
                 return ret;
             }
+        } else if ctx.mgr.mod_tbl.contains_key(r) {
+            // external module
+            // this crate can be referenced in this case (allow or not?)
+            (ModPath::from_str(r), path.iter().skip(1))
         } else if path.len() == 1 {
             if expect_method {
                 if ctx.class.methods.contains_key(r) {
@@ -105,13 +111,11 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
             // not a module, check class
             let mod_path = p.get_super();
             let m = ctx.mgr.mod_tbl.get(mod_path.as_str()).unwrap();
-            let m = Weak::upgrade(m).unwrap();
-            if let Some(c) = m.classes.get(seg) {
+            if let Some(c) = m.get_class(seg) {
                 if let Some(mem_seg) = segs.next() {
                     // field/method
-                    let c = c.borrow();
                     if expect_method {
-                        if c.methods.contains_key(mem_seg) {
+                        if let Some(_) = c.get_method(mem_seg) {
                             break ValType::Method(
                                 mod_path.to_string(),
                                 seg.to_string(),
@@ -126,7 +130,7 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                             );
                         }
                     } else {
-                        if c.fields.contains_key(mem_seg) {
+                        if let Some(_) = c.get_field(mem_seg) {
                             break ValType::Field(
                                 mod_path.to_string(),
                                 seg.to_string(),
@@ -166,10 +170,9 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
         ValType::Module(name) => {
             // Access a class or sub-module in module
             let lhs = ctx.mgr.mod_tbl.get(&name).unwrap();
-            let lhs = Weak::upgrade(&lhs).unwrap();
-            if lhs.classes.contains_key(rhs) {
+            if let Some(_) = lhs.get_class(rhs) {
                 ValType::Class(name, rhs.to_owned())
-            } else if lhs.sub_mods.contains_key(rhs) {
+            } else if lhs.contains_sub_mod(rhs) {
                 ValType::Module(format!("{}/{}", lhs.fullname(), rhs))
             } else {
                 panic!("No item {} in module {}", rhs, name);
@@ -177,11 +180,16 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
         }
         ValType::Class(mod_name, name) => {
             // Access a static method or static field in class
-            let mod_rc = ctx.mgr.mod_tbl.get(&mod_name).unwrap().upgrade().unwrap();
-            let class_ref = mod_rc.classes.get(&name).unwrap().borrow();
+            let class_ref = ctx
+                .mgr
+                .mod_tbl
+                .get(&mod_name)
+                .unwrap()
+                .get_class(&name)
+                .unwrap();
             if expect_method {
-                if let Some(m) = class_ref.methods.get(rhs) {
-                    if m.flag.is(MethodAttribFlag::Static) {
+                if let Some(m) = class_ref.get_method(rhs) {
+                    if m.flag().is(MethodAttribFlag::Static) {
                         ValType::Method(mod_name, name, rhs.to_owned())
                     } else {
                         panic!("Cannot static access non-static method {}.{}", name, rhs);
@@ -190,8 +198,8 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
                     panic!("No method {} found in class {}", rhs, name);
                 }
             } else {
-                if let Some(f) = class_ref.fields.get(rhs) {
-                    if f.attrib.is(FieldAttribFlag::Static) {
+                if let Some(f) = class_ref.get_field(rhs) {
+                    if f.flag().is(FieldAttribFlag::Static) {
                         ValType::Field(mod_name, name, rhs.to_owned())
                     } else {
                         panic!("Cannot static access non-static filed {}.{}", name, rhs);
@@ -214,11 +222,16 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
             match lhs {
                 RValType::Obj(mod_name, name) => {
                     // Access a non-static method or non-static field in class
-                    let mod_rc = ctx.mgr.mod_tbl.get(&mod_name).unwrap().upgrade().unwrap();
-                    let class_ref = mod_rc.classes.get(&name).unwrap().borrow();
+                    let class_ref = ctx
+                        .mgr
+                        .mod_tbl
+                        .get(&mod_name)
+                        .unwrap()
+                        .get_class(&name)
+                        .unwrap();
                     if expect_method {
-                        if let Some(m) = class_ref.methods.get(rhs) {
-                            if m.flag.is(MethodAttribFlag::Static) {
+                        if let Some(m) = class_ref.get_method(rhs) {
+                            if m.flag().is(MethodAttribFlag::Static) {
                                 panic!("Cannot obj access static method {}::{}", name, rhs);
                             } else {
                                 ValType::Method(mod_name, name, rhs.to_owned())
@@ -227,8 +240,8 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
                             panic!("No method {} found in class {}", rhs, name);
                         }
                     } else {
-                        if let Some(f) = class_ref.fields.get(rhs) {
-                            if f.attrib.is(FieldAttribFlag::Static) {
+                        if let Some(f) = class_ref.get_field(rhs) {
+                            if f.flag().is(FieldAttribFlag::Static) {
                                 panic!("Cannot obj access static filed {}::{}", name, rhs);
                             } else {
                                 ValType::Field(mod_name, name, rhs.to_owned())
