@@ -50,8 +50,19 @@ _declspec(dllexport) NativeState
         default:
             return WrongArgTy;
         }
+    } else if (strcmp(fname, "puti32") == 0) {
+        if (argc != 1) {
+            return WrongArgc;
+        }
+        switch (args[0].tag) {
+        case I32:
+            fprintf(stdout, "%d", args[0].data.i32_);
+            break; 
+        default:
+            return WrongArgTy;
+        }
     } else {
-        return WrongArgc;
+        return NoFunc;
     }
     return Ok;
 }

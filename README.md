@@ -8,9 +8,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 ### 1.1 FIX
 
-IrFile Loader的逻辑存在问题，无论是VM里的还是Lang里的，external module的递归读取还是要再考虑一下
-另外在lang load的时候就要检查VM的版本
-
 * Local var. 
   * 目前let声明变量如果有同名的变量会发生覆盖，但是实际上不应该产生覆盖，let仅仅是绑定，新的局部变量一定分配新的空间。
   * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，需要考证栈到底是怎么实现的，有没有slot。

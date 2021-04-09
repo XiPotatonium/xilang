@@ -43,7 +43,7 @@ pub struct CodeGenCtx<'c> {
 
 impl<'mgr> CodeGenCtx<'mgr> {
     fn get_ty(&self, ast: &Box<AST>) -> RValType {
-        self.module.get_ty(ast, self.mgr)
+        self.module.get_ty(ast, self.mgr, self.class)
     }
 
     pub fn done(&self) {

@@ -1,4 +1,3 @@
-mod hello_world;
 mod algo;
 
 class Demo {
@@ -11,7 +10,7 @@ class Demo {
         Demo::TAG = foo;
     }
 
-    fn create(id: i32, value: i32) -> Demo {
+    fn create(id: i32, value: i32) -> Self {
         let ret = new Demo {
             id,
             value: value,

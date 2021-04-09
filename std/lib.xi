@@ -3,4 +3,7 @@
 class IO {
     #[Dllimport("std.dll")]
     fn putchar(ch: i32);
+
+    #[Dllimport("std.dll")]
+    fn puti32(i: i32);
 }

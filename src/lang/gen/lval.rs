@@ -21,15 +21,23 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
         }
         (p.to_owned(), path.iter().skip(super_cnt))
     } else {
-        let r = path.get_root_name().unwrap();
+        let r = {
+            let r = path.get_root_name().unwrap();
+            if r == "Self" {
+                &ctx.class.name
+            } else {
+                r
+            }
+        };
         if let Some(p) = ctx.module.use_map.get(r) {
             // item in sub module or any using module
             (p.to_owned(), path.iter().skip(1))
         } else if let Some(c) = ctx.module.classes.get(r) {
-            // fields or method in class within this module
             if path.len() == 1 {
+                // class within the same module
                 return ValType::Class(ctx.module.fullname().to_owned(), r.to_string());
             } else {
+                // fields or method in class within this module
                 let c = c.borrow();
                 let mem = &path[1];
                 let ret = if expect_method {

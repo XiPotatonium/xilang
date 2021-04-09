@@ -345,7 +345,7 @@ impl Module {
 }
 
 impl Module {
-    pub fn get_ty(&self, ast: &Box<AST>, c: &ModMgr) -> RValType {
+    pub fn get_ty(&self, ast: &Box<AST>, mod_mgr: &ModMgr, c: &Class) -> RValType {
         match ast.as_ref() {
             AST::TypeI32 => RValType::I32,
             AST::TypeF64 => RValType::F64,
@@ -361,16 +361,22 @@ impl Module {
                 if mod_path.len() == 0 {
                     // this mod
                     // might be a class in this module
-                    if self.classes.contains_key(class_id) {
-                        RValType::Obj(self.fullname().to_owned(), class_id.to_owned())
-                    } else {
-                        panic!("No class {} in mod {}", class_id, self.fullname());
-                    }
+                    // TODO: Self
+                    RValType::Obj(
+                        self.fullname().to_owned(),
+                        if class_id == "Self" {
+                            c.name.clone()
+                        } else if self.classes.contains_key(class_id) {
+                            class_id.to_owned()
+                        } else {
+                            panic!("No class {} in mod {}", class_id, self.fullname());
+                        },
+                    )
                 } else {
                     let m = if has_crate {
                         // crate::...
                         let mut m = ModPath::new();
-                        m.push(&c.name);
+                        m.push(&mod_mgr.name);
                         for seg in mod_path.iter().skip(1) {
                             m.push(seg);
                         }
@@ -400,7 +406,7 @@ impl Module {
                         }
                     };
 
-                    if let Some(m) = c.mod_tbl.get(m.as_str()) {
+                    if let Some(m) = mod_mgr.mod_tbl.get(m.as_str()) {
                         if let Some(_) = m.get_class(class_id) {
                             RValType::Obj(m.fullname().to_owned(), class_id.to_owned())
                         } else {
@@ -411,7 +417,7 @@ impl Module {
                     }
                 }
             }
-            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, c))),
+            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, c))),
             _ => unreachable!(),
         }
     }
@@ -419,7 +425,7 @@ impl Module {
 
 // member pass
 impl Module {
-    pub fn member_pass(&self, c: &ModMgr) {
+    pub fn member_pass(&self, mod_mgr: &ModMgr) {
         if let Some(class_asts) = &self.class_asts {
             for class in class_asts.iter() {
                 if let AST::Class(class_id, class_flag, _, ast_methods, ast_fields, static_init) =
@@ -431,7 +437,7 @@ impl Module {
                     for field in ast_fields.iter() {
                         if let AST::Field(id, flag, _, ty) = field.as_ref() {
                             // Field will have default initialization
-                            let ty = self.get_ty(ty, c);
+                            let ty = self.get_ty(ty, mod_mgr, &class_mut);
 
                             // Build Field in class file
                             let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
@@ -513,13 +519,13 @@ impl Module {
                                 .iter()
                                 .map(|p| {
                                     if let AST::Param(_, _, ty) = p.as_ref() {
-                                        self.get_ty(ty, c)
+                                        self.get_ty(ty, mod_mgr, &class_mut)
                                     } else {
                                         unreachable!();
                                     }
                                 })
                                 .collect();
-                            let ret_ty = self.get_ty(ty, c);
+                            let ret_ty = self.get_ty(ty, mod_mgr, &class_mut);
                             let mut impl_flag = MethodImplAttrib::new(
                                 MethodImplAttribCodeTypeFlag::IL,
                                 MethodImplAttribManagedFlag::Managed,
@@ -560,14 +566,14 @@ impl Module {
                                 ret_ty,
                                 ps
                             );
-                            for (id, args) in attrs.iter().map(|attr| {
+                            for (attr_id, args) in attrs.iter().map(|attr| {
                                 if let AST::CustomAttr(id, args) = attr.as_ref() {
                                     (id, args)
                                 } else {
                                     unreachable!()
                                 }
                             }) {
-                                if id == "Dllimport" {
+                                if attr_id == "Dllimport" {
                                     // TODO: use real attribute object
                                     // Currently it's adhoc
                                     if let AST::String(v) = args[0].as_ref() {
