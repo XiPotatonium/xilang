@@ -119,9 +119,9 @@ impl<'m> ClassRef<'m> {
         match self {
             ClassRef::Class(c) => {
                 let c = unsafe { c.as_ref().unwrap() };
-                (&c.flag, &c.non_static_fields)
+                (&c.flag, &c.instance_fields)
             }
-            ClassRef::ExtClass(c) => (&c.flag, &c.non_static_fields),
+            ClassRef::ExtClass(c) => (&c.flag, &c.instance_fields),
         }
     }
 }

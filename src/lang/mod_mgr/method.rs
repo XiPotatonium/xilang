@@ -15,6 +15,10 @@ pub struct Method {
 
 impl Method {
     pub fn descriptor(&self) -> String {
-        fn_descriptor(&self.ret_ty, &self.ps_ty)
+        fn_descriptor(
+            !self.flag.is(MethodAttribFlag::Static),
+            &self.ret_ty,
+            &self.ps_ty,
+        )
     }
 }

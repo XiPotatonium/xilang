@@ -1,3 +1,5 @@
+mod serde;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
     /// 0x00, nop

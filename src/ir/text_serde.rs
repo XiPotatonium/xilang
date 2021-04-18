@@ -1,11 +1,14 @@
-// mod ir_parser;
-
-use super::*;
-use crate::ir::attrib::*;
-use crate::ir::inst::Inst;
-use crate::ir::tok::fmt_tok;
+use super::attrib::*;
+use super::file::IrFile;
+use super::inst::Inst;
+use super::member::MemberForwarded;
+use super::tok::fmt_tok;
 
 use std::fmt;
+
+pub trait IrFmt {
+    fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result;
+}
 
 impl IrFile {
     pub fn write_field(
@@ -62,8 +65,9 @@ impl IrFile {
             }
         }
 
-        write!(f, "{}", self.get_str(method.name))?;
+        write!(f, "{} ", self.get_str(method.name))?;
         self.blob_heap[method.sig as usize].fmt(f, self)?;
+        // TODO: display param name and flag
         write!(f, " {}", impl_flag)?;
 
         if method.body != 0 {
@@ -76,7 +80,11 @@ impl IrFile {
                 " ".repeat(indent * 8),
                 body.max_stack
             )?;
-            write!(f, "\n{}.locals\t{}", " ".repeat(indent * 8), body.local)?;
+            if body.locals != 0 {
+                write!(f, "\n{}.locals\t", " ".repeat(indent * 8))?;
+                self.blob_heap[self.stand_alone_sig_tbl[body.locals as usize - 1].sig as usize]
+                    .fmt(f, self)?;
+            }
             if is_entrypoint {
                 write!(f, "\n{}.entrypoint", " ".repeat(indent * 8))?;
             }

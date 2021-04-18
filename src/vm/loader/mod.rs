@@ -1,12 +1,13 @@
 use super::data::*;
-use super::mem::{to_absolute, MemTag, SharedMem, VTblEntry};
+use super::mem::{addr_addu, to_absolute, MemTag, SharedMem, VTblEntry};
 use super::native::VMDll;
 use super::VMCfg;
 
 use xir::attrib::*;
-use xir::blob::Blob;
+use xir::blob::IrSig;
 use xir::file::*;
-use xir::tok::{get_tok_tag, TokTag};
+use xir::member::{MemberForwarded, MemberRefParent};
+use xir::ty::ResolutionScope;
 use xir::util::path::{IModPath, ModPath};
 use xir::CCTOR_NAME;
 
@@ -16,29 +17,6 @@ use std::fs;
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::ptr::null;
-
-fn blob_size(blob: &Blob) -> usize {
-    match blob {
-        Blob::Void => panic!("Void type has no heap size"),
-        Blob::Bool => size_of::<i32>(),
-        Blob::Char => size_of::<u16>(),
-        Blob::U8 => size_of::<u8>(),
-        Blob::I8 => size_of::<i8>(),
-        Blob::U16 => size_of::<u16>(),
-        Blob::I16 => size_of::<i16>(),
-        Blob::U32 => size_of::<u32>(),
-        Blob::I32 => size_of::<i32>(),
-        Blob::U64 => size_of::<u64>(),
-        Blob::I64 => size_of::<i64>(),
-        Blob::UNative => size_of::<usize>(),
-        Blob::INative => size_of::<isize>(),
-        Blob::F32 => size_of::<f32>(),
-        Blob::F64 => size_of::<f64>(),
-        Blob::Obj(_) => size_of::<usize>(),
-        Blob::Func(_, _) => unimplemented!("Size of IrBlob::Func is not implemented"),
-        Blob::Array(_) => size_of::<usize>(),
-    }
-}
 
 pub fn load(
     entry: PathBuf,
@@ -83,39 +61,6 @@ impl<'c> Loader<'c> {
         loader.cctor_name = loader.add_const_string(String::from(CCTOR_NAME));
 
         loader
-    }
-
-    fn to_vm_ty(&self, blob_heap: &Vec<Blob>, this_mod: &VMILModule, idx: u32) -> VMBuiltinType {
-        let sig = &blob_heap[idx as usize];
-
-        match sig {
-            Blob::Void => VMBuiltinType::Void,
-            Blob::Bool => VMBuiltinType::Bool,
-            Blob::Char => VMBuiltinType::Char,
-            Blob::U8 => VMBuiltinType::U8,
-            Blob::I8 => VMBuiltinType::I8,
-            Blob::U16 => VMBuiltinType::U16,
-            Blob::I16 => VMBuiltinType::I16,
-            Blob::U32 => VMBuiltinType::U32,
-            Blob::I32 => VMBuiltinType::I32,
-            Blob::U64 => VMBuiltinType::U64,
-            Blob::I64 => VMBuiltinType::I64,
-            Blob::UNative => VMBuiltinType::UNative,
-            Blob::INative => VMBuiltinType::INative,
-            Blob::F32 => VMBuiltinType::F32,
-            Blob::F64 => VMBuiltinType::F64,
-            Blob::Obj(tok) => {
-                let (tag, idx) = get_tok_tag(*tok);
-                let idx = idx as usize - 1;
-                VMBuiltinType::Obj(match tag {
-                    TokTag::TypeDef => this_mod.classes[idx].as_ref() as *const VMType,
-                    TokTag::TypeRef => this_mod.classref[idx],
-                    _ => unreachable!(),
-                })
-            }
-            Blob::Func(_, _) => panic!(),
-            Blob::Array(inner) => self.to_vm_ty(blob_heap, this_mod, *inner),
-        }
     }
 
     pub fn add_const_string(&mut self, s: String) -> u32 {
@@ -177,12 +122,8 @@ impl<'c> Loader<'c> {
 
             let class_flag = TypeAttrib::from(class_entry.flag);
             let class_name = str_heap[class_entry.name as usize];
-            let mut class_methods: Vec<*const VMMethod> = Vec::new();
-            let mut class_fields: Vec<*const VMField> = Vec::new();
-
-            let mut static_field_offset: usize = 0;
-            let mut non_static_field_offset: usize = 0;
-            let vtbl_size = size_of::<VTblEntry>();
+            let mut class_methods: Vec<*mut VMMethod> = Vec::new();
+            let mut class_fields: Vec<*mut VMField> = Vec::new();
 
             while method_i < method_lim {
                 let method_entry = &file.method_tbl[method_i];
@@ -199,7 +140,7 @@ impl<'c> Loader<'c> {
                         // Callvirt actually call non virtual method, which offset = 0
                         VMMethodImpl::IL(VMMethodILImpl {
                             offset: 0,
-                            locals: body.local as usize,
+                            locals: Vec::new(),
                             insts: body.insts.to_owned(),
                         })
                     }
@@ -222,11 +163,13 @@ impl<'c> Loader<'c> {
                     }
                 };
 
-                let method = Box::new(VMMethod {
+                let mut method = Box::new(VMMethod {
                     ctx: null(),
                     name,
                     flag,
                     impl_flag,
+                    // fill later
+                    parent_class: None,
                     // fill in link stage
                     ret_ty: VMBuiltinType::Unk,
                     ps_ty: Vec::new(),
@@ -237,7 +180,7 @@ impl<'c> Loader<'c> {
                     self.cctors.push(method.as_ref() as *const VMMethod);
                 }
 
-                class_methods.push(method.as_ref() as *const VMMethod);
+                class_methods.push(method.as_mut() as *mut VMMethod);
                 methods.push(method);
 
                 method_i += 1;
@@ -247,64 +190,34 @@ impl<'c> Loader<'c> {
                 let field_entry = &file.field_tbl[field_i];
 
                 let flag = FieldAttrib::from(field_entry.flag);
-                let field_size = blob_size(&file.blob_heap[field_entry.sig as usize]);
-                // TODO alignment
-                let offset = if flag.is(FieldAttribFlag::Static) {
-                    static_field_offset += field_size;
-                    static_field_offset
-                } else {
-                    non_static_field_offset += field_size;
-                    non_static_field_offset
-                } - field_size;
 
-                let field = Box::new(VMField {
+                let mut field = Box::new(VMField {
                     name: str_heap[field_entry.name as usize],
                     attrib: flag,
                     // fill in link stage
                     ty: VMBuiltinType::Unk,
-                    addr: offset,
+                    addr: 0,
                 });
-                class_fields.push(field.as_ref() as *const VMField);
+                class_fields.push(field.as_mut() as *mut VMField);
                 fields.push(field);
 
                 field_i += 1;
             }
 
-            let mut class = Box::new(VMType {
+            let class = Box::new(VMType {
                 name: class_name,
                 attrib: class_flag,
                 fields: class_fields,
                 methods: class_methods,
-                obj_size: non_static_field_offset,
+                // fill in link stage
+                obj_size: 0,
                 vtbl_addr: 0,
             });
 
-            // prepare class static space
-            let addr = unsafe {
-                to_absolute(
-                    MemTag::StaticMem,
-                    self.mem.static_area.add_class(
-                        VTblEntry {
-                            class: class.as_ref() as *const VMType,
-                            num_virt: 0,
-                            num_interface: 0,
-                        },
-                        vec![],
-                        vec![],
-                        static_field_offset,
-                    ),
-                )
-            };
-            class.vtbl_addr = addr;
-
-            let fields_len = fields.len();
-            for i in (0..class.fields.len())
-                .into_iter()
-                .map(|i| fields_len - i - 1)
-            {
-                if fields[i].attrib.is(FieldAttribFlag::Static) {
-                    fields[i].addr += addr + vtbl_size;
-                }
+            for method in class.methods.iter() {
+                unsafe {
+                    method.as_mut().unwrap().parent_class = Some(class.as_ref() as *const VMType)
+                };
             }
 
             classes.push(class);
@@ -472,79 +385,79 @@ impl<'c> Loader<'c> {
                     let (parent_tag, parent_idx) = memberref.get_parent();
                     let parent_idx = parent_idx as usize - 1;
 
-                    if let Blob::Func(ps, ret) = sig {
-                        // this member ref is a function
-                        let mut ps_ty: Vec<VMBuiltinType> = Vec::new();
-                        for p in ps.iter() {
-                            ps_ty.push(self.to_vm_ty(
-                                &file.blob_heap,
-                                this_mod.as_ref().unwrap().expect_il(),
-                                *p,
-                            ));
-                        }
-                        let ret_ty = self.to_vm_ty(
-                            &file.blob_heap,
-                            this_mod.as_ref().unwrap().expect_il(),
-                            *ret,
-                        );
+                    match sig {
+                        IrSig::Method(_, ps, ret) => {
+                            // this member ref is a function
+                            let ctx = this_mod.as_ref().unwrap().expect_il();
 
-                        match parent_tag {
-                            MemberRefParent::TypeRef => {
-                                for m in mod_typeref[parent_idx].as_ref().unwrap().methods.iter() {
-                                    let m_ref = m.as_ref().unwrap();
-                                    if m_ref.name == name
-                                        && ret_ty == m_ref.ret_ty
-                                        && ps_ty.len() == m_ref.ps_ty.len()
-                                    {
-                                        let mut is_match = true;
-                                        for (p0, p1) in ps_ty.iter().zip(m_ref.ps_ty.iter()) {
-                                            if p0 != p1 {
-                                                is_match = false;
+                            let ret_ty = VMBuiltinType::from_ir_ele_ty(ret, ctx);
+
+                            match parent_tag {
+                                MemberRefParent::TypeRef => {
+                                    let parent = mod_typeref[parent_idx];
+                                    let ps_ty: Vec<VMBuiltinType> = ps
+                                        .iter()
+                                        .map(|p| VMBuiltinType::from_ir_ele_ty(p, ctx))
+                                        .collect();
+                                    for m in parent.as_ref().unwrap().methods.iter() {
+                                        let m_ref = m.as_ref().unwrap();
+                                        if m_ref.name == name
+                                            && ret_ty == m_ref.ret_ty
+                                            && ps_ty.len() == m_ref.ps_ty.len()
+                                        {
+                                            let mut is_match = true;
+                                            for (p0, p1) in ps_ty.iter().zip(m_ref.ps_ty.iter()) {
+                                                if p0 != p1 {
+                                                    is_match = false;
+                                                    break;
+                                                }
+                                            }
+                                            if is_match {
+                                                // method found
+                                                mod_memberref.push(VMMemberRef::Method(*m));
+                                                found = true;
                                                 break;
                                             }
                                         }
-                                        if is_match {
-                                            // method found
-                                            mod_memberref.push(VMMemberRef::Method(*m));
+                                    }
+                                }
+                                MemberRefParent::ModRef => {
+                                    unimplemented!(
+                                        "Member that has no class parent is not implemented"
+                                    );
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        IrSig::Field(f_sig) => {
+                            // this member ref is a field
+                            let sig = VMBuiltinType::from_ir_ele_ty(
+                                f_sig,
+                                this_mod.as_ref().unwrap().expect_il(),
+                            );
+                            match parent_tag {
+                                MemberRefParent::TypeRef => {
+                                    // check if parent has this field
+                                    for f in mod_typeref[parent_idx].as_ref().unwrap().fields.iter()
+                                    {
+                                        let f_ref = f.as_ref().unwrap();
+                                        if f_ref.name == name && sig == f_ref.ty {
+                                            // field found
+                                            mod_memberref.push(VMMemberRef::Field(*f));
                                             found = true;
                                             break;
                                         }
                                     }
                                 }
-                            }
-                            MemberRefParent::ModRef => {
-                                unimplemented!(
-                                    "Member that has no class parent is not implemented"
-                                );
-                            }
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        // this member ref is a field
-                        let sig = self.to_vm_ty(
-                            &file.blob_heap,
-                            this_mod.as_ref().unwrap().expect_il(),
-                            memberref.sig,
-                        );
-                        match parent_tag {
-                            MemberRefParent::TypeRef => {
-                                for f in mod_typeref[parent_idx].as_ref().unwrap().fields.iter() {
-                                    let f_ref = f.as_ref().unwrap();
-                                    if f_ref.name == name && sig == f_ref.ty {
-                                        // field found
-                                        mod_memberref.push(VMMemberRef::Field(*f));
-                                        found = true;
-                                        break;
-                                    }
+                                MemberRefParent::ModRef => {
+                                    unimplemented!(
+                                        "Member that has no class parent is not implemented"
+                                    );
                                 }
+                                _ => unreachable!(),
                             }
-                            MemberRefParent::ModRef => {
-                                unimplemented!(
-                                    "Member that has no class parent is not implemented"
-                                );
-                            }
-                            _ => unreachable!(),
                         }
+                        IrSig::LocalVar(_) => unreachable!(),
                     }
 
                     if !found {
@@ -562,11 +475,14 @@ impl<'c> Loader<'c> {
                 .iter_mut()
                 .zip(file.field_tbl.iter())
             {
-                field.ty = self.to_vm_ty(
-                    &file.blob_heap,
-                    this_mod.as_ref().unwrap().expect_il(),
-                    field_entry.sig,
-                );
+                if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
+                    field.ty = VMBuiltinType::from_ir_ele_ty(
+                        f_sig,
+                        this_mod.as_ref().unwrap().expect_il(),
+                    );
+                } else {
+                    panic!();
+                }
             }
 
             // 3.5 fill method type info
@@ -579,21 +495,78 @@ impl<'c> Loader<'c> {
                 .zip(file.method_tbl.iter())
             {
                 let sig = &file.blob_heap[method_entry.sig as usize];
-                if let Blob::Func(ps, ret) = sig {
-                    method.ret_ty = self.to_vm_ty(
-                        &file.blob_heap,
-                        this_mod.as_ref().unwrap().expect_il(),
-                        *ret,
-                    );
+                let ctx = this_mod.as_ref().unwrap().expect_il();
+                if let IrSig::Method(_, ps, ret) = sig {
+                    method.ret_ty = VMBuiltinType::from_ir_ele_ty(ret, ctx);
                     for p in ps.iter() {
-                        method.ps_ty.push(self.to_vm_ty(
-                            &file.blob_heap,
-                            this_mod.as_ref().unwrap().expect_il(),
-                            *p,
-                        ));
+                        method.ps_ty.push(VMBuiltinType::from_ir_ele_ty(p, ctx));
                     }
                 } else {
                     panic!();
+                }
+
+                match &mut method.method_impl {
+                    VMMethodImpl::IL(il_impl) => {
+                        let body = &file.codes[method_entry.body as usize - 1];
+                        if body.locals != 0 {
+                            if let IrSig::LocalVar(locals) = &file.blob_heap
+                                [file.stand_alone_sig_tbl[body.locals as usize - 1].sig as usize]
+                            {
+                                for var in locals.iter() {
+                                    il_impl.locals.push(VMBuiltinType::from_ir_ele_ty(var, ctx))
+                                }
+                            }
+                        }
+                    }
+                    VMMethodImpl::Native(_) => {}
+                }
+            }
+
+            // 3.6 allocate class static space
+            // no alignment
+            {
+                let this_mod_mut = this_mod.as_mut().unwrap().expect_il_mut();
+                for class in this_mod_mut.classes.iter_mut() {
+                    let mut instance_field_offset = 0;
+                    let mut static_field_offset = 0;
+
+                    for field in class.fields.iter() {
+                        let field = field.as_mut().unwrap();
+
+                        // determine field relative offset
+                        let field_heap_size = field.ty.heap_size();
+                        if field.attrib.is(FieldAttribFlag::Static) {
+                            field.addr = static_field_offset + size_of::<VTblEntry>();
+                            static_field_offset += field_heap_size;
+                        } else {
+                            field.addr = instance_field_offset;
+                            instance_field_offset += field_heap_size;
+                        }
+                    }
+
+                    // allocate obj static space
+                    class.obj_size = instance_field_offset;
+                    let static_addr = to_absolute(
+                        MemTag::StaticMem,
+                        self.mem.static_area.add_class(
+                            VTblEntry {
+                                class: class.as_ref() as *const VMType,
+                                num_virt: 0,
+                                num_interface: 0,
+                            },
+                            vec![],
+                            vec![],
+                            static_field_offset,
+                        ),
+                    );
+                    class.vtbl_addr = static_addr;
+                    // link static field addr
+                    for field in class.fields.iter() {
+                        let field = field.as_mut().unwrap();
+                        if field.attrib.is(FieldAttribFlag::Static) {
+                            field.addr = addr_addu(static_addr, field.addr);
+                        }
+                    }
                 }
             }
         }

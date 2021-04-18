@@ -1,11 +1,20 @@
 use xir::attrib::*;
-use xir::blob::Blob;
-use xir::file::*;
+use xir::blob::{EleType, IrSig, MethodSigFlag, MethodSigFlagTag};
+use xir::code::CorILMethod;
+use xir::file::IrFile;
 use xir::inst::Inst;
+use xir::member::{
+    to_implmap_member, to_memberref_parent, IrField, IrImplMap, IrMemberRef, IrMethodDef,
+    MemberForwarded, MemberRefParent,
+};
+use xir::module::{IrMod, IrModRef};
+use xir::stand_alone_sig::IrStandAloneSig;
 use xir::tok::{to_tok, TokTag};
+use xir::ty::{get_typeref_parent, IrTypeDef, IrTypeRef, ResolutionScope};
 
 use std::collections::HashMap;
 
+use super::super::mod_mgr::Var;
 use super::{fn_descriptor, MethodBuilder, RValType};
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -52,8 +61,9 @@ pub struct Builder {
     str_map: HashMap<String, u32>,
     /// str -> UsrStrHeapIdx
     usr_str_map: HashMap<String, u32>,
-    /// descriptor -> BlobHeapIdx
-    blob_map: HashMap<String, u32>,
+
+    /// descriptor -> blob head index
+    member_sig_map: HashMap<String, u32>,
 
     pub file: IrFile,
 }
@@ -76,7 +86,8 @@ impl Builder {
 
             str_map: HashMap::new(),
             usr_str_map: HashMap::new(),
-            blob_map: HashMap::new(),
+
+            member_sig_map: HashMap::new(),
 
             file: IrFile::new(),
         };
@@ -108,7 +119,7 @@ impl Builder {
     /// Field parent is the newly added class or none if no class has been added
     pub fn add_field(&mut self, name: &str, ty: &RValType, flag: &FieldAttrib) -> u32 {
         let name = self.add_const_str(name);
-        let sig = self.add_const_ty_blob(ty);
+        let sig = self.add_field_sig(ty);
         self.file.field_tbl.push(IrField {
             name,
             sig,
@@ -137,7 +148,8 @@ impl Builder {
         impl_flag: &MethodImplAttrib,
     ) -> u32 {
         let name = self.add_const_str(name);
-        let sig = self.add_const_fn_blob(ps, ret_ty);
+        // in xilang non static method is instance method
+        let sig = self.add_method_sig(!flag.is(MethodAttribFlag::Static), ps, ret_ty);
         self.file.method_tbl.push(IrMethodDef {
             name,
             body: 0,
@@ -159,7 +171,29 @@ impl Builder {
     ///
     /// Fill all jump instructions, concat all basic blocks
     ///
-    pub fn done(&mut self, m: &mut MethodBuilder, method_idx: u32, local: u16, fold_br: bool) {
+    pub fn done(
+        &mut self,
+        m: &mut MethodBuilder,
+        method_idx: u32,
+        locals: &Vec<Var>,
+        fold_br: bool,
+    ) {
+        // store local var info
+        let locals_sig = if locals.len() == 0 {
+            // no locals
+            0
+        } else {
+            let mut local_var_ty = Vec::new();
+            for var in locals.iter() {
+                local_var_ty.push(self.to_sig_ty(&var.ty));
+            }
+            self.file.blob_heap.push(IrSig::LocalVar(local_var_ty));
+            self.file.stand_alone_sig_tbl.push(IrStandAloneSig {
+                sig: self.file.blob_heap.len() as u32 - 1,
+            });
+            self.file.stand_alone_sig_tbl.len() as u32
+        };
+
         let ir_method = &mut self.file.method_tbl[method_idx as usize - 1];
 
         if fold_br {
@@ -197,7 +231,7 @@ impl Builder {
             code.append(&mut bb.insts);
         }
 
-        self.file.codes.push(CorILMethod::new(0, local, code));
+        self.file.codes.push(CorILMethod::new(0, locals_sig, code));
         ir_method.body = self.file.codes.len() as u32;
     }
 }
@@ -215,14 +249,14 @@ impl Builder {
         }
     }
 
-    fn to_blob(&mut self, ty: &RValType) -> Blob {
+    fn to_sig_ty(&mut self, ty: &RValType) -> EleType {
         match ty {
-            RValType::Bool => Blob::Bool,
-            RValType::U8 => Blob::U8,
-            RValType::Char => Blob::Char,
-            RValType::I32 => Blob::I32,
-            RValType::F64 => Blob::F64,
-            RValType::Void => Blob::Void,
+            RValType::Bool => EleType::Boolean,
+            RValType::U8 => EleType::U1,
+            RValType::Char => EleType::Char,
+            RValType::I32 => EleType::I4,
+            RValType::F64 => EleType::R8,
+            RValType::Void => EleType::Void,
             RValType::Never => unreachable!(),
             RValType::Obj(mod_name, name) => {
                 let (class_idx, class_tag) = self.add_const_class(mod_name, name);
@@ -231,35 +265,45 @@ impl Builder {
                     TokTag::TypeRef => to_tok(class_idx, TokTag::TypeRef),
                     _ => unreachable!(),
                 };
-                Blob::Obj(tok)
+                EleType::ByRef(Box::new(EleType::Class(tok)))
             }
-            RValType::Array(inner) => Blob::Array(self.add_const_ty_blob(&inner)),
+            RValType::Array(_) => unimplemented!(),
         }
     }
 
-    pub fn add_const_ty_blob(&mut self, ty: &RValType) -> u32 {
+    pub fn add_field_sig(&mut self, ty: &RValType) -> u32 {
         let desc = ty.descriptor();
-        if let Some(ret) = self.blob_map.get(&desc) {
+        if let Some(ret) = self.member_sig_map.get(&desc) {
             *ret
         } else {
-            let ty = self.to_blob(ty);
+            let ty = self.to_sig_ty(ty);
             let ret = self.file.blob_heap.len() as u32;
-            self.file.blob_heap.push(ty);
-            self.blob_map.insert(desc, ret);
+            self.file.blob_heap.push(IrSig::Field(ty));
+            self.member_sig_map.insert(desc, ret);
             ret
         }
     }
 
-    pub fn add_const_fn_blob(&mut self, ps: &Vec<RValType>, ret_ty: &RValType) -> u32 {
-        let desc = fn_descriptor(ret_ty, ps);
-        if let Some(ret) = self.blob_map.get(&desc) {
+    pub fn add_method_sig(
+        &mut self,
+        is_instance: bool,
+        ps: &Vec<RValType>,
+        ret_ty: &RValType,
+    ) -> u32 {
+        let desc = fn_descriptor(is_instance, ret_ty, ps);
+        if let Some(ret) = self.member_sig_map.get(&desc) {
             *ret
         } else {
-            let ps: Vec<u32> = ps.iter().map(|p| self.add_const_ty_blob(p)).collect();
-            let ret_ty = self.add_const_ty_blob(ret_ty);
+            let ps = ps.iter().map(|p| self.to_sig_ty(p)).collect();
+            let ret_ty = self.to_sig_ty(ret_ty);
+            let flag = if is_instance {
+                MethodSigFlag::new(MethodSigFlagTag::HasThis)
+            } else {
+                MethodSigFlag::new(MethodSigFlagTag::Default)
+            };
             let ret = self.file.blob_heap.len() as u32;
-            self.file.blob_heap.push(Blob::Func(ps, ret_ty));
-            self.blob_map.insert(desc, ret);
+            self.file.blob_heap.push(IrSig::Method(flag, ps, ret_ty));
+            self.member_sig_map.insert(desc, ret);
             ret
         }
     }
@@ -309,11 +353,11 @@ impl Builder {
         &mut self,
         mod_name: &str,
         class_name: &str,
-        name: &str,
+        member_name: &str,
         sig: u32,
     ) -> (u32, TokTag) {
         let (parent_idx, parent_tag) = self.add_const_class(mod_name, class_name);
-        let name = self.add_const_str(name);
+        let name = self.add_const_str(member_name);
 
         match parent_tag {
             TokTag::TypeDef => {

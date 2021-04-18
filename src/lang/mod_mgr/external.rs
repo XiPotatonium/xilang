@@ -5,9 +5,8 @@ use std::fs;
 use std::path::Path;
 
 use xir::attrib::*;
-use xir::blob::Blob;
+use xir::blob::{IrSig, MethodSigFlag};
 use xir::file::*;
-use xir::tok::*;
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
@@ -32,7 +31,7 @@ pub struct ExtClass {
 
     // TODO: delete non_static_fields, we don't need this optimization, iterate over fields is fast enough
     /// Used in new expr
-    pub non_static_fields: Vec<String>,
+    pub instance_fields: Vec<String>,
     /// key: field_name
     pub fields: HashMap<String, Box<ExtField>>,
     /// Overload is currently not supported
@@ -44,6 +43,8 @@ pub struct ExtClass {
 }
 
 pub struct ExtMethod {
+    // hasthis and explicit this
+    pub sig_flag: MethodSigFlag,
     pub ret_ty: RValType,
     /// self is not included
     pub ps_ty: Vec<RValType>,
@@ -54,45 +55,6 @@ pub struct ExtMethod {
 pub struct ExtField {
     pub flag: FieldAttrib,
     pub ty: RValType,
-}
-
-fn to_lang_ty(file: &IrFile, idx: u32) -> RValType {
-    match &file.blob_heap[idx as usize] {
-        Blob::Void => RValType::Void,
-        Blob::Bool => RValType::Bool,
-        Blob::Char => RValType::Char,
-        Blob::U8 => RValType::U8,
-        Blob::I32 => RValType::I32,
-        Blob::F64 => RValType::F64,
-        Blob::Obj(tok) => {
-            let (tag, idx) = get_tok_tag(*tok);
-            let idx = idx as usize - 1;
-            match tag {
-                TokTag::TypeDef => RValType::Obj(
-                    file.mod_name().to_owned(),
-                    file.get_str(file.typedef_tbl[idx].name).to_owned(),
-                ),
-                TokTag::TypeRef => {
-                    let (parent_tag, parent_idx) = file.typeref_tbl[idx].get_parent();
-                    RValType::Obj(
-                        file.get_str(match parent_tag {
-                            ResolutionScope::Mod => file.mod_tbl[0].name,
-                            ResolutionScope::ModRef => {
-                                file.modref_tbl[parent_idx as usize - 1].name
-                            }
-                            ResolutionScope::TypeRef => panic!(""),
-                        })
-                        .to_owned(),
-                        file.get_str(file.typeref_tbl[idx].name).to_owned(),
-                    )
-                }
-                _ => unreachable!(),
-            }
-        }
-        Blob::Func(_, _) => panic!(),
-        Blob::Array(inner) => to_lang_ty(file, *inner),
-        _ => unreachable!(),
-    }
 }
 
 pub fn load_external_crate(
@@ -138,7 +100,7 @@ pub fn load_external_crate(
 
         let mut methods = HashMap::new();
         let mut fields = HashMap::new();
-        let mut non_static_fields = Vec::new();
+        let mut instance_fields = Vec::new();
 
         while method_i < method_lim {
             let method_entry = &file.method_tbl[method_i];
@@ -146,13 +108,17 @@ pub fn load_external_crate(
             let flag = MethodAttrib::from(method_entry.flag);
             let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
 
-            if let Blob::Func(ps_blob, ret_blob) = &file.blob_heap[method_entry.sig as usize] {
-                let ps_ty = ps_blob.iter().map(|idx| to_lang_ty(&file, *idx)).collect();
+            if let IrSig::Method(sig_flag, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
+                let ps_ty = ps
+                    .iter()
+                    .map(|t| RValType::from_ir_ele_ty(t, &file))
+                    .collect();
 
                 let method = Box::new(ExtMethod {
                     ps_ty,
-                    ret_ty: to_lang_ty(&file, *ret_blob),
+                    ret_ty: RValType::from_ir_ele_ty(ret, &file),
                     flag,
+                    sig_flag: sig_flag.clone(),
                     impl_flag,
                 });
                 methods.insert(file.get_str(method_entry.name).to_owned(), method);
@@ -170,14 +136,18 @@ pub fn load_external_crate(
             let flag = FieldAttrib::from(field_entry.flag);
 
             if !flag.is(FieldAttribFlag::Static) {
-                non_static_fields.push(field_name.to_owned());
+                instance_fields.push(field_name.to_owned());
             }
 
-            let field = Box::new(ExtField {
-                flag,
-                ty: to_lang_ty(&file, field_entry.sig),
-            });
-            fields.insert(field_name.to_owned(), field);
+            if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
+                let field = Box::new(ExtField {
+                    flag,
+                    ty: RValType::from_ir_ele_ty(f_sig, &file),
+                });
+                fields.insert(field_name.to_owned(), field);
+            } else {
+                panic!();
+            }
 
             field_i += 1;
         }
@@ -189,7 +159,7 @@ pub fn load_external_crate(
             methods,
             fields,
             flag,
-            non_static_fields,
+            instance_fields,
         });
 
         classes.insert(name.to_owned(), class);

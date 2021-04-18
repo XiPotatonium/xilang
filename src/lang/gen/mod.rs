@@ -11,6 +11,11 @@ pub use builder::Builder;
 pub use gen::gen;
 pub use method_builder::MethodBuilder;
 
+use xir::blob::EleType;
+use xir::file::IrFile;
+use xir::tok::{get_tok_tag, TokTag};
+use xir::ty::ResolutionScope;
+
 use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
 use super::{ast::AST, XicCfg};
 
@@ -57,7 +62,7 @@ impl<'mgr> CodeGenCtx<'mgr> {
         self.module.builder.borrow_mut().done(
             &mut self.method_builder.borrow_mut(),
             self.method.idx,
-            local_mut.size(),
+            &local_mut.locals,
             self.cfg.optim >= 1,
         );
     }
@@ -99,6 +104,53 @@ impl RValType {
     pub fn descriptor(&self) -> String {
         format!("{}", self)
     }
+
+    pub fn from_ir_ele_ty(ir_ele_ty: &EleType, ctx: &IrFile) -> RValType {
+        match ir_ele_ty {
+            EleType::Void => RValType::Void,
+            EleType::Boolean => RValType::Bool,
+            EleType::Char => RValType::Char,
+            EleType::I1 => unimplemented!(),
+            EleType::U1 => RValType::U8,
+            EleType::I2 => unimplemented!(),
+            EleType::U2 => unimplemented!(),
+            EleType::I4 => RValType::I32,
+            EleType::U4 => unimplemented!(),
+            EleType::I8 => unimplemented!(),
+            EleType::U8 => unimplemented!(),
+            EleType::R4 => unimplemented!(),
+            EleType::R8 => RValType::F64,
+            EleType::ByRef(t) => {
+                if let EleType::Class(tok) = t.as_ref() {
+                    // tok is TypeRef or TypeDef
+                    let (tag, idx) = get_tok_tag(*tok);
+                    let idx = idx as usize - 1;
+                    match tag {
+                        TokTag::TypeDef => RValType::Obj(
+                            ctx.mod_name().to_owned(),
+                            ctx.get_str(ctx.typedef_tbl[idx].name).to_owned(),
+                        ),
+                        TokTag::TypeRef => {
+                            let (parent_tag, parent_idx) = ctx.typeref_tbl[idx].get_parent();
+                            match parent_tag {
+                                ResolutionScope::Mod => unreachable!(),
+                                ResolutionScope::ModRef => RValType::Obj(
+                                    ctx.get_str(ctx.modref_tbl[parent_idx as usize - 1].name)
+                                        .to_owned(),
+                                    ctx.get_str(ctx.typeref_tbl[idx].name).to_owned(),
+                                ),
+                                ResolutionScope::TypeRef => unreachable!(),
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+            EleType::Class(_) => unreachable!(),
+        }
+    }
 }
 
 impl PartialEq for RValType {
@@ -132,9 +184,10 @@ impl fmt::Display for RValType {
     }
 }
 
-pub fn fn_descriptor(ret_ty: &RValType, ps: &Vec<RValType>) -> String {
+pub fn fn_descriptor(has_self: bool, ret_ty: &RValType, ps: &Vec<RValType>) -> String {
     format!(
-        "({}){}",
+        "{}({}){}",
+        if has_self { "instance " } else { "" },
         ps.iter().map(|t| format!("{}", t)).collect::<String>(),
         ret_ty
     )

@@ -1,4 +1,6 @@
-use super::{IrFile, IrFmt};
+use super::bc_serde::{IDeserializer, ISerializable};
+use super::file::IrFile;
+use super::text_serde::IrFmt;
 
 pub struct IrTypeDef {
     /// index into str heap
@@ -75,4 +77,41 @@ pub enum ResolutionScope {
 
 pub fn get_typeref_parent(raw_idx: u32, tag: ResolutionScope) -> u32 {
     (raw_idx << RESOLUTION_SCOPE_TAG_SIZE) | (tag as u32)
+}
+
+impl ISerializable for IrTypeDef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.name.serialize(buf);
+        self.flag.serialize(buf);
+
+        self.fields.serialize(buf);
+        self.methods.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> IrTypeDef {
+        let name = u32::deserialize(buf);
+        let flag = u32::deserialize(buf);
+        let fields = u32::deserialize(buf);
+        let methods = u32::deserialize(buf);
+        IrTypeDef {
+            name,
+            flag,
+            fields,
+            methods,
+        }
+    }
+}
+
+impl ISerializable for IrTypeRef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.parent.serialize(buf);
+        self.name.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        let parent = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+
+        IrTypeRef { parent, name }
+    }
 }

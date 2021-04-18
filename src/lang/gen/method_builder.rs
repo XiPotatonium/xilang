@@ -88,33 +88,33 @@ impl MethodBuilder {
         self
     }
 
-    pub fn add_inst_stloc(&mut self, local_offset: u16) -> &mut Self {
-        self.add_inst(match local_offset {
+    pub fn add_inst_stloc(&mut self, local_idx: u16) -> &mut Self {
+        self.add_inst(match local_idx {
             0 => Inst::StLoc0,
             1 => Inst::StLoc1,
             2 => Inst::StLoc2,
             3 => Inst::StLoc3,
             _ => {
-                if local_offset >= u8::MIN as u16 && local_offset <= u8::MAX as u16 {
-                    Inst::StLocS(local_offset as u8)
+                if local_idx >= u8::MIN as u16 && local_idx <= u8::MAX as u16 {
+                    Inst::StLocS(local_idx as u8)
                 } else {
-                    Inst::StLoc(local_offset)
+                    Inst::StLoc(local_idx)
                 }
             }
         })
     }
 
-    pub fn add_inst_ldloc(&mut self, local_offset: u16) -> &mut Self {
-        self.add_inst(match local_offset {
+    pub fn add_inst_ldloc(&mut self, local_idx: u16) -> &mut Self {
+        self.add_inst(match local_idx {
             0 => Inst::LdLoc0,
             1 => Inst::LdLoc1,
             2 => Inst::LdLoc2,
             3 => Inst::LdLoc3,
             _ => {
-                if local_offset >= u8::MIN as u16 && local_offset <= u8::MAX as u16 {
-                    Inst::LdLocS(local_offset as u8)
+                if local_idx >= u8::MIN as u16 && local_idx <= u8::MAX as u16 {
+                    Inst::LdLocS(local_idx as u8)
                 } else {
-                    Inst::LdLoc(local_offset)
+                    Inst::LdLoc(local_idx)
                 }
             }
         })

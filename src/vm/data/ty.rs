@@ -7,8 +7,8 @@ pub struct VMType {
     pub attrib: TypeAttrib,
 
     // ownership of methods and fields is at parent module
-    pub methods: Vec<*const VMMethod>,
-    pub fields: Vec<*const VMField>,
+    pub methods: Vec<*mut VMMethod>,
+    pub fields: Vec<*mut VMField>,
 
     pub vtbl_addr: usize,
     pub obj_size: usize,

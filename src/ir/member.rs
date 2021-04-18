@@ -1,4 +1,6 @@
-use super::{IrFile, IrFmt};
+use super::bc_serde::{IDeserializer, ISerializable};
+use super::file::IrFile;
+use super::text_serde::IrFmt;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct IrMemberRef {
@@ -139,4 +141,93 @@ pub enum MemberForwarded {
 
 pub fn to_implmap_member(raw_idx: u32, tag: MemberForwarded) -> u32 {
     (raw_idx << MEMBER_FORWARDED_TAG_SIZE) | (tag as u32)
+}
+
+impl ISerializable for IrField {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.flag.serialize(buf);
+        self.name.serialize(buf);
+        self.sig.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> IrField {
+        let flag = u16::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let descriptor = u32::deserialize(buf);
+
+        IrField {
+            flag,
+            name,
+            sig: descriptor,
+        }
+    }
+}
+
+impl ISerializable for IrMethodDef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.name.serialize(buf);
+        self.sig.serialize(buf);
+        self.body.serialize(buf);
+
+        self.flag.serialize(buf);
+        self.impl_flag.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> IrMethodDef {
+        let name = u32::deserialize(buf);
+        let signature = u32::deserialize(buf);
+        let body = u32::deserialize(buf);
+
+        let flag = u16::deserialize(buf);
+        let impl_flag = u16::deserialize(buf);
+
+        IrMethodDef {
+            name,
+            body,
+            sig: signature,
+            flag,
+            impl_flag,
+        }
+    }
+}
+
+impl ISerializable for IrMemberRef {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.parent.serialize(buf);
+        self.name.serialize(buf);
+        self.sig.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        let parent = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let signature = u32::deserialize(buf);
+        IrMemberRef {
+            parent,
+            name,
+            sig: signature,
+        }
+    }
+}
+
+impl ISerializable for IrImplMap {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.member.serialize(buf);
+        self.name.serialize(buf);
+        self.scope.serialize(buf);
+        self.flag.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        let member = u32::deserialize(buf);
+        let name = u32::deserialize(buf);
+        let scope = u32::deserialize(buf);
+        let flag = u16::deserialize(buf);
+        IrImplMap {
+            member,
+            name,
+            scope,
+            flag,
+        }
+    }
 }

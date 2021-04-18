@@ -1,9 +1,10 @@
 use xir::attrib::{MethodAttrib, MethodImplAttrib, PInvokeAttrib};
 
-use super::{VMBuiltinType, VMModule};
+use super::{VMBuiltinType, VMModule, VMType};
 
 pub struct VMMethod {
     pub ctx: *const VMModule,
+    pub parent_class: Option<*const VMType>,
 
     pub name: u32,
 
@@ -32,7 +33,7 @@ impl VMMethodImpl {
 
 pub struct VMMethodILImpl {
     pub offset: u32,
-    pub locals: usize,
+    pub locals: Vec<VMBuiltinType>,
     pub insts: Vec<u8>,
 }
 

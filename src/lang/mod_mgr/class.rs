@@ -8,9 +8,9 @@ use super::Method;
 pub struct Class {
     pub name: String,
 
-    // TODO: delete non_static_fields, we don't need this optimization, iterate over fields is fast enough
+    // TODO: delete instance_fields, we don't need this optimization, iterate over fields is fast enough
     /// Used in new expr
-    pub non_static_fields: Vec<String>,
+    pub instance_fields: Vec<String>,
     /// key: field_name
     pub fields: HashMap<String, Box<Field>>,
     /// Overload is currently not supported
@@ -29,7 +29,7 @@ impl Class {
         Class {
             name,
             idx,
-            non_static_fields: Vec::new(),
+            instance_fields: Vec::new(),
             fields: HashMap::new(),
             methods: HashMap::new(),
             flag,

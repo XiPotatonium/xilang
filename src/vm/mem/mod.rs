@@ -11,8 +11,7 @@ pub use self::static_area::{StaticArea, VTblEntry};
 use super::data::VMModule;
 
 use std::collections::HashMap;
-use std::mem::{size_of, transmute};
-use std::u32;
+use std::convert::{From, TryFrom};
 
 pub struct SharedMem {
     pub heap: Heap,
@@ -24,9 +23,9 @@ pub struct SharedMem {
 }
 
 /// default to be 1MB
-const HEAP_DEFAULT_SIZE: usize = 0x1 << 6;
+const HEAP_DEFAULT_SIZE: usize = 0x1 << 20;
 // default to be 1MB
-const STATIC_DEFAULT_SIZE: usize = 0x1 << 6;
+const STATIC_DEFAULT_SIZE: usize = 0x1 << 20;
 
 impl SharedMem {
     pub fn new() -> SharedMem {
@@ -43,24 +42,59 @@ impl SharedMem {
     }
 }
 
-const ADDR_SIZE: usize = size_of::<usize>() * 8;
-const MEM_TAG_MASK: usize = 0x03 << (ADDR_SIZE - 2);
+// 2 bits mem tag
+const MEM_TAG_MASK_SIZE: usize = 2;
+const MEM_TAG_MASK: usize = 0x3;
+const MEM_TAG_HEAP: usize = 0x02;
+const MEM_TAG_STATIC: usize = 0x03;
 
 pub enum MemTag {
-    HeapMem = 0x02 << (ADDR_SIZE - 2),
-    StaticMem = 0x03 << (ADDR_SIZE - 2),
+    HeapMem,
+    StaticMem,
 }
 
-pub unsafe fn to_relative(ptr: usize) -> (MemTag, usize) {
-    let tag = ptr & MEM_TAG_MASK;
-    let offset = ptr & !MEM_TAG_MASK;
-    let tag = transmute::<usize, MemTag>(tag);
+impl From<MemTag> for usize {
+    fn from(value: MemTag) -> Self {
+        match value {
+            MemTag::HeapMem => MEM_TAG_HEAP,
+            MemTag::StaticMem => MEM_TAG_STATIC,
+        }
+    }
+}
+
+impl TryFrom<usize> for MemTag {
+    type Error = &'static str;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            MEM_TAG_HEAP => Ok(MemTag::HeapMem),
+            MEM_TAG_STATIC => Ok(MemTag::StaticMem),
+            _ => unreachable!(),
+        }
+    }
+}
+
+pub fn to_relative(ptr: usize) -> (MemTag, usize) {
+    let offset = ptr >> MEM_TAG_MASK_SIZE;
+    let tag = MemTag::try_from(ptr & MEM_TAG_MASK).unwrap();
     (tag, offset)
 }
 
-pub unsafe fn to_absolute(tag: MemTag, offset: usize) -> usize {
-    if (offset & MEM_TAG_MASK) != 0 {
-        panic!("Too large offset");
+pub fn to_absolute(tag: MemTag, offset: usize) -> usize {
+    // TODO: check overflow
+    offset << MEM_TAG_MASK_SIZE | usize::from(tag)
+}
+
+pub fn addr_addi(ptr: usize, offset: isize) -> usize {
+    // TODO: check overflow and underflow
+    if offset > 0 {
+        ptr + ((offset as usize) << MEM_TAG_MASK_SIZE)
+    } else {
+        ptr + ((-offset as usize) << MEM_TAG_MASK_SIZE)
     }
-    transmute::<MemTag, usize>(tag) | offset
+}
+
+pub fn addr_addu(ptr: usize, offset: usize) -> usize {
+    // TODO: check overflow
+    ptr + (offset << MEM_TAG_MASK_SIZE)
 }

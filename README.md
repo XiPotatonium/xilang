@@ -10,10 +10,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Local var. 
   * 目前let声明变量如果有同名的变量会发生覆盖，但是实际上不应该产生覆盖，let仅仅是绑定，新的局部变量一定分配新的空间。
-  * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，需要考证栈到底是怎么实现的，有没有slot。
-  * 局部变量的类型信息需要在blob记录
-* 更贴近CLR标准的Blob
-  * 除了上面说的局部变量信息，其他Blob设计(例如函数签名)也应当逐渐接近CLR标准，不过不需要采用它那个样子的编码
+  * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
 
 ### 1.2 RoadMap
 

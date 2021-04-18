@@ -8,17 +8,18 @@ pub struct Var {
     pub id: String,
     pub flag: LocalAttrib,
     pub ty: RValType,
-    pub offset: u16,
+    /// index in Local var table
+    pub idx: u16,
     pub initialized: bool,
 }
 
 impl Var {
-    pub fn new(id: &str, flag: LocalAttrib, ty: RValType, offset: u16, initialized: bool) -> Var {
+    pub fn new(id: &str, flag: LocalAttrib, ty: RValType, idx: u16, initialized: bool) -> Var {
         Var {
             id: id.to_owned(),
             flag,
             ty,
-            offset,
+            idx,
             initialized,
         }
     }

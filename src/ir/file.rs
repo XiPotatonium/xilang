@@ -1,18 +1,10 @@
-mod bc_serde;
-mod code;
-mod member;
-mod text_serde;
-mod ty;
-
-use super::blob::Blob;
-pub use code::CorILMethod;
-pub use member::{
-    to_implmap_member, to_memberref_parent, IrField, IrImplMap, IrMemberRef, IrMethodDef,
-    MemberForwarded, MemberRefParent,
-};
-pub use ty::{get_typeref_parent, IrTypeDef, IrTypeRef, ResolutionScope};
-
-use std::fmt;
+use super::blob::IrSig;
+use super::code::CorILMethod;
+use super::member::{IrField, IrImplMap, IrMemberRef, IrMethodDef};
+use super::module::{IrMod, IrModRef};
+use super::param::IrParam;
+use super::stand_alone_sig::IrStandAloneSig;
+use super::ty::{IrTypeDef, IrTypeRef};
 
 pub const MAJOR_VERSION: u16 = 0;
 pub const MINOR_VERSION: u16 = 2;
@@ -37,43 +29,17 @@ pub struct IrFile {
 
     pub implmap_tbl: Vec<IrImplMap>,
 
+    pub param_tbl: Vec<IrParam>,
+    pub stand_alone_sig_tbl: Vec<IrStandAloneSig>,
+
     /// index starts from 0
     pub str_heap: Vec<String>,
     /// index starts from 0
     pub usr_str_heap: Vec<String>,
-    pub blob_heap: Vec<Blob>,
+    pub blob_heap: Vec<IrSig>,
 
     /// None CLR standard, index starts from 1
     pub codes: Vec<CorILMethod>,
-}
-
-pub trait IrFmt {
-    fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result;
-}
-
-pub struct IrMod {
-    /// index into str heap
-    pub name: u32,
-
-    /// index of codes
-    pub entrypoint: u32,
-}
-
-impl IrFmt for IrMod {
-    fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
-        write!(f, "{}", ctx.get_str(self.name))
-    }
-}
-
-pub struct IrModRef {
-    /// index into str heap
-    pub name: u32,
-}
-
-impl IrFmt for IrModRef {
-    fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
-        write!(f, "{}", ctx.get_str(self.name))
-    }
 }
 
 impl IrFile {
@@ -93,6 +59,8 @@ impl IrFile {
             memberref_tbl: vec![],
 
             implmap_tbl: vec![],
+            param_tbl: vec![],
+            stand_alone_sig_tbl: vec![],
 
             str_heap: vec![],
             usr_str_heap: vec![],

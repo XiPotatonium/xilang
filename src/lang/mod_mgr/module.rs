@@ -446,7 +446,7 @@ impl Module {
 
                             if !flag.is(FieldAttribFlag::Static) {
                                 // non-static field
-                                class_mut.non_static_fields.push(id.to_owned());
+                                class_mut.instance_fields.push(id.to_owned());
                             }
                             if let Some(_) = class_mut.fields.insert(id.to_owned(), field) {
                                 // TODO: use expect_none once it becomes stable
@@ -486,16 +486,13 @@ impl Module {
                     // Add default object creator
                     {
                         let ret_ty = RValType::Void;
-                        let mut ps: Vec<RValType> = vec![RValType::Obj(
-                            self.fullname().to_owned(),
-                            class_mut.name.clone(),
-                        )];
-                        for f in class_mut.non_static_fields.iter() {
-                            ps.push(class_mut.fields.get(f).unwrap().ty.clone());
-                        }
+                        let ps: Vec<RValType> = class_mut
+                            .instance_fields
+                            .iter()
+                            .map(|f| class_mut.fields.get(f).unwrap().ty.clone())
+                            .collect();
                         let flag = MethodAttrib::from(
                             u16::from(MethodAttribFlag::Pub)
-                                | u16::from(MethodAttribFlag::Static)
                                 | u16::from(MethodAttribFlag::RTSpecialName),
                         );
                         let impl_flag = MethodImplAttrib::new(
@@ -715,18 +712,18 @@ impl Module {
                     {
                         let m = class_ref.methods.get(CTOR_NAME).unwrap();
                         let mut method_builder = MethodBuilder::new();
-                        if m.ps_ty.len() == 1 {
+                        if m.ps_ty.len() == 0 {
                             // no field
                         } else {
                             method_builder.add_inst_ldarg(0);
-                            for _ in (2..m.ps_ty.len()).into_iter() {
+                            for _ in (1..m.ps_ty.len()).into_iter() {
                                 method_builder.add_inst(Inst::Dup);
                             }
-                            for (i, f_id) in (1..m.ps_ty.len())
+                            for (i, f_id) in (0..m.ps_ty.len())
                                 .into_iter()
-                                .zip(class_ref.non_static_fields.iter())
+                                .zip(class_ref.instance_fields.iter())
                             {
-                                method_builder.add_inst_ldarg(i as u16);
+                                method_builder.add_inst_ldarg((i + 1) as u16);
                                 method_builder.add_inst(Inst::StFld(to_tok(
                                     class_ref.fields.get(f_id).unwrap().idx,
                                     TokTag::Field,
@@ -737,7 +734,7 @@ impl Module {
                         self.builder.borrow_mut().done(
                             &mut method_builder,
                             m.idx,
-                            0,
+                            &vec![],
                             cfg.optim >= 1,
                         );
                     }

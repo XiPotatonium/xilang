@@ -152,7 +152,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
                         FieldRef::Field(f) => f.ty.clone(),
                         FieldRef::ExtField(f) => f.ty.clone(),
                     };
-                    let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
+                    let sig = ctx.module.builder.borrow_mut().add_field_sig(&ret);
                     let (field_idx, tok_tag) = ctx
                         .module
                         .builder
@@ -212,7 +212,7 @@ fn gen_static_access(ctx: &CodeGenCtx, v: ValType) -> ValType {
                 FieldRef::Field(f) => f.ty.clone(),
                 FieldRef::ExtField(f) => f.ty.clone(),
             };
-            let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&ret);
+            let sig = ctx.module.builder.borrow_mut().add_field_sig(&ret);
             let (field_idx, tok_tag) = ctx
                 .module
                 .builder
@@ -516,11 +516,11 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
             let (m_flag, m_ps_ty, m_ret_ty) = m.get_info();
 
             // Add to class file
-            let sig = ctx
-                .module
-                .builder
-                .borrow_mut()
-                .add_const_fn_blob(m_ps_ty, m_ret_ty);
+            let sig = ctx.module.builder.borrow_mut().add_method_sig(
+                !m_flag.is(MethodAttribFlag::Static),
+                m_ps_ty,
+                m_ret_ty,
+            );
             let (m_idx, tok_tag) = ctx
                 .module
                 .builder
@@ -529,7 +529,8 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
             let inst = if m_flag.is(MethodAttribFlag::Static) {
                 Inst::Call(to_tok(m_idx, tok_tag))
             } else {
-                Inst::CallVirt(to_tok(m_idx, tok_tag))
+                let tok = to_tok(m_idx, tok_tag);
+                Inst::CallVirt(tok)
             };
 
             build_args(ctx, m_ps_ty, args);
@@ -556,13 +557,13 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                 .unwrap()
                 .get_class(class_name)
                 .unwrap();
-            let (_, class_non_static_fields) = class_ref.get_info();
+            let (_, class_instance_fields) = class_ref.get_info();
 
-            let mut correct_idx: Vec<i32> = vec![-1; class_non_static_fields.len()];
+            let mut correct_idx: Vec<i32> = vec![-1; class_instance_fields.len()];
             for (i, field) in fields.iter().enumerate() {
                 if let AST::StructExprField(field_name, _) = field.as_ref() {
                     let mut matched = false;
-                    for (j, dec_field_name) in class_non_static_fields.iter().enumerate() {
+                    for (j, dec_field_name) in class_instance_fields.iter().enumerate() {
                         if dec_field_name == field_name {
                             correct_idx[j] = i as i32;
                             matched = true;
@@ -575,13 +576,12 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                 }
             }
 
-            let mut ctor_ps: Vec<RValType> =
-                vec![RValType::Obj(mod_name.to_owned(), class_name.clone())];
+            let mut ctor_ps: Vec<RValType> = Vec::new();
             for (i, idx) in correct_idx.iter().enumerate() {
                 if *idx < 0 {
                     panic!(
                         "{}.{} is not initialized in new expr",
-                        class_name, class_non_static_fields[i]
+                        class_name, class_instance_fields[i]
                     );
                 }
 
@@ -611,7 +611,7 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
             }
 
             let mut builder = ctx.module.builder.borrow_mut();
-            let ctor_sig = builder.add_const_fn_blob(&ctor_ps, &RValType::Void);
+            let ctor_sig = builder.add_method_sig(true, &ctor_ps, &RValType::Void);
             let (ctor_idx, tok_tag) =
                 builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
             ctx.method_builder
@@ -638,7 +638,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 panic!("Cannot assign {} to local var {}: {}", v_ty, name, local_ty);
             }
 
-            ctx.method_builder.borrow_mut().add_inst_stloc(local.offset);
+            ctx.method_builder.borrow_mut().add_inst_stloc(local.idx);
         }
         ValType::Arg(name) => {
             let arg = ctx.args_map.get(&name).unwrap();
@@ -673,7 +673,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 );
             }
 
-            let sig = ctx.module.builder.borrow_mut().add_const_ty_blob(&field_ty);
+            let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);
             let (f_idx, tok_tag) = ctx.module.builder.borrow_mut().add_const_member(
                 &mod_name,
                 &class_name,
@@ -771,7 +771,7 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {
         if let Some(local_var) = locals.get(id) {
             ctx.method_builder
                 .borrow_mut()
-                .add_inst_ldloc(local_var.offset);
+                .add_inst_ldloc(local_var.idx);
             return local_var.ty.clone();
         } else if let Some(arg) = ctx.args_map.get(id) {
             ctx.method_builder.borrow_mut().add_inst_ldarg(arg.offset);

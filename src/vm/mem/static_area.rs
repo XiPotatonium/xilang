@@ -30,15 +30,14 @@ impl StaticArea {
         assert_eq!(vtbl_entry.num_virt, virts.len());
         assert_eq!(vtbl_entry.num_interface, interfaces.len());
         let ret = self.next_obj_offset;
-        if size_of::<VTblEntry>()
+        let total_size = size_of::<VTblEntry>()
             + (virts.len() + interfaces.len()) * size_of::<usize>()
-            + static_size
-            + ret
-            >= self.data.len()
-        {
+            + static_size;
+        if total_size + ret >= self.data.len() {
             panic!("No enough space for static data");
         }
-        let ptr = &mut self.data[self.next_obj_offset] as *mut u8 as *mut VTblEntry;
+        self.next_obj_offset += total_size;
+        let ptr = &mut self.data[ret] as *mut u8 as *mut VTblEntry;
         *ptr.as_mut().unwrap() = vtbl_entry;
         for _ in virts.iter() {
             unimplemented!();
