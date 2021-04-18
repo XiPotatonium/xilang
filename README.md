@@ -4,17 +4,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 [Development Diary开发日志](https://xipotatonium.github.io/2021/04/04/XilangDev0/)
 
-## 1 TODO
-
-### 1.1 FIX
-
-* Local var. 
-  * 目前let声明变量如果有同名的变量会发生覆盖，但是实际上不应该产生覆盖，let仅仅是绑定，新的局部变量一定分配新的空间。
-  * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
-
-### 1.2 RoadMap
-
-#### Ver 0.1.0
 
 * OOP:
   * class
@@ -34,16 +23,23 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * numerical expr: `+ - * /`
   * cmp: `> < == != >= <=`
   * logical: `&& || !`
+* Built-in attribute:
+  * dllimport
 * xilang project:
-  * mod
+  * mod keyword
+  * extern keyword
 
-#### Ver 0.2.0 (Present)
-
-* Dllimport
 * stdlib
   * io
-* xilang project:
-  * extern
+
+## 1 TODO
+
+### 1.1 FIX
+
+* Local var. 
+  * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
+
+### 1.2 RoadMap
 
 #### Ver 0.3.0
 

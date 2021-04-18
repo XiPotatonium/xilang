@@ -39,6 +39,7 @@ impl Arg {
 
 pub struct Locals {
     pub locals: Vec<Var>,
+    /// map from id to index of local
     pub sym_tbl: Vec<HashMap<String, usize>>,
 }
 
@@ -59,22 +60,11 @@ impl Locals {
     }
 
     pub fn add(&mut self, id: &str, ty: RValType, flag: LocalAttrib, initialized: bool) -> u16 {
-        let last_frame = self.sym_tbl.last_mut().unwrap();
-        if last_frame.contains_key(id) {
-            // Overwrite old value
-            let loc = last_frame.get(id).unwrap();
-            self.locals[*loc] = Var::new(id, flag, ty, *loc as u16, initialized);
-            *loc as u16
-        } else {
-            let offset = self.size();
-            let var = Var::new(id, flag, ty, offset, initialized);
-            self.sym_tbl
-                .last_mut()
-                .unwrap()
-                .insert(id.to_owned(), self.locals.len());
-            self.locals.push(var);
-            offset
-        }
+        let idx = self.locals.len();
+        let var = Var::new(id, flag, ty, idx as u16, initialized);
+        self.sym_tbl.last_mut().unwrap().insert(id.to_owned(), idx);
+        self.locals.push(var);
+        idx as u16
     }
 
     pub fn get(&self, id: &str) -> Option<&Var> {
@@ -93,9 +83,5 @@ impl Locals {
             }
         }
         false
-    }
-
-    pub fn size(&self) -> u16 {
-        self.locals.len() as u16
     }
 }
