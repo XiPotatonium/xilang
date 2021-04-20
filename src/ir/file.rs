@@ -1,10 +1,10 @@
 use super::blob::IrSig;
 use super::code::CorILMethod;
-use super::member::{IrField, IrImplMap, IrMemberRef, IrMethodDef};
-use super::module::{IrMod, IrModRef};
-use super::param::IrParam;
+use super::member::{Field, ImplMap, MemberRef, MethodDef};
+use super::module::{Mod, ModRef};
+use super::param::Param;
 use super::stand_alone_sig::IrStandAloneSig;
-use super::ty::{IrTypeDef, IrTypeRef};
+use super::ty::{TypeDef, TypeRef};
 
 pub const MAJOR_VERSION: u16 = 0;
 pub const MINOR_VERSION: u16 = 2;
@@ -14,22 +14,22 @@ pub struct IrFile {
     pub minor_version: u16,
 
     /// assert_eq!(mod_tbl.len(), 1)
-    pub mod_tbl: Vec<IrMod>,
-    pub modref_tbl: Vec<IrModRef>,
+    pub mod_tbl: Vec<Mod>,
+    pub modref_tbl: Vec<ModRef>,
 
     /// type tbl in CLR
-    pub typedef_tbl: Vec<IrTypeDef>,
+    pub typedef_tbl: Vec<TypeDef>,
     /// type ref tbl in CLR
-    pub typeref_tbl: Vec<IrTypeRef>,
+    pub typeref_tbl: Vec<TypeRef>,
 
-    pub field_tbl: Vec<IrField>,
-    pub method_tbl: Vec<IrMethodDef>,
+    pub field_tbl: Vec<Field>,
+    pub method_tbl: Vec<MethodDef>,
 
-    pub memberref_tbl: Vec<IrMemberRef>,
+    pub memberref_tbl: Vec<MemberRef>,
 
-    pub implmap_tbl: Vec<IrImplMap>,
+    pub implmap_tbl: Vec<ImplMap>,
 
-    pub param_tbl: Vec<IrParam>,
+    pub param_tbl: Vec<Param>,
     pub stand_alone_sig_tbl: Vec<IrStandAloneSig>,
 
     /// index starts from 0

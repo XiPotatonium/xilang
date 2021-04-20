@@ -1,4 +1,4 @@
-use super::super::data::{VMMethod, VMType};
+use super::super::data::{Method, Type};
 
 use std::mem::size_of;
 
@@ -23,8 +23,8 @@ impl StaticArea {
     pub unsafe fn add_class(
         &mut self,
         vtbl_entry: VTblEntry,
-        virts: Vec<*const VMMethod>,
-        interfaces: Vec<*const VMMethod>,
+        virts: Vec<*const Method>,
+        interfaces: Vec<*const Method>,
         static_size: usize,
     ) -> usize {
         assert_eq!(vtbl_entry.num_virt, virts.len());
@@ -52,7 +52,7 @@ impl StaticArea {
 
 #[derive(Clone, Copy)]
 pub struct VTblEntry {
-    pub class: *const VMType,
+    pub class: *const Type,
     pub num_virt: usize,
     pub num_interface: usize,
 }

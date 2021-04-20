@@ -11,7 +11,7 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
     let (mut p, mut segs) = if has_crate {
         // crate::...
         let mut p = ModPath::new();
-        p.push(&ctx.mgr.name);
+        p.push(&ctx.mgr.cfg.crate_name);
         (p, path.iter().skip(1))
     } else if super_cnt != 0 {
         // super::...
@@ -85,7 +85,7 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                     );
                 }
             } else {
-                let is_instance_method = !ctx.method.flag.is(MethodAttribFlag::Static);
+                let is_instance_method = !ctx.method.attrib.is(MethodAttribFlag::Static);
                 return if r == "self" {
                     if is_instance_method {
                         ValType::KwLSelf
@@ -95,7 +95,7 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                 } else if let Some(var) = ctx.locals.borrow().get(r) {
                     // query local var
                     ValType::Local(var.idx as usize)
-                } else if let Some(arg) = ctx.method.ps_map.get(r) {
+                } else if let Some(arg) = ctx.ps_map.get(r) {
                     // query args
                     ValType::Arg(*arg)
                 } else if ctx.class.fields.contains_key(r) {
@@ -204,7 +204,7 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
                 .unwrap();
             if expect_method {
                 if let Some(m) = class_ref.get_method(rhs) {
-                    if m.flag().is(MethodAttribFlag::Static) {
+                    if m.attrib.is(MethodAttribFlag::Static) {
                         ValType::Method(mod_name, name, rhs.to_owned())
                     } else {
                         panic!("Cannot static access non-static method {}.{}", name, rhs);
@@ -214,7 +214,7 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
                 }
             } else {
                 if let Some(f) = class_ref.get_field(rhs) {
-                    if f.flag().is(FieldAttribFlag::Static) {
+                    if f.attrib.is(FieldAttribFlag::Static) {
                         ValType::Field(mod_name, name, rhs.to_owned())
                     } else {
                         panic!("Cannot static access non-static filed {}.{}", name, rhs);
@@ -246,7 +246,7 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
                         .unwrap();
                     if expect_method {
                         if let Some(m) = class_ref.get_method(rhs) {
-                            if m.flag().is(MethodAttribFlag::Static) {
+                            if m.attrib.is(MethodAttribFlag::Static) {
                                 panic!("Cannot obj access static method {}::{}", name, rhs);
                             } else {
                                 ValType::Method(mod_name, name, rhs.to_owned())
@@ -256,7 +256,7 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
                         }
                     } else {
                         if let Some(f) = class_ref.get_field(rhs) {
-                            if f.flag().is(FieldAttribFlag::Static) {
+                            if f.attrib.is(FieldAttribFlag::Static) {
                                 panic!("Cannot obj access static filed {}::{}", name, rhs);
                             } else {
                                 ValType::Field(mod_name, name, rhs.to_owned())

@@ -3,7 +3,7 @@ use super::file::IrFile;
 use super::text_serde::IrFmt;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct IrMemberRef {
+pub struct MemberRef {
     /// index into MemberRefParent tbl
     pub parent: u32,
     /// index into str heap
@@ -12,7 +12,7 @@ pub struct IrMemberRef {
     pub sig: u32,
 }
 
-impl IrFmt for IrMemberRef {
+impl IrFmt for MemberRef {
     fn fmt(&self, f: &mut std::fmt::Formatter, ctx: &IrFile) -> std::fmt::Result {
         let (tag, idx) = self.get_parent();
 
@@ -27,7 +27,7 @@ impl IrFmt for IrMemberRef {
     }
 }
 
-impl IrMemberRef {
+impl MemberRef {
     pub fn get_parent(&self) -> (MemberRefParent, u32) {
         let tag = self.parent & MEMBER_REF_PARENT_TAG_MASK;
         let index = self.parent >> MEMBER_REF_PARENT_TAG_SIZE;
@@ -65,7 +65,7 @@ pub fn to_memberref_parent(raw_idx: u32, tag: MemberRefParent) -> u32 {
     (raw_idx << MEMBER_REF_PARENT_TAG_SIZE) | (tag as u32)
 }
 
-pub struct IrField {
+pub struct Field {
     /// index into str heap
     pub name: u32,
     /// index into blob heap
@@ -75,14 +75,14 @@ pub struct IrField {
     pub flag: u16,
 }
 
-impl IrFmt for IrField {
+impl IrFmt for Field {
     fn fmt(&self, f: &mut std::fmt::Formatter, ctx: &IrFile) -> std::fmt::Result {
         write!(f, "{}: ", ctx.get_str(self.name))?;
         ctx.blob_heap[self.sig as usize].fmt(f, ctx)
     }
 }
 
-pub struct IrMethodDef {
+pub struct MethodDef {
     /// index into code tbl, similar to RVA
     pub body: u32,
 
@@ -99,14 +99,14 @@ pub struct IrMethodDef {
     pub param_list: u32,
 }
 
-impl IrFmt for IrMethodDef {
+impl IrFmt for MethodDef {
     fn fmt(&self, f: &mut std::fmt::Formatter, ctx: &IrFile) -> std::fmt::Result {
         write!(f, "{}: ", ctx.get_str(self.name))?;
         ctx.blob_heap[self.sig as usize].fmt(f, ctx)
     }
 }
 
-pub struct IrImplMap {
+pub struct ImplMap {
     /// index into MemberForwarded tbl
     pub member: u32,
     /// index into str heap
@@ -117,7 +117,7 @@ pub struct IrImplMap {
     pub flag: u16,
 }
 
-impl IrImplMap {
+impl ImplMap {
     pub fn get_member(&self) -> (MemberForwarded, u32) {
         let tag = self.member & MEMBER_FORWARDED_TAG_MASK;
         let idx = self.member >> MEMBER_FORWARDED_TAG_SIZE;
@@ -146,19 +146,19 @@ pub fn to_implmap_member(raw_idx: u32, tag: MemberForwarded) -> u32 {
     (raw_idx << MEMBER_FORWARDED_TAG_SIZE) | (tag as u32)
 }
 
-impl ISerializable for IrField {
+impl ISerializable for Field {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.flag.serialize(buf);
         self.name.serialize(buf);
         self.sig.serialize(buf);
     }
 
-    fn deserialize(buf: &mut dyn IDeserializer) -> IrField {
+    fn deserialize(buf: &mut dyn IDeserializer) -> Field {
         let flag = u16::deserialize(buf);
         let name = u32::deserialize(buf);
         let descriptor = u32::deserialize(buf);
 
-        IrField {
+        Field {
             flag,
             name,
             sig: descriptor,
@@ -166,7 +166,7 @@ impl ISerializable for IrField {
     }
 }
 
-impl ISerializable for IrMethodDef {
+impl ISerializable for MethodDef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.body.serialize(buf);
 
@@ -178,7 +178,7 @@ impl ISerializable for IrMethodDef {
         self.param_list.serialize(buf);
     }
 
-    fn deserialize(buf: &mut dyn IDeserializer) -> IrMethodDef {
+    fn deserialize(buf: &mut dyn IDeserializer) -> MethodDef {
         let body = u32::deserialize(buf);
 
         let impl_flag = u16::deserialize(buf);
@@ -189,7 +189,7 @@ impl ISerializable for IrMethodDef {
 
         let param_list = u32::deserialize(buf);
 
-        IrMethodDef {
+        MethodDef {
             name,
             body,
             sig,
@@ -200,7 +200,7 @@ impl ISerializable for IrMethodDef {
     }
 }
 
-impl ISerializable for IrMemberRef {
+impl ISerializable for MemberRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.parent.serialize(buf);
         self.name.serialize(buf);
@@ -211,7 +211,7 @@ impl ISerializable for IrMemberRef {
         let parent = u32::deserialize(buf);
         let name = u32::deserialize(buf);
         let signature = u32::deserialize(buf);
-        IrMemberRef {
+        MemberRef {
             parent,
             name,
             sig: signature,
@@ -219,7 +219,7 @@ impl ISerializable for IrMemberRef {
     }
 }
 
-impl ISerializable for IrImplMap {
+impl ISerializable for ImplMap {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.member.serialize(buf);
         self.name.serialize(buf);
@@ -232,7 +232,7 @@ impl ISerializable for IrImplMap {
         let name = u32::deserialize(buf);
         let scope = u32::deserialize(buf);
         let flag = u16::deserialize(buf);
-        IrImplMap {
+        ImplMap {
             member,
             name,
             scope,

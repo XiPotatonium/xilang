@@ -17,9 +17,10 @@ use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::ResolutionScope;
 
 use super::mod_mgr::{Class, Locals, Method, ModMgr, Module};
-use super::{ast::AST, XicCfg};
+use super::ast::AST;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 
 pub enum LoopType {
@@ -35,10 +36,11 @@ pub struct LoopCtx {
 
 pub struct CodeGenCtx<'c> {
     pub mgr: &'c ModMgr,
-    pub cfg: &'c XicCfg,
     pub module: &'c Module,
     pub class: &'c Class,
     pub method: &'c Method,
+    /// map from ps name to ps idx
+    pub ps_map: HashMap<String, usize>,
     pub locals: RefCell<Locals>,
     pub method_builder: RefCell<MethodBuilder>,
     pub loop_ctx: RefCell<Vec<LoopCtx>>,
@@ -61,7 +63,7 @@ impl<'mgr> CodeGenCtx<'mgr> {
             &mut self.method_builder.borrow_mut(),
             self.method.idx,
             &local_mut.locals,
-            self.cfg.optim >= 1,
+            self.mgr.cfg.optim >= 1,
         );
     }
 }

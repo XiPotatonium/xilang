@@ -22,7 +22,7 @@ pub fn load(
     entry: PathBuf,
     mem: &mut SharedMem,
     cfg: &VMCfg,
-) -> (Vec<*const VMMethod>, *const VMMethod) {
+) -> (Vec<*const Method>, *const Method) {
     let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
     let entrypoint = f.mod_tbl[0].entrypoint as usize;
@@ -36,8 +36,7 @@ pub fn load(
 
     (
         loader.cctors,
-        mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref()
-            as *const VMMethod,
+        mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref() as *const Method,
     )
 }
 
@@ -47,7 +46,7 @@ struct Loader<'c> {
     str_map: HashMap<String, u32>,
     cctor_name: u32,
     empty_str: u32, // ""
-    cctors: Vec<*const VMMethod>,
+    cctors: Vec<*const Method>,
 }
 
 impl<'c> Loader<'c> {
@@ -91,9 +90,9 @@ impl<'c> Loader<'c> {
             .collect();
 
         // 1. Fill classes methods and fields that defined in this file
-        let mut classes: Vec<Box<VMType>> = Vec::new();
-        let mut methods: Vec<Box<VMMethod>> = Vec::new();
-        let mut fields: Vec<Box<VMField>> = Vec::new();
+        let mut classes: Vec<Box<Type>> = Vec::new();
+        let mut methods: Vec<Box<Method>> = Vec::new();
+        let mut fields: Vec<Box<Field>> = Vec::new();
 
         let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
             (c0.fields as usize - 1, c0.methods as usize - 1)
@@ -125,8 +124,8 @@ impl<'c> Loader<'c> {
 
             let class_flag = TypeAttrib::from(class_entry.flag);
             let class_name = str_heap[class_entry.name as usize];
-            let mut class_methods: Vec<*mut VMMethod> = Vec::new();
-            let mut class_fields: Vec<*mut VMField> = Vec::new();
+            let mut class_methods: Vec<*mut Method> = Vec::new();
+            let mut class_fields: Vec<*mut Field> = Vec::new();
 
             while method_i < method_lim {
                 let method_entry = &file.method_tbl[method_i];
@@ -141,7 +140,7 @@ impl<'c> Loader<'c> {
                         let body = &file.codes[method_entry.body as usize - 1];
                         // Currently virtual method is not implemented
                         // Callvirt actually call non virtual method, which offset = 0
-                        VMMethodImpl::IL(VMMethodILImpl {
+                        MethodImpl::IL(MethodILImpl {
                             offset: 0,
                             locals: Vec::new(),
                             insts: body.insts.to_owned(),
@@ -158,7 +157,7 @@ impl<'c> Loader<'c> {
                                 member_idx as usize - 1 == method_i
                             })
                             .unwrap();
-                        VMMethodImpl::Native(VMMethodNativeImpl {
+                        MethodImpl::Native(MethodNativeImpl {
                             scope: impl_map.scope as usize - 1,
                             name: str_heap[impl_map.name as usize],
                             flag: PInvokeAttrib::from(impl_map.flag),
@@ -174,14 +173,14 @@ impl<'c> Loader<'c> {
                     &file.param_tbl[(method_entry.param_list as usize - 1)
                         ..(file.method_tbl[method_i + 1].param_list as usize - 1)]
                 };
-                let mut ps: Vec<VMParam> =
+                let mut ps: Vec<Param> =
                     if let IrSig::Method(_, ps, _) = &file.blob_heap[method_entry.sig as usize] {
                         (0..ps.len())
                             .into_iter()
-                            .map(|_| VMParam {
+                            .map(|_| Param {
                                 name: self.empty_str,
                                 attrib: ParamAttrib::default(),
-                                ty: VMBuiltinType::Unk,
+                                ty: BuiltinType::Unk,
                             })
                             .collect()
                     } else {
@@ -196,7 +195,7 @@ impl<'c> Loader<'c> {
                     ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
                 }
 
-                let mut method = Box::new(VMMethod {
+                let mut method = Box::new(Method {
                     ctx: null(),
                     name,
                     flag,
@@ -206,23 +205,23 @@ impl<'c> Loader<'c> {
                     // fill in link stage
                     ret: if let Some(p) = param.first() {
                         if p.sequence == 0 {
-                            VMParam {
+                            Param {
                                 name: str_heap[p.name as usize],
                                 attrib: ParamAttrib::from(p.flag),
-                                ty: VMBuiltinType::Unk,
+                                ty: BuiltinType::Unk,
                             }
                         } else {
-                            VMParam {
+                            Param {
                                 name: self.empty_str,
                                 attrib: ParamAttrib::default(),
-                                ty: VMBuiltinType::Unk,
+                                ty: BuiltinType::Unk,
                             }
                         }
                     } else {
-                        VMParam {
+                        Param {
                             name: self.empty_str,
                             attrib: ParamAttrib::default(),
-                            ty: VMBuiltinType::Unk,
+                            ty: BuiltinType::Unk,
                         }
                     },
                     ps,
@@ -230,10 +229,10 @@ impl<'c> Loader<'c> {
                 });
 
                 if name == self.cctor_name {
-                    self.cctors.push(method.as_ref() as *const VMMethod);
+                    self.cctors.push(method.as_ref() as *const Method);
                 }
 
-                class_methods.push(method.as_mut() as *mut VMMethod);
+                class_methods.push(method.as_mut() as *mut Method);
                 methods.push(method);
 
                 method_i += 1;
@@ -244,20 +243,20 @@ impl<'c> Loader<'c> {
 
                 let flag = FieldAttrib::from(field_entry.flag);
 
-                let mut field = Box::new(VMField {
+                let mut field = Box::new(Field {
                     name: str_heap[field_entry.name as usize],
                     attrib: flag,
                     // fill in link stage
-                    ty: VMBuiltinType::Unk,
+                    ty: BuiltinType::Unk,
                     addr: 0,
                 });
-                class_fields.push(field.as_mut() as *mut VMField);
+                class_fields.push(field.as_mut() as *mut Field);
                 fields.push(field);
 
                 field_i += 1;
             }
 
-            let class = Box::new(VMType {
+            let class = Box::new(Type {
                 name: class_name,
                 attrib: class_flag,
                 fields: class_fields,
@@ -269,7 +268,7 @@ impl<'c> Loader<'c> {
 
             for method in class.methods.iter() {
                 unsafe {
-                    method.as_mut().unwrap().parent_class = Some(class.as_ref() as *const VMType)
+                    method.as_mut().unwrap().parent_class = Some(class.as_ref() as *const Type)
                 };
             }
 
@@ -278,7 +277,7 @@ impl<'c> Loader<'c> {
 
         let this_mod_fullname_addr = str_heap[file.mod_tbl[0].name as usize];
         let this_mod_path = ModPath::from_str(self.mem.get_str(this_mod_fullname_addr));
-        let mut this_mod = Box::new(VMModule::IL(VMILModule {
+        let mut this_mod = Box::new(Module::IL(ILModule {
             classes,
 
             methods,
@@ -289,7 +288,7 @@ impl<'c> Loader<'c> {
             modref: vec![],
             classref: vec![],
         }));
-        let this_mod_ptr = this_mod.as_ref() as *const VMModule;
+        let this_mod_ptr = this_mod.as_ref() as *const Module;
         for method in this_mod.expect_il_mut().methods.iter_mut() {
             method.ctx = this_mod_ptr;
         }
@@ -324,7 +323,7 @@ impl<'c> Loader<'c> {
                 }
                 self.mem.mods.insert(
                     ext_mod_fullname_addr,
-                    Box::new(VMModule::Native(
+                    Box::new(Module::Native(
                         VMDll::new_ascii(candidates[0].to_str().unwrap()).unwrap(),
                     )),
                 );
@@ -394,14 +393,14 @@ impl<'c> Loader<'c> {
             .mods
             .get_mut(&this_mod_fullname_addr)
             .unwrap()
-            .as_mut() as *mut VMModule;
+            .as_mut() as *mut Module;
         unsafe {
             {
                 // 3.1 Link modref
                 let mod_modref = &mut this_mod.as_mut().unwrap().expect_il_mut().modref;
                 for modref in file.modref_tbl.iter() {
                     let name = str_heap[modref.name as usize];
-                    mod_modref.push(self.mem.mods.get(&name).unwrap().as_ref() as *const VMModule);
+                    mod_modref.push(self.mem.mods.get(&name).unwrap().as_ref() as *const Module);
                 }
 
                 // 3.2 link typeref
@@ -419,7 +418,7 @@ impl<'c> Loader<'c> {
                                 .iter()
                                 .find(|&c| c.as_ref().name == name);
                             if let Some(class) = class {
-                                mod_typeref.push(class.as_ref() as *const VMType);
+                                mod_typeref.push(class.as_ref() as *const Type);
                             } else {
                                 panic!("External symbol not found");
                             }
@@ -443,14 +442,14 @@ impl<'c> Loader<'c> {
                             // this member ref is a function
                             let ctx = this_mod.as_ref().unwrap().expect_il();
 
-                            let ret_ty = VMBuiltinType::from_ir_ele_ty(ret, ctx);
+                            let ret_ty = BuiltinType::from_ir_ele_ty(ret, ctx);
 
                             match parent_tag {
                                 MemberRefParent::TypeRef => {
                                     let parent = mod_typeref[parent_idx];
-                                    let ps_ty: Vec<VMBuiltinType> = ps
+                                    let ps_ty: Vec<BuiltinType> = ps
                                         .iter()
-                                        .map(|p| VMBuiltinType::from_ir_ele_ty(p, ctx))
+                                        .map(|p| BuiltinType::from_ir_ele_ty(p, ctx))
                                         .collect();
                                     for m in parent.as_ref().unwrap().methods.iter() {
                                         let m_ref = m.as_ref().unwrap();
@@ -467,7 +466,7 @@ impl<'c> Loader<'c> {
                                             }
                                             if is_match {
                                                 // method found
-                                                mod_memberref.push(VMMemberRef::Method(*m));
+                                                mod_memberref.push(MemberRef::Method(*m));
                                                 found = true;
                                                 break;
                                             }
@@ -484,7 +483,7 @@ impl<'c> Loader<'c> {
                         }
                         IrSig::Field(f_sig) => {
                             // this member ref is a field
-                            let sig = VMBuiltinType::from_ir_ele_ty(
+                            let sig = BuiltinType::from_ir_ele_ty(
                                 f_sig,
                                 this_mod.as_ref().unwrap().expect_il(),
                             );
@@ -496,7 +495,7 @@ impl<'c> Loader<'c> {
                                         let f_ref = f.as_ref().unwrap();
                                         if f_ref.name == name && sig == f_ref.ty {
                                             // field found
-                                            mod_memberref.push(VMMemberRef::Field(*f));
+                                            mod_memberref.push(MemberRef::Field(*f));
                                             found = true;
                                             break;
                                         }
@@ -529,10 +528,8 @@ impl<'c> Loader<'c> {
                 .zip(file.field_tbl.iter())
             {
                 if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
-                    field.ty = VMBuiltinType::from_ir_ele_ty(
-                        f_sig,
-                        this_mod.as_ref().unwrap().expect_il(),
-                    );
+                    field.ty =
+                        BuiltinType::from_ir_ele_ty(f_sig, this_mod.as_ref().unwrap().expect_il());
                 } else {
                     panic!();
                 }
@@ -550,28 +547,28 @@ impl<'c> Loader<'c> {
                 let sig = &file.blob_heap[method_entry.sig as usize];
                 let ctx = this_mod.as_ref().unwrap().expect_il();
                 if let IrSig::Method(_, ps, ret) = sig {
-                    method.ret.ty = VMBuiltinType::from_ir_ele_ty(ret, ctx);
+                    method.ret.ty = BuiltinType::from_ir_ele_ty(ret, ctx);
                     for (i, p) in ps.iter().enumerate() {
-                        method.ps[i].ty = VMBuiltinType::from_ir_ele_ty(p, ctx);
+                        method.ps[i].ty = BuiltinType::from_ir_ele_ty(p, ctx);
                     }
                 } else {
                     panic!();
                 }
 
                 match &mut method.method_impl {
-                    VMMethodImpl::IL(il_impl) => {
+                    MethodImpl::IL(il_impl) => {
                         let body = &file.codes[method_entry.body as usize - 1];
                         if body.locals != 0 {
                             if let IrSig::LocalVar(locals) = &file.blob_heap
                                 [file.stand_alone_sig_tbl[body.locals as usize - 1].sig as usize]
                             {
                                 for var in locals.iter() {
-                                    il_impl.locals.push(VMBuiltinType::from_ir_ele_ty(var, ctx))
+                                    il_impl.locals.push(BuiltinType::from_ir_ele_ty(var, ctx))
                                 }
                             }
                         }
                     }
-                    VMMethodImpl::Native(_) => {}
+                    MethodImpl::Native(_) => {}
                 }
             }
 
@@ -603,7 +600,7 @@ impl<'c> Loader<'c> {
                         MemTag::StaticMem,
                         self.mem.static_area.add_class(
                             VTblEntry {
-                                class: class.as_ref() as *const VMType,
+                                class: class.as_ref() as *const Type,
                                 num_virt: 0,
                                 num_interface: 0,
                             },

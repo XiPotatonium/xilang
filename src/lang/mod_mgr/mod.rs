@@ -8,7 +8,7 @@ pub use self::class::Class;
 pub use self::member::{Field, Method, Param};
 pub use self::module::Module;
 pub use self::var::{Locals, Var};
-use external::{ExtClass, ExtField, ExtMethod, ExtModule};
+use external::{ExtClass, ExtModule};
 
 use super::super::XicCfg;
 
@@ -16,6 +16,7 @@ use xir::attrib::*;
 use xir::util::path::ModPath;
 
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -74,18 +75,18 @@ pub enum ClassRef<'m> {
 }
 
 impl<'m> ClassRef<'m> {
-    pub fn get_field(&self, name: &str) -> Option<FieldRef> {
+    pub fn get_field(&self, name: &str) -> Option<&Field> {
         match self {
             ClassRef::Class(c) => {
                 if let Some(f) = unsafe { c.as_ref().unwrap().fields.get(name) } {
-                    Some(FieldRef::Field(f.as_ref()))
+                    Some(f.as_ref())
                 } else {
                     None
                 }
             }
             ClassRef::ExtClass(c) => {
                 if let Some(f) = c.fields.get(name) {
-                    Some(FieldRef::ExtField(f.as_ref()))
+                    Some(f.as_ref())
                 } else {
                     None
                 }
@@ -93,18 +94,18 @@ impl<'m> ClassRef<'m> {
         }
     }
 
-    pub fn get_method(&self, name: &str) -> Option<MethodRef> {
+    pub fn get_method(&self, name: &str) -> Option<&Method> {
         match self {
             ClassRef::Class(c) => {
                 if let Some(m) = unsafe { c.as_ref().unwrap().methods.get(name) } {
-                    Some(MethodRef::Method(m.as_ref()))
+                    Some(m.as_ref())
                 } else {
                     None
                 }
             }
             ClassRef::ExtClass(c) => {
                 if let Some(m) = c.methods.get(name) {
-                    Some(MethodRef::ExtMethod(m.as_ref()))
+                    Some(m.as_ref())
                 } else {
                     None
                 }
@@ -116,50 +117,22 @@ impl<'m> ClassRef<'m> {
         match self {
             ClassRef::Class(c) => {
                 let c = unsafe { c.as_ref().unwrap() };
-                (&c.flag, &c.instance_fields)
+                (&c.attirb, &c.instance_fields)
             }
-            ClassRef::ExtClass(c) => (&c.flag, &c.instance_fields),
-        }
-    }
-}
-
-pub enum FieldRef<'m> {
-    Field(&'m Field),
-    ExtField(&'m ExtField),
-}
-
-impl<'m> FieldRef<'m> {
-    pub fn flag(&self) -> FieldAttrib {
-        match self {
-            FieldRef::Field(f) => f.flag.clone(),
-            FieldRef::ExtField(f) => f.flag.clone(),
-        }
-    }
-}
-
-pub enum MethodRef<'m> {
-    Method(&'m Method),
-    ExtMethod(&'m ExtMethod),
-}
-
-impl<'m> MethodRef<'m> {
-    pub fn flag(&self) -> MethodAttrib {
-        match self {
-            MethodRef::Method(m) => m.flag.clone(),
-            MethodRef::ExtMethod(m) => m.flag.clone(),
+            ClassRef::ExtClass(c) => (&c.attrib, &c.instance_fields),
         }
     }
 }
 
 pub struct ModMgr {
-    pub name: String,
+    pub cfg: XicCfg,
 
     /// key: mod_fullname
     pub mod_tbl: HashMap<String, Box<ModRef>>,
 }
 
 impl ModMgr {
-    pub fn new(cfg: &XicCfg) -> ModMgr {
+    pub fn new(cfg: XicCfg) -> ModMgr {
         let mut mod_path: ModPath = ModPath::new();
         mod_path.push(&cfg.crate_name);
 
@@ -175,23 +148,38 @@ impl ModMgr {
             fs::create_dir_all(&cfg.out_dir).unwrap();
         }
 
+        let cfg = if cfg.crate_name == "std" {
+            println!("Info: Compiling stdlib ...");
+            cfg
+        } else {
+            let mut cfg = cfg;
+            let mut std_path = env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_owned();
+            std_path.push("std/std.xibc");
+            // TODO: what if std is already present in the ext_paths?
+            cfg.ext_paths.push(std_path.canonicalize().unwrap());
+            cfg
+        };
+
         let mut mod_tbl = HashMap::new();
-        Module::from_xi(
+        Module::new(
             mod_path,
             &PathBuf::from(""),
             &cfg.root_path,
             false,
             &mut mod_tbl,
-            cfg,
+            &cfg,
         );
 
-        ModMgr {
-            name: cfg.crate_name.to_owned(),
-            mod_tbl,
-        }
+        ModMgr { cfg, mod_tbl }
     }
 
-    pub fn build(&mut self, cfg: &XicCfg) {
+    pub fn build(&mut self) {
         // 1. member pass
         for gen_mod in self.mod_tbl.values() {
             match gen_mod.as_ref() {
@@ -206,7 +194,7 @@ impl ModMgr {
         for gen_mod in self.mod_tbl.values() {
             match gen_mod.as_ref() {
                 ModRef::Mod(m) => {
-                    m.code_gen(self, cfg);
+                    m.code_gen(self);
                 }
                 ModRef::ExtMod(_) => {}
             }
@@ -214,11 +202,11 @@ impl ModMgr {
     }
 
     /// dump is done recursively
-    pub fn dump(&self, cfg: &XicCfg) {
+    pub fn dump(&self) {
         self.mod_tbl
-            .get(&self.name)
+            .get(&self.cfg.crate_name)
             .unwrap()
             .expect_mod()
-            .dump(self, &cfg.out_dir);
+            .dump(self, &self.cfg.out_dir);
     }
 }

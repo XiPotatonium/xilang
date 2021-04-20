@@ -3,7 +3,7 @@ use super::blob::{EleType, IrSig, MethodSigFlagTag};
 use super::file::IrFile;
 use super::inst::Inst;
 use super::member::MemberForwarded;
-use super::param::IrParam;
+use super::param::Param;
 
 use std::fmt;
 
@@ -33,7 +33,7 @@ impl IrFile {
     fn write_named_param(
         &self,
         f: &mut fmt::Formatter<'_>,
-        p: Option<&IrParam>,
+        p: Option<&Param>,
         ty: &EleType,
     ) -> fmt::Result {
         if let Some(p) = p {

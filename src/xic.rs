@@ -15,7 +15,6 @@ use clap::{App, Arg};
 use lazy_static::lazy_static;
 
 use std::collections::HashSet;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -66,12 +65,6 @@ fn main() {
                         "Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json",
                     ),
             )
-            .arg(
-                Arg::with_name("no_std")
-                    .help("Do not reference stdlib (used in compiling stdlib)")
-                    .long("no_std")
-                    .takes_value(false),
-            )
             .get_matches();
 
         let ext_paths = matches.value_of("ext").unwrap_or("");
@@ -94,7 +87,7 @@ fn main() {
             panic!("Invalid root file name {}", root_fname);
         }
 
-        let mut ext_paths_set = if ext_paths.len() == 0 {
+        let ext_paths_set = if ext_paths.len() == 0 {
             HashSet::new()
         } else {
             ext_paths
@@ -102,19 +95,6 @@ fn main() {
                 .map(|x| PathBuf::from(x).canonicalize().unwrap())
                 .collect::<HashSet<PathBuf>>()
         };
-
-        if !matches.is_present("no_std") {
-            // import std by default if no_std is not present
-            let mut std_path = env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .to_owned();
-            std_path.push("std/std.xibc");
-            ext_paths_set.insert(std_path.canonicalize().unwrap());
-        }
 
         XicCfg {
             ext_paths: ext_paths_set.into_iter().collect(),
@@ -137,8 +117,8 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    let mut module_mgr = ModMgr::new(&cfg);
-    if cfg.verbose >= 1 {
+    let mut module_mgr = ModMgr::new(cfg);
+    if module_mgr.cfg.verbose >= 1 {
         println!(
             "Parsing finished in {} seconds",
             SystemTime::now()
@@ -149,8 +129,8 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    module_mgr.build(&cfg);
-    if cfg.verbose >= 1 {
+    module_mgr.build();
+    if module_mgr.cfg.verbose >= 1 {
         println!(
             "Build finished in {} seconds",
             SystemTime::now()
@@ -161,8 +141,8 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    module_mgr.dump(&cfg);
-    if cfg.verbose >= 1 {
+    module_mgr.dump();
+    if module_mgr.cfg.verbose >= 1 {
         println!(
             "Dump finished in {} seconds",
             SystemTime::now()

@@ -8,7 +8,7 @@ pub use self::slot::{Slot, SlotData, SlotTag};
 pub use self::stack::Stack;
 pub use self::static_area::{StaticArea, VTblEntry};
 
-use super::data::VMModule;
+use super::data::Module;
 
 use std::collections::HashMap;
 use std::convert::{From, TryFrom};
@@ -17,7 +17,7 @@ pub struct SharedMem {
     pub heap: Heap,
     pub static_area: StaticArea,
 
-    pub mods: HashMap<u32, Box<VMModule>>,
+    pub mods: HashMap<u32, Box<Module>>,
 
     pub str_pool: Vec<String>,
 }

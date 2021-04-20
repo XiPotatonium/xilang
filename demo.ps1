@@ -3,7 +3,7 @@ cargo build
 
 Write-Output "================== Compiling stdlib ======================"
 
-./target/debug/xic.exe std/lib.xi -vv -O0 -o target/std/ --no_std
+./target/debug/xic.exe std/lib.xi -vv -O0 -o target/std/
 
 Write-Output "================== Compiling examples ======================"
 

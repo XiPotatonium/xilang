@@ -5,12 +5,12 @@ use std::fs;
 use std::path::Path;
 
 use xir::attrib::*;
-use xir::blob::{IrSig, MethodSigFlag};
+use xir::blob::IrSig;
 use xir::file::*;
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
-use super::{ModRef, Param};
+use super::{Field, Method, ModRef, Param};
 
 pub struct ExtModule {
     pub mod_path: ModPath,
@@ -33,27 +33,13 @@ pub struct ExtClass {
     /// Used in new expr
     pub instance_fields: Vec<String>,
     /// key: field_name
-    pub fields: HashMap<String, Box<ExtField>>,
+    pub fields: HashMap<String, Box<Field>>,
     /// Overload is currently not supported
     ///
     /// key: method_name
-    pub methods: HashMap<String, Box<ExtMethod>>,
+    pub methods: HashMap<String, Box<Method>>,
 
-    pub flag: TypeAttrib,
-}
-
-pub struct ExtMethod {
-    // hasthis and explicit this
-    pub sig_flag: MethodSigFlag,
-    pub ret: RValType,
-    pub ps: Vec<Param>,
-    pub flag: MethodAttrib,
-    pub impl_flag: MethodImplAttrib,
-}
-
-pub struct ExtField {
-    pub flag: FieldAttrib,
-    pub ty: RValType,
+    pub attrib: TypeAttrib,
 }
 
 pub fn load_external_crate(
@@ -114,7 +100,7 @@ pub fn load_external_crate(
             let flag = MethodAttrib::from(method_entry.flag);
             let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
 
-            if let IrSig::Method(sig_flag, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
+            if let IrSig::Method(_, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
                 let mut ps: Vec<Param> = ps
                     .iter()
                     .map(|t| Param {
@@ -132,12 +118,12 @@ pub fn load_external_crate(
                     ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
                 }
 
-                let method = Box::new(ExtMethod {
+                let method = Box::new(Method {
                     ps,
                     ret: RValType::from_ir_ele_ty(ret, &file),
-                    flag,
-                    sig_flag: sig_flag.clone(),
+                    attrib: flag,
                     impl_flag,
+                    idx: method_i as u32 + 1,
                 });
                 methods.insert(file.get_str(method_entry.name).to_owned(), method);
             } else {
@@ -158,9 +144,10 @@ pub fn load_external_crate(
             }
 
             if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
-                let field = Box::new(ExtField {
-                    flag,
+                let field = Box::new(Field {
+                    attrib: flag,
                     ty: RValType::from_ir_ele_ty(f_sig, &file),
+                    idx: field_i as u32 + 1,
                 });
                 fields.insert(field_name.to_owned(), field);
             } else {
@@ -176,7 +163,7 @@ pub fn load_external_crate(
             name: name.to_owned(),
             methods,
             fields,
-            flag,
+            attrib: flag,
             instance_fields,
         });
 

@@ -18,21 +18,21 @@ pub struct Class {
     /// key: method_name
     pub methods: HashMap<String, Box<Method>>,
 
-    pub flag: TypeAttrib,
+    pub attirb: TypeAttrib,
 
     /// index into typedef tbl
     pub idx: u32,
 }
 
 impl Class {
-    pub fn new(name: String, idx: u32, flag: TypeAttrib) -> Class {
+    pub fn new(name: String, idx: u32, attirb: TypeAttrib) -> Class {
         Class {
             name,
             idx,
             instance_fields: Vec::new(),
             fields: HashMap::new(),
             methods: HashMap::new(),
-            flag,
+            attirb,
         }
     }
 }

@@ -4,14 +4,13 @@ use xir::code::CorILMethod;
 use xir::file::IrFile;
 use xir::inst::Inst;
 use xir::member::{
-    to_implmap_member, to_memberref_parent, IrField, IrImplMap, IrMemberRef, IrMethodDef,
-    MemberForwarded, MemberRefParent,
+    to_implmap_member, to_memberref_parent, Field, ImplMap, MemberForwarded, MemberRef,
+    MemberRefParent, MethodDef,
 };
-use xir::module::{IrMod, IrModRef};
-use xir::param::IrParam;
+use xir::module::{Mod, ModRef};
 use xir::stand_alone_sig::IrStandAloneSig;
 use xir::tok::{to_tok, TokTag};
-use xir::ty::{get_typeref_parent, IrTypeDef, IrTypeRef, ResolutionScope};
+use xir::ty::{get_typeref_parent, ResolutionScope, TypeDef, TypeRef};
 
 use std::collections::HashMap;
 
@@ -47,13 +46,13 @@ pub struct Builder {
     /// Name -> TblIdx
     type_map: HashMap<u32, u32>,
     /// TypeRef -> TblIdx
-    typeref_map: HashMap<IrTypeRef, u32>,
+    typeref_map: HashMap<TypeRef, u32>,
 
     /// FieldOrMethod -> IdxIntoFieldTbl
     field_map: HashMap<FieldOrMethod, u32>,
     method_map: HashMap<FieldOrMethod, u32>,
     /// MemberRef -> TblIdx
-    memberref_map: HashMap<IrMemberRef, u32>,
+    memberref_map: HashMap<MemberRef, u32>,
 
     /// ImplMap -> TblIdx
     implmap_map: HashMap<ImplMapInfo, u32>,
@@ -93,7 +92,7 @@ impl Builder {
             file: IrFile::new(),
         };
         let name = builder.add_const_str(name);
-        builder.file.mod_tbl.push(IrMod {
+        builder.file.mod_tbl.push(Mod {
             name,
             entrypoint: 0,
         });
@@ -104,7 +103,7 @@ impl Builder {
 
     pub fn add_class(&mut self, name: &str, flag: &TypeAttrib) -> u32 {
         let name = self.add_const_str(name);
-        self.file.typedef_tbl.push(IrTypeDef {
+        self.file.typedef_tbl.push(TypeDef {
             name,
             flag: flag.attrib,
             fields: (self.file.field_tbl.len() + 1) as u32,
@@ -121,7 +120,7 @@ impl Builder {
     pub fn add_field(&mut self, name: &str, ty: &RValType, flag: &FieldAttrib) -> u32 {
         let name = self.add_const_str(name);
         let sig = self.add_field_sig(ty);
-        self.file.field_tbl.push(IrField {
+        self.file.field_tbl.push(Field {
             name,
             sig,
             flag: flag.attrib,
@@ -152,7 +151,7 @@ impl Builder {
 
         let sig = self.add_method_sig(!flag.is(MethodAttribFlag::Static), ps, ret);
 
-        self.file.method_tbl.push(IrMethodDef {
+        self.file.method_tbl.push(MethodDef {
             name,
             body: 0,
             sig,
@@ -162,7 +161,7 @@ impl Builder {
         });
         for (i, p) in ps.iter().enumerate() {
             let name = self.add_const_str(&p.id);
-            self.file.param_tbl.push(IrParam {
+            self.file.param_tbl.push(xir::Param {
                 flag: p.attrib.attrib,
                 name,
                 sequence: i as u16 + 1,
@@ -327,7 +326,7 @@ impl Builder {
         } else if let Some(ret) = self.modref_map.get(&name) {
             (*ret, TokTag::ModRef)
         } else {
-            self.file.modref_tbl.push(IrModRef { name });
+            self.file.modref_tbl.push(ModRef { name });
             let ret = self.file.modref_tbl.len() as u32;
             self.modref_map.insert(name, ret);
             (ret, TokTag::ModRef)
@@ -343,7 +342,7 @@ impl Builder {
                 (*self.type_map.get(&name).unwrap(), TokTag::TypeDef)
             }
             TokTag::ModRef => {
-                let typeref = IrTypeRef {
+                let typeref = TypeRef {
                     parent: get_typeref_parent(parent_idx, ResolutionScope::ModRef),
                     name,
                 };
@@ -388,7 +387,7 @@ impl Builder {
             }
             TokTag::TypeRef => {
                 let parent_tagged_idx = to_memberref_parent(parent_idx, MemberRefParent::TypeRef);
-                let memberref = IrMemberRef {
+                let memberref = MemberRef {
                     parent: parent_tagged_idx,
                     name,
                     sig,
@@ -431,7 +430,7 @@ impl Builder {
             }
             idx
         } else {
-            self.file.implmap_tbl.push(IrImplMap {
+            self.file.implmap_tbl.push(ImplMap {
                 member: to_implmap_member(forwarded, MemberForwarded::MethodDef),
                 name,
                 scope,

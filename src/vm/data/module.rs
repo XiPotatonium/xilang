@@ -1,13 +1,13 @@
 use super::super::native::VMDll;
-use super::{VMField, VMMethod, VMType};
+use super::{Field, Method, Type};
 
-pub enum VMMemberRef {
-    Field(*const VMField),
-    Method(*const VMMethod),
+pub enum MemberRef {
+    Field(*const Field),
+    Method(*const Method),
 }
 
-impl VMMemberRef {
-    pub fn expect_field(&self) -> *const VMField {
+impl MemberRef {
+    pub fn expect_field(&self) -> *const Field {
         if let Self::Field(f) = self {
             *f
         } else {
@@ -15,7 +15,7 @@ impl VMMemberRef {
         }
     }
 
-    pub fn expect_method(&self) -> *const VMMethod {
+    pub fn expect_method(&self) -> *const Method {
         if let Self::Method(m) = self {
             *m
         } else {
@@ -24,42 +24,42 @@ impl VMMemberRef {
     }
 }
 
-pub enum VMModule {
-    IL(VMILModule),
+pub enum Module {
+    IL(ILModule),
     Native(VMDll),
 }
 
-impl VMModule {
-    pub fn expect_il(&self) -> &VMILModule {
+impl Module {
+    pub fn expect_il(&self) -> &ILModule {
         match self {
-            VMModule::IL(module) => module,
-            VMModule::Native(_) => panic!(),
+            Module::IL(module) => module,
+            Module::Native(_) => panic!(),
         }
     }
 
-    pub fn expect_il_mut(&mut self) -> &mut VMILModule {
+    pub fn expect_il_mut(&mut self) -> &mut ILModule {
         match self {
-            VMModule::IL(module) => module,
-            VMModule::Native(_) => panic!(),
+            Module::IL(module) => module,
+            Module::Native(_) => panic!(),
         }
     }
 
     pub fn expect_dll(&self) -> &VMDll {
         match self {
-            VMModule::IL(_) => panic!(),
-            VMModule::Native(dll) => dll,
+            Module::IL(_) => panic!(),
+            Module::Native(dll) => dll,
         }
     }
 }
 
-pub struct VMILModule {
-    pub modref: Vec<*const VMModule>,
+pub struct ILModule {
+    pub modref: Vec<*const Module>,
 
     /// name -> class idx
-    pub classes: Vec<Box<VMType>>,
-    pub classref: Vec<*const VMType>,
+    pub classes: Vec<Box<Type>>,
+    pub classref: Vec<*const Type>,
 
-    pub methods: Vec<Box<VMMethod>>,
-    pub fields: Vec<Box<VMField>>,
-    pub memberref: Vec<VMMemberRef>,
+    pub methods: Vec<Box<Method>>,
+    pub fields: Vec<Box<Field>>,
+    pub memberref: Vec<MemberRef>,
 }

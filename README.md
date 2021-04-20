@@ -38,8 +38,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Local var. 
   * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
-* stdlib
-  * stdlib的编译是adhoc的，包括，不import标准库，以及object等特殊类的特殊处理，这些东西可以硬编码在lang的代码里
 
 ### 1.2 RoadMap
 

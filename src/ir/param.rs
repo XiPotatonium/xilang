@@ -5,7 +5,7 @@ use super::text_serde::IrFmt;
 
 use std::fmt;
 
-pub struct IrParam {
+pub struct Param {
     /// Param attributes
     pub flag: u16,
     /// 0 means return type, others means normal parameters
@@ -14,7 +14,7 @@ pub struct IrParam {
     pub name: u32,
 }
 
-impl ISerializable for IrParam {
+impl ISerializable for Param {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.flag.serialize(buf);
         self.sequence.serialize(buf);
@@ -26,7 +26,7 @@ impl ISerializable for IrParam {
         let sequence = u16::deserialize(buf);
         let name = u32::deserialize(buf);
 
-        IrParam {
+        Param {
             flag,
             sequence,
             name,
@@ -34,7 +34,7 @@ impl ISerializable for IrParam {
     }
 }
 
-impl IrFmt for IrParam {
+impl IrFmt for Param {
     fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
         let name = ctx.get_str(self.name);
         let flag = ParamAttrib::from(self.flag);

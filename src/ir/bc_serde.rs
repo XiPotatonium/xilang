@@ -4,11 +4,11 @@ use std::mem::transmute;
 use super::blob::IrSig;
 use super::code::CorILMethod;
 use super::file::{IrFile, MAJOR_VERSION, MINOR_VERSION};
-use super::member::{IrField, IrImplMap, IrMemberRef, IrMethodDef};
-use super::module::{IrMod, IrModRef};
-use super::param::IrParam;
+use super::member::{Field, ImplMap, MemberRef, MethodDef};
+use super::module::{Mod, ModRef};
+use super::param::Param;
 use super::stand_alone_sig::IrStandAloneSig;
-use super::ty::{IrTypeDef, IrTypeRef};
+use super::ty::{TypeDef, TypeRef};
 
 pub trait IDeserializer {
     fn take_byte(&mut self) -> u8;
@@ -266,15 +266,15 @@ macro_rules! impl_vec_serde {
 
 impl_vec_serde!(String);
 impl_vec_serde!(u32);
-impl_vec_serde!(IrMod);
-impl_vec_serde!(IrModRef);
-impl_vec_serde!(IrTypeDef);
-impl_vec_serde!(IrTypeRef);
-impl_vec_serde!(IrField);
-impl_vec_serde!(IrMethodDef);
-impl_vec_serde!(IrMemberRef);
-impl_vec_serde!(IrImplMap);
-impl_vec_serde!(IrParam);
+impl_vec_serde!(Mod);
+impl_vec_serde!(ModRef);
+impl_vec_serde!(TypeDef);
+impl_vec_serde!(TypeRef);
+impl_vec_serde!(Field);
+impl_vec_serde!(MethodDef);
+impl_vec_serde!(MemberRef);
+impl_vec_serde!(ImplMap);
+impl_vec_serde!(Param);
 impl_vec_serde!(IrStandAloneSig);
 impl_vec_serde!(CorILMethod);
 impl_vec_serde!(IrSig);

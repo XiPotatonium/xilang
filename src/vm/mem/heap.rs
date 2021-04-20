@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use super::super::data::VMType;
+use super::super::data::Type;
 
 pub struct Heap {
     next_obj_offset: usize,
@@ -18,7 +18,7 @@ impl Heap {
     /// New obj
     ///
     /// [header: usize] [vtbl: *VTbl] [content...]
-    pub unsafe fn new_obj(&mut self, class: *const VMType) -> usize {
+    pub unsafe fn new_obj(&mut self, class: *const Type) -> usize {
         let class = class.as_ref().unwrap();
 
         if class.obj_size + size_of::<usize>() * 2 + self.next_obj_offset >= self.data.len() {

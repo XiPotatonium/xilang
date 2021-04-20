@@ -2,7 +2,7 @@ use super::bc_serde::{IDeserializer, ISerializable};
 use super::file::IrFile;
 use super::text_serde::IrFmt;
 
-pub struct IrTypeDef {
+pub struct TypeDef {
     /// index into str heap
     pub name: u32,
     /// IrTypeFlag
@@ -14,21 +14,21 @@ pub struct IrTypeDef {
     pub methods: u32,
 }
 
-impl IrFmt for IrTypeDef {
+impl IrFmt for TypeDef {
     fn fmt(&self, f: &mut std::fmt::Formatter, ctx: &IrFile) -> std::fmt::Result {
         write!(f, "{}/{}", ctx.mod_name(), ctx.get_str(self.name))
     }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct IrTypeRef {
+pub struct TypeRef {
     /// index into ResolutionScope tbl
     pub parent: u32,
     /// index into str heap
     pub name: u32,
 }
 
-impl IrTypeRef {
+impl TypeRef {
     pub fn get_parent(&self) -> (ResolutionScope, u32) {
         let raw_idx = self.parent >> RESOLUTION_SCOPE_TAG_SIZE;
         if raw_idx == 0 {
@@ -47,7 +47,7 @@ impl IrTypeRef {
     }
 }
 
-impl IrFmt for IrTypeRef {
+impl IrFmt for TypeRef {
     fn fmt(&self, f: &mut std::fmt::Formatter, ctx: &IrFile) -> std::fmt::Result {
         let (parent_tag, parent_idx) = self.get_parent();
         write!(
@@ -79,7 +79,7 @@ pub fn get_typeref_parent(raw_idx: u32, tag: ResolutionScope) -> u32 {
     (raw_idx << RESOLUTION_SCOPE_TAG_SIZE) | (tag as u32)
 }
 
-impl ISerializable for IrTypeDef {
+impl ISerializable for TypeDef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.flag.serialize(buf);
@@ -88,12 +88,12 @@ impl ISerializable for IrTypeDef {
         self.methods.serialize(buf);
     }
 
-    fn deserialize(buf: &mut dyn IDeserializer) -> IrTypeDef {
+    fn deserialize(buf: &mut dyn IDeserializer) -> TypeDef {
         let name = u32::deserialize(buf);
         let flag = u32::deserialize(buf);
         let fields = u32::deserialize(buf);
         let methods = u32::deserialize(buf);
-        IrTypeDef {
+        TypeDef {
             name,
             flag,
             fields,
@@ -102,7 +102,7 @@ impl ISerializable for IrTypeDef {
     }
 }
 
-impl ISerializable for IrTypeRef {
+impl ISerializable for TypeRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.parent.serialize(buf);
         self.name.serialize(buf);
@@ -112,6 +112,6 @@ impl ISerializable for IrTypeRef {
         let parent = u32::deserialize(buf);
         let name = u32::deserialize(buf);
 
-        IrTypeRef { parent, name }
+        TypeRef { parent, name }
     }
 }

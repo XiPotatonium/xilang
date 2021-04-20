@@ -1,4 +1,4 @@
-use super::data::{VMBuiltinType, VMMethod, VMMethodILImpl, VMMethodImpl, VMMethodNativeImpl};
+use super::data::{BuiltinType, Method, MethodILImpl, MethodImpl, MethodNativeImpl};
 use super::mem::{addr_addu, to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
 
 use xir::attrib::MethodAttribFlag;
@@ -8,8 +8,8 @@ use std::mem::transmute;
 
 struct MethodState<'m> {
     ip: usize,
-    method: &'m VMMethod,
-    method_impl: &'m VMMethodILImpl,
+    method: &'m Method,
+    method_impl: &'m MethodILImpl,
     stack: Stack,
     locals: Vec<Slot>,
     args: Vec<Slot>,
@@ -128,7 +128,7 @@ macro_rules! exec_cmp_op {
 }
 
 impl<'m> TExecutor<'m> {
-    pub unsafe fn new(entry: *const VMMethod) -> TExecutor<'m> {
+    pub unsafe fn new(entry: *const Method) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
         let entry_ref = entry.as_ref().unwrap();
@@ -136,7 +136,7 @@ impl<'m> TExecutor<'m> {
         ret
     }
 
-    unsafe fn call(&mut self, args: Vec<Slot>, method: &'m VMMethod, il_impl: &'m VMMethodILImpl) {
+    unsafe fn call(&mut self, args: Vec<Slot>, method: &'m Method, il_impl: &'m MethodILImpl) {
         // Currently there is no verification of the arg type
         // TODO: Generate locals with type info set
         self.states.push(MethodState {
@@ -322,10 +322,10 @@ impl<'m> TExecutor<'m> {
 
                     let args = self.states.last_mut().unwrap().stack.pop_n(callee.ps.len());
                     match &callee.method_impl {
-                        VMMethodImpl::IL(il_impl) => {
+                        MethodImpl::IL(il_impl) => {
                             self.call(args, callee, il_impl);
                         }
-                        VMMethodImpl::Native(VMMethodNativeImpl { scope, .. }) => {
+                        MethodImpl::Native(MethodNativeImpl { scope, .. }) => {
                             // currently there is no multi-slot user defined type
                             let mut ret: Vec<Slot> = Vec::new();
                             let callee_ctx = callee.ctx.as_ref().unwrap().expect_il();
@@ -342,28 +342,28 @@ impl<'m> TExecutor<'m> {
                 0x2A => {
                     let cur_state = self.states.last_mut().unwrap();
                     match cur_state.method.ret.ty {
-                        VMBuiltinType::Void => {
+                        BuiltinType::Void => {
                             self.states.pop();
                             if self.states.is_empty() {
                                 return 0;
                             }
                         }
-                        VMBuiltinType::Bool
-                        | VMBuiltinType::Char
-                        | VMBuiltinType::U1
-                        | VMBuiltinType::I1
-                        | VMBuiltinType::U2
-                        | VMBuiltinType::I2
-                        | VMBuiltinType::U4
-                        | VMBuiltinType::I4
-                        | VMBuiltinType::U8
-                        | VMBuiltinType::I8
-                        | VMBuiltinType::UNative
-                        | VMBuiltinType::INative
-                        | VMBuiltinType::R4
-                        | VMBuiltinType::R8
-                        | VMBuiltinType::ByRef(_)
-                        | VMBuiltinType::Array(_) => {
+                        BuiltinType::Bool
+                        | BuiltinType::Char
+                        | BuiltinType::U1
+                        | BuiltinType::I1
+                        | BuiltinType::U2
+                        | BuiltinType::I2
+                        | BuiltinType::U4
+                        | BuiltinType::I4
+                        | BuiltinType::U8
+                        | BuiltinType::I8
+                        | BuiltinType::UNative
+                        | BuiltinType::INative
+                        | BuiltinType::R4
+                        | BuiltinType::R8
+                        | BuiltinType::ByRef(_)
+                        | BuiltinType::Array(_) => {
                             let ret_v = cur_state.stack.pop();
                             self.states.pop();
                             if self.states.is_empty() {
@@ -371,8 +371,8 @@ impl<'m> TExecutor<'m> {
                             }
                             self.states.last_mut().unwrap().stack.push(ret_v);
                         }
-                        VMBuiltinType::Class(_) => unreachable!(),
-                        VMBuiltinType::Unk => unreachable!(),
+                        BuiltinType::Class(_) => unreachable!(),
+                        BuiltinType::Unk => unreachable!(),
                     }
                 }
                 // br
@@ -592,27 +592,27 @@ impl<'m> TExecutor<'m> {
                     let field_addr = addr_addu(f.addr, offset);
 
                     match f.ty {
-                        VMBuiltinType::Void | VMBuiltinType::Unk | VMBuiltinType::Class(_) => {
+                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
                             unreachable!()
                         }
-                        VMBuiltinType::Bool => unimplemented!(),
-                        VMBuiltinType::Char => unimplemented!(),
-                        VMBuiltinType::U1 => unimplemented!(),
-                        VMBuiltinType::I1 => unimplemented!(),
-                        VMBuiltinType::U2 => unimplemented!(),
-                        VMBuiltinType::I2 => unimplemented!(),
-                        VMBuiltinType::U4 => unimplemented!(),
-                        VMBuiltinType::I4 => {
+                        BuiltinType::Bool => unimplemented!(),
+                        BuiltinType::Char => unimplemented!(),
+                        BuiltinType::U1 => unimplemented!(),
+                        BuiltinType::I1 => unimplemented!(),
+                        BuiltinType::U2 => unimplemented!(),
+                        BuiltinType::I2 => unimplemented!(),
+                        BuiltinType::U4 => unimplemented!(),
+                        BuiltinType::I4 => {
                             cur_state.stack.push_i32(*mem.heap.access(field_addr));
                         }
-                        VMBuiltinType::U8 => unimplemented!(),
-                        VMBuiltinType::I8 => unimplemented!(),
-                        VMBuiltinType::UNative => unimplemented!(),
-                        VMBuiltinType::INative => unimplemented!(),
-                        VMBuiltinType::R4 => unimplemented!(),
-                        VMBuiltinType::R8 => unimplemented!(),
-                        VMBuiltinType::ByRef(_) => unimplemented!(),
-                        VMBuiltinType::Array(_) => unimplemented!(),
+                        BuiltinType::U8 => unimplemented!(),
+                        BuiltinType::I8 => unimplemented!(),
+                        BuiltinType::UNative => unimplemented!(),
+                        BuiltinType::INative => unimplemented!(),
+                        BuiltinType::R4 => unimplemented!(),
+                        BuiltinType::R8 => unimplemented!(),
+                        BuiltinType::ByRef(_) => unimplemented!(),
+                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // stfld
@@ -644,27 +644,27 @@ impl<'m> TExecutor<'m> {
                     let field_addr = addr_addu(f.addr, offset);
 
                     match f.ty {
-                        VMBuiltinType::Void | VMBuiltinType::Unk | VMBuiltinType::Class(_) => {
+                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
                             unreachable!()
                         }
-                        VMBuiltinType::Bool => unimplemented!(),
-                        VMBuiltinType::Char => unimplemented!(),
-                        VMBuiltinType::U1 => unimplemented!(),
-                        VMBuiltinType::I1 => unimplemented!(),
-                        VMBuiltinType::U2 => unimplemented!(),
-                        VMBuiltinType::I2 => unimplemented!(),
-                        VMBuiltinType::U4 => unimplemented!(),
-                        VMBuiltinType::I4 => {
+                        BuiltinType::Bool => unimplemented!(),
+                        BuiltinType::Char => unimplemented!(),
+                        BuiltinType::U1 => unimplemented!(),
+                        BuiltinType::I1 => unimplemented!(),
+                        BuiltinType::U2 => unimplemented!(),
+                        BuiltinType::I2 => unimplemented!(),
+                        BuiltinType::U4 => unimplemented!(),
+                        BuiltinType::I4 => {
                             *mem.heap.access_mut(field_addr) = v.data.i32_;
                         }
-                        VMBuiltinType::U8 => unimplemented!(),
-                        VMBuiltinType::I8 => unimplemented!(),
-                        VMBuiltinType::UNative => unimplemented!(),
-                        VMBuiltinType::INative => unimplemented!(),
-                        VMBuiltinType::R4 => unimplemented!(),
-                        VMBuiltinType::R8 => unimplemented!(),
-                        VMBuiltinType::ByRef(_) => unimplemented!(),
-                        VMBuiltinType::Array(_) => unimplemented!(),
+                        BuiltinType::U8 => unimplemented!(),
+                        BuiltinType::I8 => unimplemented!(),
+                        BuiltinType::UNative => unimplemented!(),
+                        BuiltinType::INative => unimplemented!(),
+                        BuiltinType::R4 => unimplemented!(),
+                        BuiltinType::R8 => unimplemented!(),
+                        BuiltinType::ByRef(_) => unimplemented!(),
+                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // ldsfld
@@ -694,27 +694,27 @@ impl<'m> TExecutor<'m> {
                     }
 
                     match f.ty {
-                        VMBuiltinType::Void | VMBuiltinType::Unk | VMBuiltinType::Class(_) => {
+                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
                             unreachable!()
                         }
-                        VMBuiltinType::Bool => unimplemented!(),
-                        VMBuiltinType::Char => unimplemented!(),
-                        VMBuiltinType::U1 => unimplemented!(),
-                        VMBuiltinType::I1 => unimplemented!(),
-                        VMBuiltinType::U2 => unimplemented!(),
-                        VMBuiltinType::I2 => unimplemented!(),
-                        VMBuiltinType::U4 => unimplemented!(),
-                        VMBuiltinType::I4 => {
+                        BuiltinType::Bool => unimplemented!(),
+                        BuiltinType::Char => unimplemented!(),
+                        BuiltinType::U1 => unimplemented!(),
+                        BuiltinType::I1 => unimplemented!(),
+                        BuiltinType::U2 => unimplemented!(),
+                        BuiltinType::I2 => unimplemented!(),
+                        BuiltinType::U4 => unimplemented!(),
+                        BuiltinType::I4 => {
                             cur_state.stack.push_i32(*mem.heap.access(offset));
                         }
-                        VMBuiltinType::U8 => unimplemented!(),
-                        VMBuiltinType::I8 => unimplemented!(),
-                        VMBuiltinType::UNative => unimplemented!(),
-                        VMBuiltinType::INative => unimplemented!(),
-                        VMBuiltinType::R4 => unimplemented!(),
-                        VMBuiltinType::R8 => unimplemented!(),
-                        VMBuiltinType::ByRef(_) => unimplemented!(),
-                        VMBuiltinType::Array(_) => unimplemented!(),
+                        BuiltinType::U8 => unimplemented!(),
+                        BuiltinType::I8 => unimplemented!(),
+                        BuiltinType::UNative => unimplemented!(),
+                        BuiltinType::INative => unimplemented!(),
+                        BuiltinType::R4 => unimplemented!(),
+                        BuiltinType::R8 => unimplemented!(),
+                        BuiltinType::ByRef(_) => unimplemented!(),
+                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // stsfld
@@ -745,27 +745,27 @@ impl<'m> TExecutor<'m> {
                     }
 
                     match f.ty {
-                        VMBuiltinType::Void | VMBuiltinType::Unk | VMBuiltinType::Class(_) => {
+                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
                             unreachable!()
                         }
-                        VMBuiltinType::Bool => unimplemented!(),
-                        VMBuiltinType::Char => unimplemented!(),
-                        VMBuiltinType::U1 => unimplemented!(),
-                        VMBuiltinType::I1 => unimplemented!(),
-                        VMBuiltinType::U2 => unimplemented!(),
-                        VMBuiltinType::I2 => unimplemented!(),
-                        VMBuiltinType::U4 => unimplemented!(),
-                        VMBuiltinType::I4 => {
+                        BuiltinType::Bool => unimplemented!(),
+                        BuiltinType::Char => unimplemented!(),
+                        BuiltinType::U1 => unimplemented!(),
+                        BuiltinType::I1 => unimplemented!(),
+                        BuiltinType::U2 => unimplemented!(),
+                        BuiltinType::I2 => unimplemented!(),
+                        BuiltinType::U4 => unimplemented!(),
+                        BuiltinType::I4 => {
                             *mem.heap.access_mut(offset) = v.data.i32_;
                         }
-                        VMBuiltinType::U8 => unimplemented!(),
-                        VMBuiltinType::I8 => unimplemented!(),
-                        VMBuiltinType::UNative => unimplemented!(),
-                        VMBuiltinType::INative => unimplemented!(),
-                        VMBuiltinType::R4 => unimplemented!(),
-                        VMBuiltinType::R8 => unimplemented!(),
-                        VMBuiltinType::ByRef(_) => unimplemented!(),
-                        VMBuiltinType::Array(_) => unimplemented!(),
+                        BuiltinType::U8 => unimplemented!(),
+                        BuiltinType::I8 => unimplemented!(),
+                        BuiltinType::UNative => unimplemented!(),
+                        BuiltinType::INative => unimplemented!(),
+                        BuiltinType::R4 => unimplemented!(),
+                        BuiltinType::R8 => unimplemented!(),
+                        BuiltinType::ByRef(_) => unimplemented!(),
+                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
 

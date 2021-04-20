@@ -4,7 +4,7 @@ use super::text_serde::IrFmt;
 
 use std::fmt;
 
-pub struct IrMod {
+pub struct Mod {
     /// index into str heap
     pub name: u32,
 
@@ -12,24 +12,24 @@ pub struct IrMod {
     pub entrypoint: u32,
 }
 
-impl IrFmt for IrMod {
+impl IrFmt for Mod {
     fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
         write!(f, "{}", ctx.get_str(self.name))
     }
 }
 
-pub struct IrModRef {
+pub struct ModRef {
     /// index into str heap
     pub name: u32,
 }
 
-impl IrFmt for IrModRef {
+impl IrFmt for ModRef {
     fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
         write!(f, "{}", ctx.get_str(self.name))
     }
 }
 
-impl ISerializable for IrMod {
+impl ISerializable for Mod {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
         self.entrypoint.serialize(buf)
@@ -38,17 +38,17 @@ impl ISerializable for IrMod {
     fn deserialize(buf: &mut dyn IDeserializer) -> Self {
         let name = u32::deserialize(buf);
         let entrypoint = u32::deserialize(buf);
-        IrMod { name, entrypoint }
+        Mod { name, entrypoint }
     }
 }
 
-impl ISerializable for IrModRef {
+impl ISerializable for ModRef {
     fn serialize(&self, buf: &mut Vec<u8>) {
         self.name.serialize(buf);
     }
 
     fn deserialize(buf: &mut dyn IDeserializer) -> Self {
         let name = u32::deserialize(buf);
-        IrModRef { name }
+        ModRef { name }
     }
 }
