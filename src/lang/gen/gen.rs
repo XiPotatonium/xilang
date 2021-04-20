@@ -1,5 +1,5 @@
 use super::super::ast::AST;
-use super::super::mod_mgr::FieldRef;
+use super::super::mod_mgr::{FieldRef, MethodRef, Param};
 use super::interpreter::constant_folding;
 use super::lval::{gen_lval, gen_path_lval};
 use super::op::BinOp;
@@ -490,14 +490,14 @@ fn gen_let(
     RValType::Void
 }
 
-fn build_args(ctx: &CodeGenCtx, ps: &Vec<RValType>, args: &Vec<Box<AST>>) {
+fn build_args(ctx: &CodeGenCtx, ps: &Vec<Param>, args: &Vec<Box<AST>>) {
     let args_ty: Vec<RValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
 
-    for (i, (p_ty, arg_ty)) in ps.iter().zip(args_ty.iter()).enumerate() {
-        if p_ty != arg_ty {
+    for (i, (p, arg_ty)) in ps.iter().zip(args_ty.iter()).enumerate() {
+        if &p.ty != arg_ty {
             panic!(
                 "Call parameter type mismatch, expect {} but found {} at {}",
-                p_ty, arg_ty, i
+                p.ty, arg_ty, i
             );
         }
     }
@@ -513,28 +513,34 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
             let mod_ref = ctx.mgr.mod_tbl.get(mod_name).unwrap();
             let class_ref = mod_ref.get_class(class).unwrap();
             let m = class_ref.get_method(name).unwrap();
-            let (m_flag, m_ps_ty, m_ret_ty) = m.get_info();
+            let (flag, ps, ret_ty) = match m {
+                MethodRef::Method(m) => (&m.flag, &m.ps, &m.ret),
+                MethodRef::ExtMethod(m) => (&m.flag, &m.ps, &m.ret),
+            };
 
             // Add to class file
             let sig = ctx.module.builder.borrow_mut().add_method_sig(
-                !m_flag.is(MethodAttribFlag::Static),
-                m_ps_ty,
-                m_ret_ty,
+                !flag.is(MethodAttribFlag::Static),
+                ps,
+                ret_ty,
             );
             let (m_idx, tok_tag) = ctx
                 .module
                 .builder
                 .borrow_mut()
                 .add_const_member(mod_name, class, name, sig);
-            let inst = if m_flag.is(MethodAttribFlag::Static) {
-                Inst::Call(to_tok(m_idx, tok_tag))
-            } else {
-                let tok = to_tok(m_idx, tok_tag);
-                Inst::CallVirt(tok)
-            };
 
-            build_args(ctx, m_ps_ty, args);
-            (inst, m_ret_ty.clone())
+            build_args(ctx, ps, args);
+
+            (
+                if flag.is(MethodAttribFlag::Static) {
+                    Inst::Call(to_tok(m_idx, tok_tag))
+                } else {
+                    let tok = to_tok(m_idx, tok_tag);
+                    Inst::CallVirt(tok)
+                },
+                ret_ty.clone(),
+            )
         }
         ValType::Module(_) => panic!(),
         ValType::Class(_, _) => panic!(),
@@ -576,7 +582,7 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                 }
             }
 
-            let mut ctor_ps: Vec<RValType> = Vec::new();
+            let mut ctor_ps: Vec<Param> = Vec::new();
             for (i, idx) in correct_idx.iter().enumerate() {
                 if *idx < 0 {
                     panic!(
@@ -603,7 +609,11 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
                                 v_ty, class_name, field_name, field_ty
                             );
                         }
-                        ctor_ps.push(field_ty);
+                        ctor_ps.push(Param {
+                            id: field_name.clone(),
+                            attrib: ParamAttrib::default(),
+                            ty: field_ty,
+                        });
                     } else {
                         unreachable!();
                     }
@@ -629,25 +639,37 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     let v_ty = gen(ctx, rhs).expect_rval();
 
     match lval {
-        ValType::Local(name) => {
+        ValType::Local(idx) => {
             let locals = ctx.locals.borrow();
-            let local = locals.get(&name).unwrap();
+            let local = &locals.locals[idx];
             let local_ty = local.ty.clone();
 
             if local_ty != v_ty {
-                panic!("Cannot assign {} to local var {}: {}", v_ty, name, local_ty);
+                panic!("Cannot assign {} to local {}: {}", v_ty, local.id, local_ty);
             }
 
             ctx.method_builder.borrow_mut().add_inst_stloc(local.idx);
         }
-        ValType::Arg(name) => {
-            let arg = ctx.args_map.get(&name).unwrap();
+        ValType::KwLSelf => {
+            // lval guarentee that we are in instance method
+            ctx.method_builder.borrow_mut().add_inst_starg(0);
+        }
+        ValType::Arg(idx) => {
+            let arg = &ctx.method.ps[idx];
 
             if arg.ty != v_ty {
-                panic!("Cannot assign {} to arg {}: {}", v_ty, name, arg.ty);
+                panic!("Cannot assign {} to arg {}: {}", v_ty, arg.id, arg.ty);
             }
 
-            ctx.method_builder.borrow_mut().add_inst_starg(arg.offset);
+            ctx.method_builder.borrow_mut().add_inst_starg(if ctx
+                .method
+                .flag
+                .is(MethodAttribFlag::Static)
+            {
+                idx
+            } else {
+                idx + 1
+            } as u16);
         }
         ValType::Field(mod_name, class_name, name) => {
             // TODO private and public
@@ -768,13 +790,29 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {
     // try search locals
     {
         let locals = ctx.locals.borrow();
-        if let Some(local_var) = locals.get(id) {
+        let is_instance_method = !ctx.method.flag.is(MethodAttribFlag::Static);
+        if id == "self" {
+            if is_instance_method {
+                // first argument
+                ctx.method_builder.borrow_mut().add_inst_ldarg(0);
+                return RValType::Obj(ctx.module.fullname().to_owned(), ctx.class.name.clone());
+            } else {
+                panic!("Invalid self keyword in static method");
+            }
+        } else if let Some(local_var) = locals.get(id) {
             ctx.method_builder
                 .borrow_mut()
                 .add_inst_ldloc(local_var.idx);
             return local_var.ty.clone();
-        } else if let Some(arg) = ctx.args_map.get(id) {
-            ctx.method_builder.borrow_mut().add_inst_ldarg(arg.offset);
+        } else if let Some(arg_idx) = ctx.method.ps_map.get(id) {
+            let arg = &ctx.method.ps[*arg_idx];
+            ctx.method_builder
+                .borrow_mut()
+                .add_inst_ldarg(if is_instance_method {
+                    *arg_idx + 1
+                } else {
+                    *arg_idx
+                } as u16);
             return arg.ty.clone();
         }
     }

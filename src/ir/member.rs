@@ -83,17 +83,20 @@ impl IrFmt for IrField {
 }
 
 pub struct IrMethodDef {
+    /// index into code tbl, similar to RVA
+    pub body: u32,
+
+    /// IrMethodImplAttrib
+    pub impl_flag: u16,
+    /// IrMethodAttrib
+    pub flag: u16,
+
     /// index into str heap
     pub name: u32,
     /// index into blob heap
     pub sig: u32,
-    /// index into code tbl, similar to RVA
-    pub body: u32,
-
-    /// IrMethodAttrib
-    pub flag: u16,
-    /// IrMethodImplAttrib
-    pub impl_flag: u16,
+    /// index into param table
+    pub param_list: u32,
 }
 
 impl IrFmt for IrMethodDef {
@@ -165,28 +168,34 @@ impl ISerializable for IrField {
 
 impl ISerializable for IrMethodDef {
     fn serialize(&self, buf: &mut Vec<u8>) {
-        self.name.serialize(buf);
-        self.sig.serialize(buf);
         self.body.serialize(buf);
 
-        self.flag.serialize(buf);
         self.impl_flag.serialize(buf);
+        self.flag.serialize(buf);
+
+        self.name.serialize(buf);
+        self.sig.serialize(buf);
+        self.param_list.serialize(buf);
     }
 
     fn deserialize(buf: &mut dyn IDeserializer) -> IrMethodDef {
-        let name = u32::deserialize(buf);
-        let signature = u32::deserialize(buf);
         let body = u32::deserialize(buf);
 
-        let flag = u16::deserialize(buf);
         let impl_flag = u16::deserialize(buf);
+        let flag = u16::deserialize(buf);
+
+        let name = u32::deserialize(buf);
+        let sig = u32::deserialize(buf);
+
+        let param_list = u32::deserialize(buf);
 
         IrMethodDef {
             name,
             body,
-            sig: signature,
+            sig,
             flag,
             impl_flag,
+            param_list,
         }
     }
 }

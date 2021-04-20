@@ -1,19 +1,16 @@
 mod class;
 mod external;
-mod field;
-mod method;
+mod member;
 mod module;
 mod var;
 
 pub use self::class::Class;
-pub use self::field::Field;
-pub use self::method::Method;
+pub use self::member::{Field, Method, Param};
 pub use self::module::Module;
-pub use self::var::{Arg, Locals, Var};
+pub use self::var::{Locals, Var};
 use external::{ExtClass, ExtField, ExtMethod, ExtModule};
 
 use super::super::XicCfg;
-use super::gen::RValType;
 
 use xir::attrib::*;
 use xir::util::path::ModPath;
@@ -146,13 +143,6 @@ pub enum MethodRef<'m> {
 }
 
 impl<'m> MethodRef<'m> {
-    pub fn get_info(&self) -> (&MethodAttrib, &Vec<RValType>, &RValType) {
-        match self {
-            MethodRef::Method(m) => (&m.flag, &m.ps_ty, &m.ret_ty),
-            MethodRef::ExtMethod(m) => (&m.flag, &m.ps_ty, &m.ret_ty),
-        }
-    }
-
     pub fn flag(&self) -> MethodAttrib {
         match self {
             MethodRef::Method(m) => m.flag.clone(),

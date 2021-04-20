@@ -1,12 +1,17 @@
+use super::attrib::{ParamAttrib, ParamAttribFlag};
 use super::bc_serde::{IDeserializer, ISerializable};
+use super::file::IrFile;
+use super::text_serde::IrFmt;
+
+use std::fmt;
 
 pub struct IrParam {
     /// Param attributes
-    flag: u16,
+    pub flag: u16,
     /// 0 means return type, others means normal parameters
-    sequence: u16,
+    pub sequence: u16,
     /// index into str heap
-    name: u32,
+    pub name: u32,
 }
 
 impl ISerializable for IrParam {
@@ -26,5 +31,23 @@ impl ISerializable for IrParam {
             sequence,
             name,
         }
+    }
+}
+
+impl IrFmt for IrParam {
+    fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
+        let name = ctx.get_str(self.name);
+        let flag = ParamAttrib::from(self.flag);
+
+        if name.len() != 0 {
+            write!(f, "{}: ", name)?;
+        }
+
+        if !flag.is(ParamAttribFlag::Default) {
+            // default flag will not display
+            write!(f, "{}", flag)?;
+        }
+
+        Ok(())
     }
 }

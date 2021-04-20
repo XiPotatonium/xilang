@@ -10,7 +10,7 @@ use xir::file::*;
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
-use super::ModRef;
+use super::{ModRef, Param};
 
 pub struct ExtModule {
     pub mod_path: ModPath,
@@ -45,9 +45,8 @@ pub struct ExtClass {
 pub struct ExtMethod {
     // hasthis and explicit this
     pub sig_flag: MethodSigFlag,
-    pub ret_ty: RValType,
-    /// self is not included
-    pub ps_ty: Vec<RValType>,
+    pub ret: RValType,
+    pub ps: Vec<Param>,
     pub flag: MethodAttrib,
     pub impl_flag: MethodImplAttrib,
 }
@@ -104,19 +103,38 @@ pub fn load_external_crate(
 
         while method_i < method_lim {
             let method_entry = &file.method_tbl[method_i];
+            let param = if method_i == file.method_tbl.len() - 1 {
+                // last method
+                &file.param_tbl[(method_entry.param_list as usize - 1)..]
+            } else {
+                &file.param_tbl[(method_entry.param_list as usize - 1)
+                    ..(file.method_tbl[method_i + 1].param_list as usize - 1)]
+            };
 
             let flag = MethodAttrib::from(method_entry.flag);
             let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
 
             if let IrSig::Method(sig_flag, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
-                let ps_ty = ps
+                let mut ps: Vec<Param> = ps
                     .iter()
-                    .map(|t| RValType::from_ir_ele_ty(t, &file))
+                    .map(|t| Param {
+                        id: String::from(""),
+                        attrib: ParamAttrib::default(),
+                        ty: RValType::from_ir_ele_ty(t, &file),
+                    })
                     .collect();
+                for p in param.iter() {
+                    if p.sequence == 0 {
+                        // xilang has no interests about return type
+                        continue;
+                    }
+                    ps[(p.sequence - 1) as usize].id = file.get_str(p.name).to_owned();
+                    ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
+                }
 
                 let method = Box::new(ExtMethod {
-                    ps_ty,
-                    ret_ty: RValType::from_ir_ele_ty(ret, &file),
+                    ps,
+                    ret: RValType::from_ir_ele_ty(ret, &file),
                     flag,
                     sig_flag: sig_flag.clone(),
                     impl_flag,

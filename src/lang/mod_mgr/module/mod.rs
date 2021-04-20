@@ -18,32 +18,28 @@ use super::super::parser;
 use super::super::XicCfg;
 use super::ModRef;
 use super::{super::ast::AST, external::load_external_crate};
-use super::{Arg, Class, Field, Locals, Method, ModMgr};
+use super::{Class, Field, Locals, Method, ModMgr, Param};
 
 // use macro to avoid borrow mutable self twice, SB rust
 macro_rules! declare_method {
-    ($class: expr, $builder: expr, $id: expr, $flag: expr, $impl_flag: expr, $ret_ty: expr, $ps: expr) => {{
+    ($class: expr, $builder: expr, $id: expr, $flag: expr, $impl_flag: expr, $ret: expr, $ps: expr, $ps_map: expr) => {{
         let idx = $builder
             .borrow_mut()
-            .add_method($id, &$ps, &$ret_ty, $flag, $impl_flag);
+            .add_method($id, &$ps, &$ret, $flag, $impl_flag);
 
         let method = Box::new(Method {
-            ret_ty: $ret_ty,
-            ps_ty: $ps,
+            ret: $ret,
+            ps: $ps,
+            ps_map: $ps_map,
             flag: $flag.clone(),
             impl_flag: $impl_flag.clone(),
             idx,
         });
         // let sig = format!("{}{}", $id, method.descriptor());
 
-        if let Some(old_method) = $class.methods.insert($id.to_owned(), method) {
+        if let Some(_) = $class.methods.insert($id.to_owned(), method) {
             // TODO: use expect_none once it becomes stable
-            panic!(
-                "Duplicated method {}{} in class {}",
-                $id,
-                old_method.descriptor(),
-                $class.name
-            );
+            panic!("Duplicated method {} in class {}", $id, $class.name);
         }
         idx
     }};
@@ -458,8 +454,9 @@ impl Module {
                     // Add static init
                     match static_init.as_ref() {
                         AST::Block(_) => {
-                            let ret_ty = RValType::Void;
-                            let ps: Vec<RValType> = vec![];
+                            let ret = RValType::Void;
+                            let ps: Vec<Param> = vec![];
+                            let ps_map: HashMap<String, usize> = HashMap::new();
                             let flag = MethodAttrib::from(
                                 u16::from(MethodAttribFlag::Pub)
                                     | u16::from(MethodAttribFlag::Static)
@@ -475,8 +472,9 @@ impl Module {
                                 CCTOR_NAME,
                                 &flag,
                                 &impl_flag,
-                                ret_ty,
-                                ps
+                                ret,
+                                ps,
+                                ps_map
                             );
                         }
                         AST::None => (),
@@ -484,12 +482,21 @@ impl Module {
                     };
 
                     // Add default object creator
+                    // TODO: use C# like default ctor
                     {
-                        let ret_ty = RValType::Void;
-                        let ps: Vec<RValType> = class_mut
+                        let ret = RValType::Void;
+                        let mut ps_map: HashMap<String, usize> = HashMap::new();
+                        let ps: Vec<Param> = class_mut
                             .instance_fields
                             .iter()
-                            .map(|f| class_mut.fields.get(f).unwrap().ty.clone())
+                            .map(|f| {
+                                ps_map.insert(f.to_owned(), ps_map.len());
+                                Param {
+                                    id: f.to_owned(),
+                                    attrib: ParamAttrib::default(),
+                                    ty: class_mut.fields.get(f).unwrap().ty.clone(),
+                                }
+                            })
                             .collect();
                         let flag = MethodAttrib::from(
                             u16::from(MethodAttribFlag::Pub)
@@ -505,24 +512,31 @@ impl Module {
                             CTOR_NAME,
                             &flag,
                             &impl_flag,
-                            ret_ty,
-                            ps
+                            ret,
+                            ps,
+                            ps_map
                         );
                     }
 
                     for method in ast_methods.iter() {
-                        if let AST::Method(id, flag, attrs, ty, ps, _) = method.as_ref() {
-                            let ps = ps
+                        if let AST::Method(id, flag, attrs, ty, ps_ast, _) = method.as_ref() {
+                            let mut ps_map: HashMap<String, usize> = HashMap::new();
+                            let ps = ps_ast
                                 .iter()
                                 .map(|p| {
-                                    if let AST::Param(_, _, ty) = p.as_ref() {
-                                        self.get_ty(ty, mod_mgr, &class_mut)
+                                    if let AST::Param(id, attrib, ty) = p.as_ref() {
+                                        ps_map.insert(id.to_owned(), ps_map.len());
+                                        Param {
+                                            id: id.to_owned(),
+                                            ty: self.get_ty(ty, mod_mgr, &class_mut),
+                                            attrib: attrib.clone(),
+                                        }
                                     } else {
                                         unreachable!();
                                     }
                                 })
                                 .collect();
-                            let ret_ty = self.get_ty(ty, mod_mgr, &class_mut);
+                            let ret = self.get_ty(ty, mod_mgr, &class_mut);
                             let mut impl_flag = MethodImplAttrib::new(
                                 MethodImplAttribCodeTypeFlag::IL,
                                 MethodImplAttribManagedFlag::Managed,
@@ -560,8 +574,9 @@ impl Module {
                                 id,
                                 flag,
                                 &impl_flag,
-                                ret_ty,
-                                ps
+                                ret,
+                                ps,
+                                ps_map
                             );
                             for (attr_id, args) in attrs.iter().map(|attr| {
                                 if let AST::CustomAttr(id, args) = attr.as_ref() {
@@ -596,8 +611,8 @@ impl Module {
 
                     if self.is_root() && class_id == "Program" {
                         if let Some(m) = class_mut.methods.get("main") {
-                            if let RValType::Void = m.ret_ty {
-                                if m.ps_ty.len() == 0
+                            if let RValType::Void = m.ret {
+                                if m.ps.len() == 0
                                     && m.flag.is(MethodAttribFlag::Pub)
                                     && m.flag.is(MethodAttribFlag::Static)
                                 {
@@ -626,30 +641,6 @@ impl Module {
         ps: &Vec<Box<AST>>,
         block: &Box<AST>,
     ) {
-        let mut args_map: HashMap<String, Arg> = HashMap::new();
-        if !m.flag.is(MethodAttribFlag::Static) {
-            // non-static method param "self"
-            args_map.insert(
-                String::from("self"),
-                Arg::new(
-                    ParamAttrib::from(0),
-                    RValType::Obj(self.fullname().to_owned(), class.name.clone()),
-                    args_map.len() as u16,
-                ),
-            );
-        }
-        for (p, ty) in ps.iter().zip(m.ps_ty.iter()) {
-            if let AST::Param(id, flag, _) = p.as_ref() {
-                // args will be initialized by caller
-                args_map.insert(
-                    id.to_owned(),
-                    Arg::new(*flag, ty.clone(), args_map.len() as u16),
-                );
-            } else {
-                unreachable!("Parser error");
-            }
-        }
-
         let ctx = CodeGenCtx {
             mgr: c,
             cfg,
@@ -657,7 +648,6 @@ impl Module {
             class,
             locals: RefCell::new(Locals::new()),
             method: m,
-            args_map,
             method_builder: RefCell::new(MethodBuilder::new()),
             loop_ctx: RefCell::new(vec![]),
         };
@@ -666,15 +656,15 @@ impl Module {
         // Check type equivalent
         match &ret {
             ValType::RVal(rval_ty) => {
-                if rval_ty != &m.ret_ty {
-                    panic!("Expect return {} but return {}", m.ret_ty, rval_ty);
+                if rval_ty != &m.ret {
+                    panic!("Expect return {} but return {}", m.ret, rval_ty);
                 }
                 // Add return instruction
                 ctx.method_builder.borrow_mut().add_inst(Inst::Ret);
             }
             ValType::Ret(ret_ty) => {
-                if ret_ty != &m.ret_ty {
-                    panic!("Expect return {} but return {}", m.ret_ty, ret_ty);
+                if ret_ty != &m.ret {
+                    panic!("Expect return {} but return {}", m.ret, ret_ty);
                 }
             }
             _ => unreachable!(),
@@ -712,14 +702,14 @@ impl Module {
                     {
                         let m = class_ref.methods.get(CTOR_NAME).unwrap();
                         let mut method_builder = MethodBuilder::new();
-                        if m.ps_ty.len() == 0 {
+                        if m.ps.len() == 0 {
                             // no field
                         } else {
                             method_builder.add_inst_ldarg(0);
-                            for _ in (1..m.ps_ty.len()).into_iter() {
+                            for _ in (1..m.ps.len()).into_iter() {
                                 method_builder.add_inst(Inst::Dup);
                             }
-                            for (i, f_id) in (0..m.ps_ty.len())
+                            for (i, f_id) in (0..m.ps.len())
                                 .into_iter()
                                 .zip(class_ref.instance_fields.iter())
                             {

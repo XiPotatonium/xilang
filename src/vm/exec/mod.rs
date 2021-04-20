@@ -320,12 +320,7 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let args = self
-                        .states
-                        .last_mut()
-                        .unwrap()
-                        .stack
-                        .pop_n(callee.ps_ty.len());
+                    let args = self.states.last_mut().unwrap().stack.pop_n(callee.ps.len());
                     match &callee.method_impl {
                         VMMethodImpl::IL(il_impl) => {
                             self.call(args, callee, il_impl);
@@ -346,7 +341,7 @@ impl<'m> TExecutor<'m> {
                 // ret
                 0x2A => {
                     let cur_state = self.states.last_mut().unwrap();
-                    match cur_state.method.ret_ty {
+                    match cur_state.method.ret.ty {
                         VMBuiltinType::Void => {
                             self.states.pop();
                             if self.states.is_empty() {
@@ -534,7 +529,7 @@ impl<'m> TExecutor<'m> {
                     };
                     // TODO: make sure callee is virtual
 
-                    let args = cur_state.stack.pop_n(callee.ps_ty.len() + 1);
+                    let args = cur_state.stack.pop_n(callee.ps.len() + 1);
                     self.call(args, callee, callee.method_impl.expect_il());
                 }
                 // newobj
@@ -564,7 +559,7 @@ impl<'m> TExecutor<'m> {
                     // Alloc space at heap
                     let offset = mem.heap.new_obj(callee.parent_class.unwrap());
                     args.push(Slot::new_ref(MemTag::HeapMem, offset));
-                    args.append(&mut cur_state.stack.pop_n(callee.ps_ty.len()));
+                    args.append(&mut cur_state.stack.pop_n(callee.ps.len()));
                     cur_state.stack.push(Slot::new_ref(MemTag::HeapMem, offset));
 
                     self.call(args, callee, callee.method_impl.expect_il());

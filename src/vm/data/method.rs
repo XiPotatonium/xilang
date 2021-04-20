@@ -1,6 +1,12 @@
-use xir::attrib::{MethodAttrib, MethodImplAttrib, PInvokeAttrib};
+use xir::attrib::{MethodAttrib, MethodImplAttrib, PInvokeAttrib, ParamAttrib};
 
 use super::{VMBuiltinType, VMModule, VMType};
+
+pub struct VMParam {
+    pub name: u32,
+    pub attrib: ParamAttrib,
+    pub ty: VMBuiltinType,
+}
 
 pub struct VMMethod {
     pub ctx: *const VMModule,
@@ -11,8 +17,8 @@ pub struct VMMethod {
     pub flag: MethodAttrib,
     pub impl_flag: MethodImplAttrib,
 
-    pub ps_ty: Vec<VMBuiltinType>,
-    pub ret_ty: VMBuiltinType,
+    pub ps: Vec<VMParam>,
+    pub ret: VMParam,
 
     pub method_impl: VMMethodImpl,
 }

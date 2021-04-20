@@ -13,6 +13,7 @@ pub use self::ir::file;
 pub use self::ir::inst;
 pub use self::ir::member;
 pub use self::ir::module;
+pub use self::ir::param;
 pub use self::ir::stand_alone_sig;
 pub use self::ir::ty;
 

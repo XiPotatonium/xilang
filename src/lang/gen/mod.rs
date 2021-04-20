@@ -16,11 +16,10 @@ use xir::file::IrFile;
 use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::ResolutionScope;
 
-use super::mod_mgr::{Arg, Class, Locals, Method, ModMgr, Module};
+use super::mod_mgr::{Class, Locals, Method, ModMgr, Module};
 use super::{ast::AST, XicCfg};
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 
 pub enum LoopType {
@@ -41,7 +40,6 @@ pub struct CodeGenCtx<'c> {
     pub class: &'c Class,
     pub method: &'c Method,
     pub locals: RefCell<Locals>,
-    pub args_map: HashMap<String, Arg>,
     pub method_builder: RefCell<MethodBuilder>,
     pub loop_ctx: RefCell<Vec<LoopCtx>>,
 }
@@ -80,10 +78,12 @@ pub enum ValType {
     Class(String, String),
     // mod fullname
     Module(String),
-    // local name
-    Local(String),
-    // Param name
-    Arg(String),
+    // index into locals
+    Local(usize),
+    // self
+    KwLSelf,
+    // index into method.ps
+    Arg(usize),
 }
 
 #[derive(Clone, Eq)]
@@ -184,15 +184,6 @@ impl fmt::Display for RValType {
     }
 }
 
-pub fn fn_descriptor(has_self: bool, ret_ty: &RValType, ps: &Vec<RValType>) -> String {
-    format!(
-        "{}({}){}",
-        if has_self { "instance " } else { "" },
-        ps.iter().map(|t| format!("{}", t)).collect::<String>(),
-        ret_ty
-    )
-}
-
 impl fmt::Display for ValType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -203,6 +194,7 @@ impl fmt::Display for ValType {
             Self::Class(m, c) => write!(f, "(Class){}/{}", m, c),
             Self::Module(m) => write!(f, "(Mod){}", m),
             Self::Local(n) => write!(f, "(Local){}", n),
+            ValType::KwLSelf => write!(f, "(Arg)self"),
             Self::Arg(n) => write!(f, "(Arg){}", n),
         }
     }

@@ -1,3 +1,4 @@
+mod fmt;
 mod serde;
 
 #[derive(Clone, Debug, PartialEq)]

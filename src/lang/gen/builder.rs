@@ -8,14 +8,15 @@ use xir::member::{
     MemberForwarded, MemberRefParent,
 };
 use xir::module::{IrMod, IrModRef};
+use xir::param::IrParam;
 use xir::stand_alone_sig::IrStandAloneSig;
 use xir::tok::{to_tok, TokTag};
 use xir::ty::{get_typeref_parent, IrTypeDef, IrTypeRef, ResolutionScope};
 
 use std::collections::HashMap;
 
-use super::super::mod_mgr::Var;
-use super::{fn_descriptor, MethodBuilder, RValType};
+use super::super::mod_mgr::{Param, Var};
+use super::{MethodBuilder, RValType};
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct FieldOrMethod {
@@ -142,21 +143,31 @@ impl Builder {
     pub fn add_method(
         &mut self,
         name: &str,
-        ps: &Vec<RValType>,
-        ret_ty: &RValType,
+        ps: &Vec<Param>,
+        ret: &RValType,
         flag: &MethodAttrib,
         impl_flag: &MethodImplAttrib,
     ) -> u32 {
         let name = self.add_const_str(name);
-        // in xilang non static method is instance method
-        let sig = self.add_method_sig(!flag.is(MethodAttribFlag::Static), ps, ret_ty);
+
+        let sig = self.add_method_sig(!flag.is(MethodAttribFlag::Static), ps, ret);
+
         self.file.method_tbl.push(IrMethodDef {
             name,
             body: 0,
             sig,
             flag: flag.attrib,
             impl_flag: impl_flag.attrib,
+            param_list: self.file.param_tbl.len() as u32 + 1,
         });
+        for (i, p) in ps.iter().enumerate() {
+            let name = self.add_const_str(&p.id);
+            self.file.param_tbl.push(IrParam {
+                flag: p.attrib.attrib,
+                name,
+                sequence: i as u16 + 1,
+            });
+        }
         let ret = self.file.method_tbl.len() as u32;
         let info = FieldOrMethod {
             parent: self.file.typedef_tbl.len() as u32,
@@ -284,17 +295,17 @@ impl Builder {
         }
     }
 
-    pub fn add_method_sig(
-        &mut self,
-        is_instance: bool,
-        ps: &Vec<RValType>,
-        ret_ty: &RValType,
-    ) -> u32 {
-        let desc = fn_descriptor(is_instance, ret_ty, ps);
+    pub fn add_method_sig(&mut self, is_instance: bool, ps: &Vec<Param>, ret_ty: &RValType) -> u32 {
+        let desc = format!(
+            "{}({}){}",
+            if is_instance { "instance " } else { "" },
+            ps.iter().map(|t| format!("{}", t.ty)).collect::<String>(),
+            ret_ty
+        );
         if let Some(ret) = self.member_sig_map.get(&desc) {
             *ret
         } else {
-            let ps = ps.iter().map(|p| self.to_sig_ty(p)).collect();
+            let ps = ps.iter().map(|p| self.to_sig_ty(&p.ty)).collect();
             let ret_ty = self.to_sig_ty(ret_ty);
             let flag = if is_instance {
                 MethodSigFlag::new(MethodSigFlagTag::HasThis)

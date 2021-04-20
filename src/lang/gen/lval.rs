@@ -85,12 +85,19 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                     );
                 }
             } else {
-                return if ctx.locals.borrow().contains_key(r) {
+                let is_instance_method = !ctx.method.flag.is(MethodAttribFlag::Static);
+                return if r == "self" {
+                    if is_instance_method {
+                        ValType::KwLSelf
+                    } else {
+                        panic!("invalid keyword self in static method");
+                    }
+                } else if let Some(var) = ctx.locals.borrow().get(r) {
                     // query local var
-                    ValType::Local(r.to_owned())
-                } else if ctx.args_map.contains_key(r) {
+                    ValType::Local(var.idx as usize)
+                } else if let Some(arg) = ctx.method.ps_map.get(r) {
                     // query args
-                    ValType::Arg(r.to_owned())
+                    ValType::Arg(*arg)
                 } else if ctx.class.fields.contains_key(r) {
                     // query field in this class
                     // either static or non-static is ok

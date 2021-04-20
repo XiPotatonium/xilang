@@ -120,15 +120,15 @@ impl MethodBuilder {
         })
     }
 
-    pub fn add_inst_ldarg(&mut self, arg_offset: u16) -> &mut Self {
-        self.add_inst(match arg_offset {
+    pub fn add_inst_ldarg(&mut self, idx: u16) -> &mut Self {
+        self.add_inst(match idx {
             0 => Inst::LdArg0,
             1 => Inst::LdArg1,
             2 => Inst::LdArg2,
             3 => Inst::LdArg3,
             _ => {
-                if arg_offset >= u8::MIN as u16 && arg_offset <= u8::MAX as u16 {
-                    Inst::LdArgS(arg_offset as u8)
+                if idx >= u8::MIN as u16 && idx <= u8::MAX as u16 {
+                    Inst::LdArgS(idx as u8)
                 } else {
                     unimplemented!("ldarg is not implemeneted");
                 }
@@ -136,14 +136,12 @@ impl MethodBuilder {
         })
     }
 
-    pub fn add_inst_starg(&mut self, arg_offset: u16) -> &mut Self {
-        self.add_inst(
-            if arg_offset >= u8::MIN as u16 && arg_offset <= u8::MAX as u16 {
-                Inst::StArgS(arg_offset as u8)
-            } else {
-                unimplemented!("ldarg is not implemeneted");
-            },
-        )
+    pub fn add_inst_starg(&mut self, idx: u16) -> &mut Self {
+        self.add_inst(if idx >= u8::MIN as u16 && idx <= u8::MAX as u16 {
+            Inst::StArgS(idx as u8)
+        } else {
+            unimplemented!("ldarg is not implemeneted");
+        })
     }
 
     /// Push an int value to the stack

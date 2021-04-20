@@ -46,6 +46,7 @@ struct Loader<'c> {
     mem: &'c mut SharedMem,
     str_map: HashMap<String, u32>,
     cctor_name: u32,
+    empty_str: u32, // ""
     cctors: Vec<*const VMMethod>,
 }
 
@@ -56,8 +57,10 @@ impl<'c> Loader<'c> {
             cfg,
             str_map: HashMap::new(),
             cctor_name: 0,
+            empty_str: 0,
             cctors: Vec::new(),
         };
+        loader.empty_str = loader.add_const_string(String::from(""));
         loader.cctor_name = loader.add_const_string(String::from(CCTOR_NAME));
 
         loader
@@ -163,6 +166,36 @@ impl<'c> Loader<'c> {
                     }
                 };
 
+                // generate params
+                let param = if method_i == file.method_tbl.len() - 1 {
+                    // last method
+                    &file.param_tbl[(method_entry.param_list as usize - 1)..]
+                } else {
+                    &file.param_tbl[(method_entry.param_list as usize - 1)
+                        ..(file.method_tbl[method_i + 1].param_list as usize - 1)]
+                };
+                let mut ps: Vec<VMParam> =
+                    if let IrSig::Method(_, ps, _) = &file.blob_heap[method_entry.sig as usize] {
+                        (0..ps.len())
+                            .into_iter()
+                            .map(|_| VMParam {
+                                name: self.empty_str,
+                                attrib: ParamAttrib::default(),
+                                ty: VMBuiltinType::Unk,
+                            })
+                            .collect()
+                    } else {
+                        panic!();
+                    };
+                for p in param.iter() {
+                    if p.sequence == 0 {
+                        // return value
+                        continue;
+                    }
+                    ps[(p.sequence - 1) as usize].name = str_heap[p.name as usize];
+                    ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
+                }
+
                 let mut method = Box::new(VMMethod {
                     ctx: null(),
                     name,
@@ -171,8 +204,28 @@ impl<'c> Loader<'c> {
                     // fill later
                     parent_class: None,
                     // fill in link stage
-                    ret_ty: VMBuiltinType::Unk,
-                    ps_ty: Vec::new(),
+                    ret: if let Some(p) = param.first() {
+                        if p.sequence == 0 {
+                            VMParam {
+                                name: str_heap[p.name as usize],
+                                attrib: ParamAttrib::from(p.flag),
+                                ty: VMBuiltinType::Unk,
+                            }
+                        } else {
+                            VMParam {
+                                name: self.empty_str,
+                                attrib: ParamAttrib::default(),
+                                ty: VMBuiltinType::Unk,
+                            }
+                        }
+                    } else {
+                        VMParam {
+                            name: self.empty_str,
+                            attrib: ParamAttrib::default(),
+                            ty: VMBuiltinType::Unk,
+                        }
+                    },
+                    ps,
                     method_impl,
                 });
 
@@ -402,12 +455,12 @@ impl<'c> Loader<'c> {
                                     for m in parent.as_ref().unwrap().methods.iter() {
                                         let m_ref = m.as_ref().unwrap();
                                         if m_ref.name == name
-                                            && ret_ty == m_ref.ret_ty
-                                            && ps_ty.len() == m_ref.ps_ty.len()
+                                            && ret_ty == m_ref.ret.ty
+                                            && ps_ty.len() == m_ref.ps.len()
                                         {
                                             let mut is_match = true;
-                                            for (p0, p1) in ps_ty.iter().zip(m_ref.ps_ty.iter()) {
-                                                if p0 != p1 {
+                                            for (p0, p1) in ps_ty.iter().zip(m_ref.ps.iter()) {
+                                                if p0 != &p1.ty {
                                                     is_match = false;
                                                     break;
                                                 }
@@ -497,9 +550,9 @@ impl<'c> Loader<'c> {
                 let sig = &file.blob_heap[method_entry.sig as usize];
                 let ctx = this_mod.as_ref().unwrap().expect_il();
                 if let IrSig::Method(_, ps, ret) = sig {
-                    method.ret_ty = VMBuiltinType::from_ir_ele_ty(ret, ctx);
-                    for p in ps.iter() {
-                        method.ps_ty.push(VMBuiltinType::from_ir_ele_ty(p, ctx));
+                    method.ret.ty = VMBuiltinType::from_ir_ele_ty(ret, ctx);
+                    for (i, p) in ps.iter().enumerate() {
+                        method.ps[i].ty = VMBuiltinType::from_ir_ele_ty(p, ctx);
                     }
                 } else {
                     panic!();

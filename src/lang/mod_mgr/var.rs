@@ -25,18 +25,6 @@ impl Var {
     }
 }
 
-pub struct Arg {
-    pub attrib: ParamAttrib,
-    pub ty: RValType,
-    pub offset: u16,
-}
-
-impl Arg {
-    pub fn new(attrib: ParamAttrib, ty: RValType, offset: u16) -> Arg {
-        Arg { attrib, ty, offset }
-    }
-}
-
 pub struct Locals {
     pub locals: Vec<Var>,
     /// map from id to index of local

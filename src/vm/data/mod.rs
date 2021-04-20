@@ -9,7 +9,7 @@ use xir::tok::{get_tok_tag, TokTag};
 use std::mem::size_of;
 
 pub use self::field::VMField;
-pub use self::method::{VMMethod, VMMethodILImpl, VMMethodImpl, VMMethodNativeImpl};
+pub use self::method::{VMMethod, VMMethodILImpl, VMMethodImpl, VMMethodNativeImpl, VMParam};
 pub use self::module::{VMILModule, VMMemberRef, VMModule};
 pub use self::ty::VMType;
 

@@ -9,7 +9,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * class
   * static/non-static method/field
   * cctor
-  * ctor (default constructor)
+  * ctor (only default constructor)
 * Built-in type:
   * i32
   * bool
@@ -38,6 +38,8 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Local var. 
   * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
+* stdlib
+  * stdlib的编译是adhoc的，包括，不import标准库，以及object等特殊类的特殊处理，这些东西可以硬编码在lang的代码里
 
 ### 1.2 RoadMap
 
@@ -51,14 +53,11 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Array
 * String
-* Built-in type:
-  * i8/u8
-  * i16/u16
-  * u32
 
 #### Ver 0.3.2
 
 * Refactor lang
+  * DRY
   * make incremental compilation possible
   * Overload
 * xilang project structure
@@ -67,6 +66,16 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 #### Ver 0.4.0
 
 * Interface
+
+#### Ver 0.4.1
+
+* More builtin type
+  * char
+  * bool
+  * i8/u8
+  * i16/u16
+  * u32
+  * f32/f64
 
 #### Ver 0.5.0
 
@@ -88,12 +97,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * Refactor vm, use unsafe properly
 
 #### Ver 0.6.2
-
-* Built-in type:
-  * f64
-* Constant folding
-
-#### Ver 0.6.3
 
 * match expr
 * Default value and StructExprEtCetera
