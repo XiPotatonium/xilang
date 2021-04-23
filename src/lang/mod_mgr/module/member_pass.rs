@@ -1,6 +1,6 @@
 use super::super::super::ast::AST;
 use super::super::super::gen::RValType;
-use super::super::{Field, Method, ModMgr, Param};
+use super::super::{Class, Field, Method, ModMgr, ModRef, Param};
 use super::Module;
 
 use xir::attrib::{
@@ -12,12 +12,14 @@ use xir::{CCTOR_NAME, CTOR_NAME};
 
 // use macro to avoid borrow mutable self twice, SB rust
 macro_rules! declare_method {
-    ($class: expr, $builder: expr, $id: expr, $flag: expr, $impl_flag: expr, $ret: expr, $ps: expr) => {{
+    ($class: expr, $builder: expr, $name: expr, $flag: expr, $impl_flag: expr, $ret: expr, $ps: expr) => {{
         let idx = $builder
             .borrow_mut()
-            .add_method($id, &$ps, &$ret, $flag, $impl_flag);
+            .add_method($name, &$ps, &$ret, $flag, $impl_flag);
 
         let method = Box::new(Method {
+            parent: &$class as &Class as *const Class,
+            name: $name.to_owned(),
             ret: $ret,
             ps: $ps,
             attrib: $flag.clone(),
@@ -26,9 +28,9 @@ macro_rules! declare_method {
         });
         // let sig = format!("{}{}", $id, method.descriptor());
 
-        if let Some(_) = $class.methods.insert($id.to_owned(), method) {
+        if let Some(_) = $class.methods.insert($name.to_owned(), method) {
             // TODO: use expect_none once it becomes stable
-            panic!("Duplicated method {} in class {}", $id, $class.name);
+            panic!("Duplicated method {} in class {}", $name, $class.name);
         }
         idx
     }};
@@ -38,13 +40,16 @@ macro_rules! declare_method {
 impl Module {
     pub fn member_pass(&self, mod_mgr: &ModMgr) {
         for class in self.class_asts.iter() {
-            if let AST::Class(class_id, class_flag, _, ast_methods, ast_fields, static_init) =
-                class.as_ref()
-            {
-                let mut class_mut = self.classes.get(class_id).unwrap().borrow_mut();
-                class_mut.idx = self.builder.borrow_mut().add_class(class_id, class_flag);
+            if let AST::Class(class) = class.as_ref() {
+                let mut class_mut = self.classes.get(&class.name).unwrap().borrow_mut();
+                class_mut.parent =
+                    mod_mgr.mod_tbl.get(self.fullname()).unwrap().as_ref() as *const ModRef;
+                class_mut.idx = self
+                    .builder
+                    .borrow_mut()
+                    .add_class(&class.name, &class.attrib);
 
-                for field in ast_fields.iter() {
+                for field in class.fields.iter() {
                     if let AST::Field(id, flag, _, ty) = field.as_ref() {
                         // Field will have default initialization
                         let ty = self.get_ty(ty, mod_mgr, &class_mut);
@@ -53,15 +58,13 @@ impl Module {
                         let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
 
                         let field = Box::new(Field {
+                            parent: &class_mut as &Class as *const Class,
+                            name: id.clone(),
                             attrib: *flag,
                             ty,
                             idx,
                         });
 
-                        if !flag.is(FieldAttribFlag::Static) {
-                            // non-static field
-                            class_mut.instance_fields.push(id.to_owned());
-                        }
                         if let Some(_) = class_mut.fields.insert(id.to_owned(), field) {
                             // TODO: use expect_none once it becomes stable
                             panic!("Dulicated field {} in class {}", id, class_mut.name);
@@ -70,7 +73,7 @@ impl Module {
                 }
 
                 // Add static init
-                match static_init.as_ref() {
+                match class.cctor.as_ref() {
                     AST::Block(_) => {
                         let ret = RValType::Void;
                         let ps: Vec<Param> = vec![];
@@ -102,12 +105,13 @@ impl Module {
                 {
                     let ret = RValType::Void;
                     let ps: Vec<Param> = class_mut
-                        .instance_fields
+                        .fields
                         .iter()
-                        .map(|f| Param {
-                            id: f.to_owned(),
+                        .filter(|(_, f)| !f.attrib.is(FieldAttribFlag::Static))
+                        .map(|(id, f)| Param {
+                            id: id.to_owned(),
                             attrib: ParamAttrib::default(),
-                            ty: class_mut.fields.get(f).unwrap().ty.clone(),
+                            ty: f.ty.clone(),
                         })
                         .collect();
                     let flag = MethodAttrib::from(
@@ -129,9 +133,10 @@ impl Module {
                     );
                 }
 
-                for method in ast_methods.iter() {
-                    if let AST::Method(id, flag, attrs, ty, ps_ast, _) = method.as_ref() {
-                        let ps = ps_ast
+                for method in class.methods.iter() {
+                    if let AST::Method(method) = method.as_ref() {
+                        let ps = method
+                            .ps
                             .iter()
                             .map(|p| {
                                 if let AST::Param(id, attrib, ty) = p.as_ref() {
@@ -145,13 +150,13 @@ impl Module {
                                 }
                             })
                             .collect();
-                        let ret = self.get_ty(ty, mod_mgr, &class_mut);
+                        let ret = self.get_ty(&method.ty, mod_mgr, &class_mut);
                         let mut impl_flag = MethodImplAttrib::new(
                             MethodImplAttribCodeTypeFlag::IL,
                             MethodImplAttribManagedFlag::Managed,
                         );
-                        for attr in attrs.iter() {
-                            if let AST::CustomAttr(id, args) = attr.as_ref() {
+                        for attr in method.custom_attribs.iter() {
+                            if let AST::CustomAttrib(id, args) = attr.as_ref() {
                                 if id == "Dllimport" {
                                     // TODO: use real attribute object
                                     // Currently it's adhoc
@@ -175,16 +180,23 @@ impl Module {
                             }
                         }
 
-                        let method_idx =
-                            declare_method!(class_mut, self.builder, id, flag, &impl_flag, ret, ps);
-                        for (attr_id, args) in attrs.iter().map(|attr| {
-                            if let AST::CustomAttr(id, args) = attr.as_ref() {
+                        let method_idx = declare_method!(
+                            class_mut,
+                            self.builder,
+                            &method.name,
+                            &method.attrib,
+                            &impl_flag,
+                            ret,
+                            ps
+                        );
+                        for (attr_name, args) in method.custom_attribs.iter().map(|attr| {
+                            if let AST::CustomAttrib(id, args) = attr.as_ref() {
                                 (id, args)
                             } else {
                                 unreachable!()
                             }
                         }) {
-                            if attr_id == "Dllimport" {
+                            if attr_name == "Dllimport" {
                                 // TODO: use real attribute object
                                 // Currently it's adhoc
                                 if let AST::String(v) = args[0].as_ref() {
@@ -194,7 +206,7 @@ impl Module {
                                     );
                                     self.builder.borrow_mut().add_extern_fn(
                                         v,
-                                        id,
+                                        &method.name,
                                         &pinvoke_attrib,
                                         method_idx,
                                     );
@@ -208,7 +220,7 @@ impl Module {
                     }
                 }
 
-                if self.is_root() && class_id == "Program" {
+                if self.is_root() && class.name == "Program" {
                     if let Some(m) = class_mut.methods.get("main") {
                         if let RValType::Void = m.ret {
                             if m.ps.len() == 0

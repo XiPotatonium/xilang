@@ -47,31 +47,21 @@ impl fmt::Display for AST {
                 path.as_str(),
                 if let Some(as_id) = as_id { as_id } else { "" }
             ),
-            Self::CustomAttr(id, args) => write!(f, "{{\"name\":\"(Attr){}\",\"args\":{}}}", id, ASTChildrenWrapper(args)),
-            Self::Class(id, flag, attr, funcs, fields, init) => write!(
+            Self::CustomAttrib(id, args) => write!(
                 f,
-                "{{\"name\":\"(class){}\",\"flag\":\"{}\",\"attr\":{},\"fields\":{},\"init\":{},\"funcs\":{}}}",
+                "{{\"name\":\"(Attr){}\",\"args\":{}}}",
                 id,
-                flag,
-                ASTChildrenWrapper(attr),
-                ASTChildrenWrapper(fields),
-                init,
-                ASTChildrenWrapper(funcs)
+                ASTChildrenWrapper(args)
             ),
-            Self::Method(id, flag, attr, ty, ps, body) => write!(
-                f,
-                "{{\"name\":\"(method){}\",\"flag\":\"{}\",\"attr\":{},\"type\":{},\"ps\":{},\"body\":{}}}",
-                id,
-                flag,
-                ASTChildrenWrapper(attr),
-                ty,
-                ASTChildrenWrapper(ps),
-                body.as_ref()
-            ),
+            Self::Class(class) => class.fmt(f),
+            Self::Method(method) => method.fmt(f),
             Self::Field(id, flag, attr, ty) => write!(
                 f,
                 "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"attr\":{},\"type\":{}}}",
-                id, flag, ASTChildrenWrapper(attr), ty
+                id,
+                flag,
+                ASTChildrenWrapper(attr),
+                ty
             ),
             Self::Param(id, flag, ty) => write!(
                 f,
@@ -262,7 +252,7 @@ impl fmt::Display for AST {
     }
 }
 
-struct ASTChildrenWrapper<'a>(&'a Vec<Box<AST>>);
+pub struct ASTChildrenWrapper<'a>(pub &'a Vec<Box<AST>>);
 
 impl fmt::Display for ASTChildrenWrapper<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

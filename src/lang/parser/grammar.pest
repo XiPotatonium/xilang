@@ -8,16 +8,18 @@ AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
 Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
 
 Class = { 
-    AttributeLst* ~ "class" ~ Id ~ "{" ~ 
-    (AttributeLst* ~ (StaticInit | Func | StaticField | NonStaticField))* ~ 
-    "}" 
+    AttributeLst* ~ "class" ~ Id ~ ExtendsOrImpls? ~
+    "{" ~ (AttributeLst* ~ (CCtor | Ctor | Method | StaticField | NonStaticField))* ~ "}" 
 }
+
+ExtendsOrImpls = { ":" ~ PathExpr ~ ("," ~ PathExpr)* }
 
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
-StaticInit = { "static" ~ BlockExpr }
-Func = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+CCtor = { "cctor" ~ BlockExpr }
+Ctor = { "ctor" ~ "(" ~ Params? ~ ")" ~ BlockExpr }
+Method = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
 Params = { (KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
 
 Pattern = { Id | TuplePattern }
@@ -117,7 +119,7 @@ KwFalse = { "false" }
 KwNull = { "null" }
 KeyWord = @{ 
     "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
-    | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
+    | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override" | "ctor" | "cctor"
     | KwLSelf | KwUSelf | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
     | KwBool | KwChar | KwU8 | KwI8 | KwU16 | KwI16 | KwU32 | KwI32 | KwU64 | KwI64 | KwUSize | KwISize | KwF32 | KwF64

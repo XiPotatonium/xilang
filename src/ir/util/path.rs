@@ -165,7 +165,12 @@ impl IModPath for ModPath {
         match self.len() {
             0 | 1 => None,
             _ => {
-                let start = self.seg_tails[self.seg_tails.len() - 3] + 1;
+                let seg_len = self.seg_tails.len();
+                let start = if seg_len == 2 {
+                    0
+                } else {
+                    self.seg_tails[self.seg_tails.len() - 3] + 1
+                };
                 let end = self.seg_tails[self.seg_tails.len() - 2];
                 Some(&self.path[start..end])
             }

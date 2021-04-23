@@ -17,8 +17,8 @@ impl IrFmt for MemberRef {
         let (tag, idx) = self.get_parent();
 
         match tag {
-            MemberRefParent::TypeDef => ctx.typedef_tbl[idx as usize - 1].fmt(f, ctx)?,
-            MemberRefParent::TypeRef => ctx.typeref_tbl[idx as usize - 1].fmt(f, ctx)?,
+            MemberRefParent::TypeDef => ctx.typedef_tbl[idx as usize - 1].fullname(f, ctx)?,
+            MemberRefParent::TypeRef => ctx.typeref_tbl[idx as usize - 1].fullname(f, ctx)?,
             MemberRefParent::ModRef => ctx.modref_tbl[idx as usize - 1].fmt(f, ctx)?,
             MemberRefParent::MethodDef => ctx.method_tbl[idx as usize - 1].fmt(f, ctx)?,
         };

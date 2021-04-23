@@ -1,7 +1,12 @@
+mod class;
 mod disp;
+mod method;
 
 use xir::attrib::*;
 use xir::util::path::ModPath;
+
+pub use class::ASTClass;
+pub use method::ASTMethod;
 
 pub enum AST {
     /// mods, ext_mods, uses, classes: Vec<AST>
@@ -10,26 +15,11 @@ pub enum AST {
     /// path, as
     Use(ModPath, Option<String>),
 
-    CustomAttr(String, Vec<Box<AST>>),
+    /// attrib name, args
+    CustomAttrib(String, Vec<Box<AST>>),
 
-    /// id, attrib, custom-attrib, methods: Vec<Func>, fields: Vec<Var>, static-init
-    Class(
-        String,
-        TypeAttrib,
-        Vec<Box<AST>>,
-        Vec<Box<AST>>,
-        Vec<Box<AST>>,
-        Box<AST>,
-    ),
-    /// id, attrib, custom-attrib, ty, ps: Vec<Var>, body: Box<Block>
-    Method(
-        String,
-        MethodAttrib,
-        Vec<Box<AST>>,
-        Box<AST>,
-        Vec<Box<AST>>,
-        Box<AST>,
-    ),
+    Class(ASTClass),
+    Method(ASTMethod),
 
     /// id, attrib, custom-attrib, ty
     Field(String, FieldAttrib, Vec<Box<AST>>, Box<AST>),

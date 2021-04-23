@@ -10,7 +10,7 @@ use xir::member::{
 use xir::module::{Mod, ModRef};
 use xir::stand_alone_sig::IrStandAloneSig;
 use xir::tok::{to_tok, TokTag};
-use xir::ty::{get_typeref_parent, ResolutionScope, TypeDef, TypeRef};
+use xir::ty::{get_typeref_parent, ResolutionScope, TypeDef, TypeDefOrRef, TypeRef};
 
 use std::collections::HashMap;
 
@@ -104,14 +104,27 @@ impl Builder {
     pub fn add_class(&mut self, name: &str, flag: &TypeAttrib) -> u32 {
         let name = self.add_const_str(name);
         self.file.typedef_tbl.push(TypeDef {
-            name,
             flag: flag.attrib,
+            name,
+            extends: 0,
             fields: (self.file.field_tbl.len() + 1) as u32,
             methods: (self.file.method_tbl.len() + 1) as u32,
         });
         let ret = self.file.typedef_tbl.len() as u32;
         self.type_map.insert(name, ret);
         ret
+    }
+
+    /// extends_idx and extends_idx_tag may be acquired from Builder.add_const_class
+    pub fn set_class_extends(
+        &mut self,
+        class_idx: u32,
+        extends_idx: u32,
+        extends_idx_tag: TypeDefOrRef,
+    ) {
+        let old_extends =
+            self.file.typedef_tbl[class_idx as usize - 1].set_extends(extends_idx, extends_idx_tag);
+        assert_eq!(old_extends, None, "Overriding old extends");
     }
 
     /// Add a field of this class
@@ -271,9 +284,9 @@ impl Builder {
             RValType::Obj(mod_name, name) => {
                 let (class_idx, class_tag) = self.add_const_class(mod_name, name);
                 let tok = match class_tag {
-                    TokTag::TypeDef => to_tok(class_idx, TokTag::TypeDef),
-                    TokTag::TypeRef => to_tok(class_idx, TokTag::TypeRef),
-                    _ => unreachable!(),
+                    TypeDefOrRef::TypeDef => to_tok(class_idx, TokTag::TypeDef),
+                    TypeDefOrRef::TypeRef => to_tok(class_idx, TokTag::TypeRef),
+                    TypeDefOrRef::TypeSpec => unimplemented!(),
                 };
                 EleType::ByRef(Box::new(EleType::Class(tok)))
             }
@@ -333,13 +346,13 @@ impl Builder {
         }
     }
 
-    pub fn add_const_class(&mut self, mod_name: &str, name: &str) -> (u32, TokTag) {
+    pub fn add_const_class(&mut self, mod_name: &str, name: &str) -> (u32, TypeDefOrRef) {
         let (parent_idx, parent_tag) = self.add_const_mod(mod_name);
         let name = self.add_const_str(name);
         match parent_tag {
             TokTag::Mod => {
                 // class in this module
-                (*self.type_map.get(&name).unwrap(), TokTag::TypeDef)
+                (*self.type_map.get(&name).unwrap(), TypeDefOrRef::TypeDef)
             }
             TokTag::ModRef => {
                 let typeref = TypeRef {
@@ -347,12 +360,12 @@ impl Builder {
                     name,
                 };
                 if let Some(ret) = self.typeref_map.get(&typeref) {
-                    (*ret, TokTag::TypeRef)
+                    (*ret, TypeDefOrRef::TypeRef)
                 } else {
                     self.file.typeref_tbl.push(typeref.clone());
                     let ret = self.file.typeref_tbl.len() as u32;
                     self.typeref_map.insert(typeref, ret);
-                    (ret, TokTag::TypeRef)
+                    (ret, TypeDefOrRef::TypeRef)
                 }
             }
             _ => unreachable!(),
@@ -370,7 +383,7 @@ impl Builder {
         let name = self.add_const_str(member_name);
 
         match parent_tag {
-            TokTag::TypeDef => {
+            TypeDefOrRef::TypeDef => {
                 // class in this module
                 let info = FieldOrMethod {
                     parent: parent_idx,
@@ -385,7 +398,7 @@ impl Builder {
                     unreachable!()
                 }
             }
-            TokTag::TypeRef => {
+            TypeDefOrRef::TypeRef => {
                 let parent_tagged_idx = to_memberref_parent(parent_idx, MemberRefParent::TypeRef);
                 let memberref = MemberRef {
                     parent: parent_tagged_idx,
@@ -401,7 +414,7 @@ impl Builder {
                     (ret, TokTag::MemberRef)
                 }
             }
-            _ => unreachable!(),
+            TypeDefOrRef::TypeSpec => unimplemented!(),
         }
     }
 
@@ -416,7 +429,7 @@ impl Builder {
         &mut self,
         mod_name: &str,
         name: &str,
-        flag: &PInvokeAttrib,
+        attrib: &PInvokeAttrib,
         forwarded: u32,
     ) -> u32 {
         let (scope, scope_tag) = self.add_const_mod(mod_name);
@@ -425,7 +438,7 @@ impl Builder {
         let implmap_info = ImplMapInfo { scope, name };
         if let Some(idx) = self.implmap_map.get(&implmap_info) {
             let idx = *idx;
-            if self.file.implmap_tbl[idx as usize - 1].flag != flag.attrib {
+            if self.file.implmap_tbl[idx as usize - 1].flag != attrib.attrib {
                 panic!("");
             }
             idx
@@ -434,7 +447,7 @@ impl Builder {
                 member: to_implmap_member(forwarded, MemberForwarded::MethodDef),
                 name,
                 scope,
-                flag: flag.attrib,
+                flag: attrib.attrib,
             });
             let ret = self.file.implmap_tbl.len() as u32;
             self.implmap_map.insert(implmap_info, ret);

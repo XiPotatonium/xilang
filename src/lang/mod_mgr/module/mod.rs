@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::ptr;
 use std::rc::Rc;
 
 use xir::file::IrFile;
@@ -189,17 +190,25 @@ impl Module {
             // generate all classes
             let mut class_map = HashMap::new();
             for class in classes.iter() {
-                if let AST::Class(id, flag, _, _, _, _) = class.as_ref() {
-                    if sub_mods.contains(id) {
+                if let AST::Class(class) = class.as_ref() {
+                    if sub_mods.contains(&class.name) {
                         panic!(
                             "Ambiguous name {} in module {}. Both a sub-module and a class",
-                            id, mod_self_name
+                            class.name, mod_self_name
                         );
                     }
 
                     class_map.insert(
-                        id.to_owned(),
-                        Rc::new(RefCell::new(Class::new(id.to_owned(), 0, flag.clone()))),
+                        class.name.to_owned(),
+                        Rc::new(RefCell::new(Class {
+                            name: class.name.to_owned(),
+                            fields: HashMap::new(),
+                            methods: HashMap::new(),
+                            parent: ptr::null(),
+                            idx: 0,
+                            extends: None,
+                            attrib: class.attrib.clone(),
+                        })),
                     );
                 } else {
                     unreachable!();
@@ -315,7 +324,80 @@ impl Module {
 }
 
 impl Module {
-    pub fn get_ty(&self, ast: &Box<AST>, mod_mgr: &ModMgr, c: &Class) -> RValType {
+    /// item must exist
+    pub fn resolve_path(
+        &self,
+        path: &ModPath,
+        mod_mgr: &ModMgr,
+        class: Option<&Class>,
+    ) -> (String, String) {
+        let (has_crate, super_cnt, path) = path.canonicalize();
+        let class_id = path.get_self_name().unwrap();
+        let mod_path = path.get_super();
+        if mod_path.len() == 0 {
+            // this mod
+            // might be a class in this module
+            (
+                self.fullname().to_owned(),
+                if class_id == "Self" {
+                    if let Some(class) = class {
+                        class.name.clone()
+                    } else {
+                        panic!("Invalid Self keyword outside a class");
+                    }
+                } else if self.classes.contains_key(class_id) {
+                    class_id.to_owned()
+                } else {
+                    panic!("No class {} in mod {}", class_id, self.fullname());
+                },
+            )
+        } else {
+            let m = if has_crate {
+                // crate::...
+                let mut m = ModPath::new();
+                m.push(&mod_mgr.cfg.crate_name);
+                for seg in mod_path.iter().skip(1) {
+                    m.push(seg);
+                }
+                m
+            } else if super_cnt != 0 {
+                // super::...
+                let mut m = self.mod_path.as_slice();
+                for _ in (0..super_cnt).into_iter() {
+                    m.to_super();
+                }
+                let mut m = m.to_owned();
+                for seg in mod_path.iter().skip(super_cnt) {
+                    m.push(seg);
+                }
+                m
+            } else {
+                let mut mod_path_iter = mod_path.iter();
+                let r = mod_path_iter.next().unwrap();
+                if let Some(m) = self.use_map.get(r) {
+                    let mut m = m.clone();
+                    for seg in mod_path_iter {
+                        m.push(seg);
+                    }
+                    m
+                } else {
+                    mod_path.to_owned()
+                }
+            };
+
+            if let Some(m) = mod_mgr.mod_tbl.get(m.as_str()) {
+                if let Some(_) = m.get_class(class_id) {
+                    (m.fullname().to_owned(), class_id.to_owned())
+                } else {
+                    panic!("Class {} not found", class_id);
+                }
+            } else {
+                panic!("Module {} not found", m.as_str());
+            }
+        }
+    }
+
+    pub fn get_ty(&self, ast: &Box<AST>, mod_mgr: &ModMgr, class: &Class) -> RValType {
         match ast.as_ref() {
             AST::TypeI32 => RValType::I32,
             AST::TypeF64 => RValType::F64,
@@ -325,69 +407,10 @@ impl Module {
                 unimplemented!();
             }
             AST::Path(class_path) => {
-                let (has_crate, super_cnt, class_path) = class_path.canonicalize();
-                let class_id = class_path.get_self_name().unwrap();
-                let mod_path = class_path.get_super();
-                if mod_path.len() == 0 {
-                    // this mod
-                    // might be a class in this module
-                    // TODO: Self
-                    RValType::Obj(
-                        self.fullname().to_owned(),
-                        if class_id == "Self" {
-                            c.name.clone()
-                        } else if self.classes.contains_key(class_id) {
-                            class_id.to_owned()
-                        } else {
-                            panic!("No class {} in mod {}", class_id, self.fullname());
-                        },
-                    )
-                } else {
-                    let m = if has_crate {
-                        // crate::...
-                        let mut m = ModPath::new();
-                        m.push(&mod_mgr.cfg.crate_name);
-                        for seg in mod_path.iter().skip(1) {
-                            m.push(seg);
-                        }
-                        m
-                    } else if super_cnt != 0 {
-                        // super::...
-                        let mut m = self.mod_path.as_slice();
-                        for _ in (0..super_cnt).into_iter() {
-                            m.to_super();
-                        }
-                        let mut m = m.to_owned();
-                        for seg in mod_path.iter().skip(super_cnt) {
-                            m.push(seg);
-                        }
-                        m
-                    } else {
-                        let mut mod_path_iter = mod_path.iter();
-                        let r = mod_path_iter.next().unwrap();
-                        if let Some(m) = self.use_map.get(r) {
-                            let mut m = m.clone();
-                            for seg in mod_path_iter {
-                                m.push(seg);
-                            }
-                            m
-                        } else {
-                            mod_path.to_owned()
-                        }
-                    };
-
-                    if let Some(m) = mod_mgr.mod_tbl.get(m.as_str()) {
-                        if let Some(_) = m.get_class(class_id) {
-                            RValType::Obj(m.fullname().to_owned(), class_id.to_owned())
-                        } else {
-                            panic!("Class {} not found", class_id);
-                        }
-                    } else {
-                        panic!("Module {} not found", m.as_str());
-                    }
-                }
+                let (mod_name, class_name) = self.resolve_path(class_path, mod_mgr, Some(class));
+                RValType::Obj(mod_name, class_name)
             }
-            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, c))),
+            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, class))),
             _ => unreachable!(),
         }
     }

@@ -82,8 +82,8 @@ pub fn fmt_tok(tok: u32, f: &mut fmt::Formatter<'_>, ctx: &IrFile) -> fmt::Resul
     match tok_tag {
         TokTag::Mod => ctx.mod_tbl[idx].fmt(f, ctx),
         TokTag::ModRef => ctx.modref_tbl[idx].fmt(f, ctx),
-        TokTag::TypeDef => ctx.typedef_tbl[idx].fmt(f, ctx),
-        TokTag::TypeRef => ctx.typeref_tbl[idx].fmt(f, ctx),
+        TokTag::TypeDef => ctx.typedef_tbl[idx].fullname(f, ctx),
+        TokTag::TypeRef => ctx.typeref_tbl[idx].fullname(f, ctx),
         TokTag::Field => {
             if ctx.typedef_tbl.len() == 0 || raw_idx < ctx.typedef_tbl[0].fields {
                 // field has no parent
@@ -97,7 +97,7 @@ pub fn fmt_tok(tok: u32, f: &mut fmt::Formatter<'_>, ctx: &IrFile) -> fmt::Resul
                     ty_idx += 1;
                 }
 
-                ctx.typedef_tbl[ty_idx - 1].fmt(f, ctx)?;
+                ctx.typedef_tbl[ty_idx - 1].fullname(f, ctx)?;
                 write!(f, "::")?;
             }
             ctx.field_tbl[idx].fmt(f, ctx)
@@ -117,7 +117,7 @@ pub fn fmt_tok(tok: u32, f: &mut fmt::Formatter<'_>, ctx: &IrFile) -> fmt::Resul
                     ty_idx += 1;
                 }
 
-                ctx.typedef_tbl[ty_idx - 1].fmt(f, ctx)?;
+                ctx.typedef_tbl[ty_idx - 1].fullname(f, ctx)?;
                 write!(f, "::")?;
             }
             method.fmt(f, ctx)

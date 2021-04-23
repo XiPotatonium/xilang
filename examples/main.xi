@@ -5,9 +5,10 @@
 mod demo;
 mod IOHelper;
 
-class Program {
+class Program: IOHelper::IOBase {
     fn main() {
-        IOHelper::HelloWorld::hi();
+        let prog = new Self {};
+        prog.hi();
 
         let d: demo::Demo = crate::demo::Demo::create(1, 24);
         let a = d.foo(6);               // 32

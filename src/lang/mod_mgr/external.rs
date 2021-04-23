@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::ptr;
 
 use xir::attrib::*;
 use xir::blob::IrSig;
@@ -10,36 +11,20 @@ use xir::file::*;
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
-use super::{Field, Method, ModRef, Param};
+use super::{Class, Field, Method, ModRef, Param};
 
 pub struct ExtModule {
     pub mod_path: ModPath,
     /// key: mod_name
     pub sub_mods: HashSet<String>,
     /// key: class_name
-    pub classes: HashMap<String, Box<ExtClass>>,
+    pub classes: HashMap<String, Box<Class>>,
 }
 
 impl ExtModule {
     pub fn fullname(&self) -> &str {
         self.mod_path.as_str()
     }
-}
-
-pub struct ExtClass {
-    pub name: String,
-
-    // TODO: delete non_static_fields, we don't need this optimization, iterate over fields is fast enough
-    /// Used in new expr
-    pub instance_fields: Vec<String>,
-    /// key: field_name
-    pub fields: HashMap<String, Box<Field>>,
-    /// Overload is currently not supported
-    ///
-    /// key: method_name
-    pub methods: HashMap<String, Box<Method>>,
-
-    pub attrib: TypeAttrib,
 }
 
 pub fn load_external_crate(
@@ -52,9 +37,18 @@ pub fn load_external_crate(
         external_mods_mask[implmap.scope as usize - 1] = false;
     }
 
-    // 1. Fill classes methods and fields that defined in this file
-    let mut classes = HashMap::new();
+    let this_mod_path = ModPath::from_str(file.mod_name());
+    let mut this_mod = Box::new(ModRef::ExtMod(ExtModule {
+        sub_mods: HashSet::new(),
+        mod_path: this_mod_path.clone(),
+        classes: HashMap::new(),
+    }));
+    let this_mod_ptr = match this_mod.as_mut() {
+        ModRef::Mod(_) => unreachable!(),
+        ModRef::ExtMod(m) => m as *mut ExtModule,
+    };
 
+    // 1. Fill classes methods and fields that defined in this file
     let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
         (c0.fields as usize - 1, c0.methods as usize - 1)
     } else {
@@ -83,9 +77,18 @@ pub fn load_external_crate(
             )
         };
 
-        let mut methods = HashMap::new();
-        let mut fields = HashMap::new();
-        let mut instance_fields = Vec::new();
+        let flag = TypeAttrib::from(class_entry.flag);
+        let name = file.get_str(class_entry.name);
+        let mut class = Box::new(Class {
+            parent: this_mod.as_ref() as *const ModRef,
+            name: name.to_owned(),
+            methods: HashMap::new(),
+            fields: HashMap::new(),
+            attrib: flag,
+            extends: None,
+            // idx of external class will not be used
+            idx: 0,
+        });
 
         while method_i < method_lim {
             let method_entry = &file.method_tbl[method_i];
@@ -119,13 +122,18 @@ pub fn load_external_crate(
                 }
 
                 let method = Box::new(Method {
+                    parent: class.as_ref() as *const Class,
+                    name: file.get_str(method_entry.name).to_owned(),
                     ps,
                     ret: RValType::from_ir_ele_ty(ret, &file),
                     attrib: flag,
                     impl_flag,
-                    idx: method_i as u32 + 1,
+                    // idx of external method will not be used
+                    idx: 0,
                 });
-                methods.insert(file.get_str(method_entry.name).to_owned(), method);
+                class
+                    .methods
+                    .insert(file.get_str(method_entry.name).to_owned(), method);
             } else {
                 panic!();
             }
@@ -139,17 +147,16 @@ pub fn load_external_crate(
 
             let flag = FieldAttrib::from(field_entry.flag);
 
-            if !flag.is(FieldAttribFlag::Static) {
-                instance_fields.push(field_name.to_owned());
-            }
-
             if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
                 let field = Box::new(Field {
+                    parent: class.as_ref() as *const Class,
+                    name: file.get_str(field_entry.name).to_owned(),
                     attrib: flag,
                     ty: RValType::from_ir_ele_ty(f_sig, &file),
-                    idx: field_i as u32 + 1,
+                    // idx of external field will not be used
+                    idx: 0,
                 });
-                fields.insert(field_name.to_owned(), field);
+                class.fields.insert(field_name.to_owned(), field);
             } else {
                 panic!();
             }
@@ -157,22 +164,20 @@ pub fn load_external_crate(
             field_i += 1;
         }
 
-        let flag = TypeAttrib::from(class_entry.flag);
-        let name = file.get_str(class_entry.name);
-        let class = Box::new(ExtClass {
-            name: name.to_owned(),
-            methods,
-            fields,
-            attrib: flag,
-            instance_fields,
-        });
-
-        classes.insert(name.to_owned(), class);
+        unsafe {
+            this_mod_ptr
+                .as_mut()
+                .unwrap()
+                .classes
+                .insert(name.to_owned(), class);
+        }
     }
 
-    let this_mod_path = ModPath::from_str(file.mod_name());
+    if let Some(_) = mod_tbl.insert(file.mod_name().to_owned(), this_mod) {
+        panic!("Duplicated module name");
+    }
+
     // 2. Recursive load dependencies
-    let mut sub_mods = HashSet::new();
     for (external_mod, mask) in file.modref_tbl.iter().zip(external_mods_mask.into_iter()) {
         if mask == false {
             // some external mods is not xir mod, they are dlls
@@ -195,7 +200,13 @@ pub fn load_external_crate(
             }
             sub_mod_path.set_extension("xibc");
             let sub_mod_name = path.get_self_name().unwrap();
-            sub_mods.insert(sub_mod_name.to_owned());
+            unsafe {
+                this_mod_ptr
+                    .as_mut()
+                    .unwrap()
+                    .sub_mods
+                    .insert(sub_mod_name.to_owned());
+            }
             if sub_mod_path.is_file() {
                 let sub_mod_file =
                     IrFile::from_binary(Box::new(fs::File::open(&sub_mod_path).unwrap()));
@@ -241,17 +252,5 @@ pub fn load_external_crate(
                 }
             }
         }
-    }
-
-    let this_mod = ExtModule {
-        sub_mods,
-        mod_path: this_mod_path,
-        classes,
-    };
-    if let Some(_) = mod_tbl.insert(
-        file.mod_name().to_owned(),
-        Box::new(ModRef::ExtMod(this_mod)),
-    ) {
-        panic!("Duplicated module name");
     }
 }

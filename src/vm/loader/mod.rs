@@ -411,7 +411,7 @@ impl<'c> Loader<'c> {
                     match parent_tag {
                         ResolutionScope::Mod => unimplemented!(), // this is ok
                         ResolutionScope::ModRef => {
-                            let parent = mod_modref[parent_idx as usize - 1].as_ref().unwrap();
+                            let parent = mod_modref[parent_idx].as_ref().unwrap();
                             let class = parent
                                 .expect_il()
                                 .classes

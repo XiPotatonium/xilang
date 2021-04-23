@@ -8,11 +8,10 @@ pub use self::class::Class;
 pub use self::member::{Field, Method, Param};
 pub use self::module::Module;
 pub use self::var::{Locals, Var};
-use external::{ExtClass, ExtModule};
+use external::ExtModule;
 
 use super::super::XicCfg;
 
-use xir::attrib::*;
 use xir::util::path::ModPath;
 
 use std::collections::HashMap;
@@ -41,18 +40,18 @@ impl ModRef {
         }
     }
 
-    pub fn get_class(&self, name: &str) -> Option<ClassRef> {
+    pub fn get_class(&self, name: &str) -> Option<*const Class> {
         match self {
             ModRef::Mod(m) => {
                 if let Some(c) = m.classes.get(name) {
-                    Some(ClassRef::Class(c.as_ptr() as *const Class))
+                    Some(c.as_ptr())
                 } else {
                     None
                 }
             }
             ModRef::ExtMod(m) => {
                 if let Some(c) = m.classes.get(name) {
-                    Some(ClassRef::ExtClass(c.as_ref()))
+                    Some(c.as_ref() as *const Class)
                 } else {
                     None
                 }
@@ -64,62 +63,6 @@ impl ModRef {
         match self {
             ModRef::Mod(m) => m.sub_mods.contains(mod_name),
             ModRef::ExtMod(m) => m.sub_mods.contains(mod_name),
-        }
-    }
-}
-
-pub enum ClassRef<'m> {
-    // RefCell is bullshit
-    Class(*const Class),
-    ExtClass(&'m ExtClass),
-}
-
-impl<'m> ClassRef<'m> {
-    pub fn get_field(&self, name: &str) -> Option<&Field> {
-        match self {
-            ClassRef::Class(c) => {
-                if let Some(f) = unsafe { c.as_ref().unwrap().fields.get(name) } {
-                    Some(f.as_ref())
-                } else {
-                    None
-                }
-            }
-            ClassRef::ExtClass(c) => {
-                if let Some(f) = c.fields.get(name) {
-                    Some(f.as_ref())
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    pub fn get_method(&self, name: &str) -> Option<&Method> {
-        match self {
-            ClassRef::Class(c) => {
-                if let Some(m) = unsafe { c.as_ref().unwrap().methods.get(name) } {
-                    Some(m.as_ref())
-                } else {
-                    None
-                }
-            }
-            ClassRef::ExtClass(c) => {
-                if let Some(m) = c.methods.get(name) {
-                    Some(m.as_ref())
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    pub fn get_info(&self) -> (&TypeAttrib, &Vec<String>) {
-        match self {
-            ClassRef::Class(c) => {
-                let c = unsafe { c.as_ref().unwrap() };
-                (&c.attirb, &c.instance_fields)
-            }
-            ClassRef::ExtClass(c) => (&c.attrib, &c.instance_fields),
         }
     }
 }

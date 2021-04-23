@@ -51,6 +51,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Array
 * String
+* Virtual method
 
 #### Ver 0.3.2
 

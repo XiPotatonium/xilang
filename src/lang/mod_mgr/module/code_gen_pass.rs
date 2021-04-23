@@ -4,13 +4,14 @@ use super::super::{Class, Locals, Method, ModMgr};
 use super::Module;
 
 use xir::tok::{to_tok, TokTag};
+use xir::util::path::IModPath;
 use xir::{Inst, CCTOR_NAME, CTOR_NAME};
 
 use std::cell::RefCell;
 
 // code gen
 impl Module {
-    fn code_gen_method(&self, c: &ModMgr, class: &Class, m: &Method, block: &Box<AST>) {
+    fn code_gen_method(&self, c: &ModMgr, class: &Class, m: &Method, body: &Box<AST>) {
         let ctx = CodeGenCtx {
             mgr: c,
             module: self,
@@ -26,7 +27,7 @@ impl Module {
             method_builder: RefCell::new(MethodBuilder::new()),
             loop_ctx: RefCell::new(vec![]),
         };
-        let ret = gen(&ctx, block);
+        let ret = gen(&ctx, body);
 
         // Check type equivalent
         match &ret {
@@ -48,15 +49,40 @@ impl Module {
         ctx.done();
     }
 
-    pub fn code_gen(&self, c: &ModMgr) {
+    pub fn code_gen(&self, mod_mgr: &ModMgr) {
         for class in self.class_asts.iter() {
-            if let AST::Class(id, _, _, ast_methods, _, ast_init) = class.as_ref() {
-                let class_ref = self.classes.get(id).unwrap().borrow();
+            if let AST::Class(class) = class.as_ref() {
+                // Set class extend
+                if !class.extends_or_impls.is_empty() {
+                    let mut builder = self.builder.borrow_mut();
+                    for p in class.extends_or_impls.iter() {
+                        // find base class
+                        let (mod_name, class_name) = self.resolve_path(p, mod_mgr, None);
+
+                        let (extends_idx, extends_idx_tag) =
+                            builder.add_const_class(&mod_name, &class_name);
+                        let mut class_mut = self.classes.get(&class.name).unwrap().borrow_mut();
+                        if let Some(_) = class_mut.extends {
+                            panic!("Multiple inheritance for class {}", class.name);
+                        }
+                        class_mut.extends = Some(
+                            mod_mgr
+                                .mod_tbl
+                                .get(&mod_name)
+                                .unwrap()
+                                .get_class(&class_name)
+                                .unwrap(),
+                        );
+                        builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
+                    }
+                }
+
+                let class_ref = self.classes.get(&class.name).unwrap().borrow();
                 // gen static init
-                match ast_init.as_ref() {
+                match class.cctor.as_ref() {
                     AST::Block(_) => {
                         let m = class_ref.methods.get(CCTOR_NAME).unwrap();
-                        self.code_gen_method(c, &class_ref, m, ast_init);
+                        self.code_gen_method(mod_mgr, &class_ref, m, &class.cctor);
                     }
                     AST::None => (),
                     _ => unreachable!("Parser error"),
@@ -82,13 +108,10 @@ impl Module {
                         for _ in (1..m.ps.len()).into_iter() {
                             method_builder.add_inst(Inst::Dup);
                         }
-                        for (i, f_id) in (0..m.ps.len())
-                            .into_iter()
-                            .zip(class_ref.instance_fields.iter())
-                        {
+                        for (i, p) in m.ps.iter().enumerate() {
                             method_builder.add_inst_ldarg((i + 1) as u16);
                             method_builder.add_inst(Inst::StFld(to_tok(
-                                class_ref.fields.get(f_id).unwrap().idx,
+                                class_ref.fields.get(&p.id).unwrap().idx,
                                 TokTag::Field,
                             )));
                         }
@@ -98,17 +121,17 @@ impl Module {
                         &mut method_builder,
                         m.idx,
                         &vec![],
-                        c.cfg.optim >= 1,
+                        mod_mgr.cfg.optim >= 1,
                     );
                 }
 
-                for method_ast in ast_methods.iter() {
-                    if let AST::Method(id, _, _, _, _, block) = method_ast.as_ref() {
-                        if let AST::None = block.as_ref() {
+                for method_ast in class.methods.iter() {
+                    if let AST::Method(method) = method_ast.as_ref() {
+                        if let AST::None = method.body.as_ref() {
                             // extern function
                         } else {
-                            let m = class_ref.methods.get(id).unwrap();
-                            self.code_gen_method(c, &class_ref, m, block);
+                            let m = class_ref.methods.get(&method.name).unwrap();
+                            self.code_gen_method(mod_mgr, &class_ref, m, &method.body);
                         }
                     } else {
                         unreachable!("Parser error");

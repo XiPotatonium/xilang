@@ -1,4 +1,5 @@
-use super::super::ast::AST;
+use super::super::ast::*;
+
 use xir::attrib::*;
 use xir::util::path::ModPath;
 
@@ -55,7 +56,7 @@ fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
                 let mut attr_iter = attr.into_inner();
                 let attr_id = build_id(attr_iter.next().unwrap());
                 let attr_args = attr_iter.map(|a| build_literal(a)).collect();
-                ret.push(Box::new(AST::CustomAttr(attr_id, attr_args)));
+                ret.push(Box::new(AST::CustomAttrib(attr_id, attr_args)));
             } else {
                 unreachable!();
             }
@@ -66,41 +67,56 @@ fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
 
 fn build_class(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
-    let attr = build_attributes(&mut iter);
-    let id = build_id(iter.next().unwrap());
+    let custom_attribs = build_attributes(&mut iter);
+    let name = build_id(iter.next().unwrap());
+    let mut extends_or_impls: Vec<ModPath> = Vec::new();
+
+    if let Some(try_extends_or_impls) = iter.peek() {
+        if let Rule::ExtendsOrImpls = try_extends_or_impls.as_rule() {
+            let classes = iter.next().unwrap().into_inner();
+            for class in classes {
+                extends_or_impls.push(build_pathexpr(class));
+            }
+        }
+    }
+
     let mut fields: Vec<Box<AST>> = Vec::new();
     let mut methods: Vec<Box<AST>> = Vec::new();
-    let mut init: Option<Box<AST>> = None;
+    let mut cctor: Option<Box<AST>> = None;
+    let mut ctors: Vec<Box<AST>> = Vec::new();
     while let Some(_) = iter.peek() {
-        let item_attr = build_attributes(&mut iter);
+        let item_attrib = build_attributes(&mut iter);
         let class_item = iter.next().unwrap();
         match class_item.as_rule() {
-            Rule::StaticInit => {
-                if let Some(_) = init {
-                    panic!("Duplicated static init found in class {}", id);
+            Rule::CCtor => {
+                if let Some(_) = cctor {
+                    panic!("Duplicated static init found in class {}", name);
                 } else {
-                    init = Some(build_block(class_item.into_inner().next().unwrap()));
+                    cctor = Some(build_block(class_item.into_inner().next().unwrap()));
                 }
             }
-            Rule::StaticField => fields.push(build_field(class_item, true, item_attr)),
-            Rule::NonStaticField => fields.push(build_field(class_item, false, item_attr)),
-            Rule::Func => methods.push(build_method(class_item, item_attr)),
+            Rule::Ctor => ctors.push(build_ctor(class_item, item_attrib)),
+            Rule::StaticField => fields.push(build_field(class_item, true, item_attrib)),
+            Rule::NonStaticField => fields.push(build_field(class_item, false, item_attrib)),
+            Rule::Method => methods.push(build_method(class_item, item_attrib)),
             _ => unreachable!(),
         }
     }
 
-    Box::new(AST::Class(
-        id,
-        TypeAttrib::new_class(TypeAttribVisFlag::Pub.into()),
-        attr,
+    Box::new(AST::Class(ASTClass {
+        name,
+        attrib: TypeAttrib::new_class(TypeAttribVisFlag::Pub.into()),
+        custom_attribs,
+        extends_or_impls,
         methods,
         fields,
-        if let Some(v) = init {
+        cctor: if let Some(v) = cctor {
             v
         } else {
             Box::new(AST::None)
         },
-    ))
+        ctors,
+    }))
 }
 
 fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AST> {
@@ -114,49 +130,23 @@ fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AS
     Box::new(AST::Field(id, flag, attr, build_type(iter.next().unwrap())))
 }
 
-fn build_method(tree: Pair<Rule>, attr: Vec<Box<AST>>) -> Box<AST> {
+fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
-    let id = build_id(iter.next().unwrap());
-    let mut flag = MethodAttrib::from(MethodAttribFlag::Pub.into());
 
-    let mut ps: Vec<Box<AST>> = Vec::new();
-    if let Rule::Params = iter.peek().unwrap().as_rule() {
+    let attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
+    let ps = if let Rule::Params = iter.peek().unwrap().as_rule() {
         // Build parameters
-        let mut p_iter = iter.next().unwrap().into_inner();
-        let p0 = p_iter.next().unwrap();
-        match p0.as_rule() {
-            Rule::KwLSelf => {
-                // non-static method
-            }
-            Rule::Id => {
-                // static method
-                flag.set(MethodAttribFlag::Static);
-                ps.push(Box::new(AST::Param(
-                    build_id(p0),
-                    ParamAttrib::from(0),
-                    build_type(p_iter.next().unwrap()),
-                )));
-            }
-            _ => unreachable!(),
+        let (ps, has_self) = build_params(iter.next().unwrap());
+        if !has_self {
+            panic!("ctor must have \"self\" as its first param");
         }
-
-        loop {
-            if let Some(p_id) = p_iter.next() {
-                ps.push(Box::new(AST::Param(
-                    build_id(p_id),
-                    ParamAttrib::from(0),
-                    build_type(p_iter.next().unwrap()),
-                )));
-            } else {
-                break;
-            }
-        }
+        ps
     } else {
         // no param
-        flag.set(MethodAttribFlag::Static);
-    }
+        Vec::new()
+    };
 
-    let ret_ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
+    let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
         build_type(iter.next().unwrap())
     } else {
         Box::new(AST::None)
@@ -169,7 +159,91 @@ fn build_method(tree: Pair<Rule>, attr: Vec<Box<AST>>) -> Box<AST> {
         _ => unreachable!(),
     };
 
-    Box::new(AST::Method(id, flag, attr, ret_ty, ps, body))
+    Box::new(AST::Method(ASTMethod {
+        name: String::from(".ctor"),
+        attrib,
+        custom_attribs,
+        ty,
+        ps,
+        body,
+    }))
+}
+
+fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
+    let mut iter = tree.into_inner();
+    let name = build_id(iter.next().unwrap());
+    let mut attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
+
+    let ps = if let Rule::Params = iter.peek().unwrap().as_rule() {
+        // Build parameters
+        let (ps, has_self) = build_params(iter.next().unwrap());
+        if !has_self {
+            attrib.set(MethodAttribFlag::Static);
+        }
+        ps
+    } else {
+        // no param
+        attrib.set(MethodAttribFlag::Static);
+        Vec::new()
+    };
+
+    let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
+        build_type(iter.next().unwrap())
+    } else {
+        Box::new(AST::None)
+    };
+
+    let body = iter.next().unwrap();
+    let body = match body.as_rule() {
+        Rule::BlockExpr => build_block(body),
+        Rule::Semi => Box::new(AST::None),
+        _ => unreachable!(),
+    };
+
+    Box::new(AST::Method(ASTMethod {
+        name,
+        attrib,
+        custom_attribs,
+        ty,
+        ps,
+        body,
+    }))
+}
+
+// Build parameters
+fn build_params(tree: Pair<Rule>) -> (Vec<Box<AST>>, bool) {
+    let mut ps = Vec::new();
+    let mut has_self = false;
+    let mut p_iter = tree.into_inner();
+    let p0 = p_iter.next().unwrap();
+    match p0.as_rule() {
+        Rule::KwLSelf => {
+            // non-static method
+            has_self = true;
+        }
+        Rule::Id => {
+            // static method
+            ps.push(Box::new(AST::Param(
+                build_id(p0),
+                ParamAttrib::from(0),
+                build_type(p_iter.next().unwrap()),
+            )));
+        }
+        _ => unreachable!(),
+    }
+
+    loop {
+        if let Some(p_id) = p_iter.next() {
+            ps.push(Box::new(AST::Param(
+                build_id(p_id),
+                ParamAttrib::from(0),
+                build_type(p_iter.next().unwrap()),
+            )));
+        } else {
+            break;
+        }
+    }
+    (ps, has_self)
 }
 
 fn build_pathexpr(tree: Pair<Rule>) -> ModPath {

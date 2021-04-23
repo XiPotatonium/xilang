@@ -1,13 +1,14 @@
 mod basic_block;
 mod builder;
 mod gen;
-mod interpreter;
+// mod interpreter;
 mod lval;
 mod method_builder;
 mod op;
 
 pub use basic_block::{BasicBlock, LLCursor};
 pub use builder::Builder;
+use fmt::{Display, Pointer};
 pub use gen::gen;
 pub use method_builder::MethodBuilder;
 
@@ -16,8 +17,8 @@ use xir::file::IrFile;
 use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::ResolutionScope;
 
-use super::mod_mgr::{Class, Locals, Method, ModMgr, Module};
 use super::ast::AST;
+use super::mod_mgr::{Class, Field, Locals, Method, ModMgr, Module};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -72,12 +73,9 @@ pub enum ValType {
     RVal(RValType),
     Ret(RValType),
 
-    // mod fullname, class name, method name
-    Method(String, String, String),
-    // mod fullname, class name, field name
-    Field(String, String, String),
-    // mod fullname, class name
-    Class(String, String),
+    Method(*const Method),
+    Field(*const Field),
+    Class(*const Class),
     // mod fullname
     Module(String),
     // index into locals
@@ -97,7 +95,7 @@ pub enum RValType {
     F64,
     Void,
     Never,
-    /// mod fullname, class name
+    // module fullname, class name
     Obj(String, String),
     Array(Box<RValType>),
 }
@@ -137,8 +135,7 @@ impl RValType {
                             match parent_tag {
                                 ResolutionScope::Mod => unreachable!(),
                                 ResolutionScope::ModRef => RValType::Obj(
-                                    ctx.get_str(ctx.modref_tbl[parent_idx as usize - 1].name)
-                                        .to_owned(),
+                                    ctx.get_str(ctx.modref_tbl[parent_idx].name).to_owned(),
                                     ctx.get_str(ctx.typeref_tbl[idx].name).to_owned(),
                                 ),
                                 ResolutionScope::TypeRef => unreachable!(),
@@ -191,9 +188,9 @@ impl fmt::Display for ValType {
         match self {
             Self::RVal(rval) => write!(f, "(RVal){}", rval),
             Self::Ret(retv) => write!(f, "(Ret){}", retv),
-            Self::Method(m, c, n) => write!(f, "(Method){}/{}::{}", m, c, n),
-            Self::Field(m, c, n) => write!(f, "(Field){}/{}::{}", m, c, n),
-            Self::Class(m, c) => write!(f, "(Class){}/{}", m, c),
+            Self::Method(method) => method.fmt(f),
+            Self::Field(field) => field.fmt(f),
+            Self::Class(class) => class.fmt(f),
             Self::Module(m) => write!(f, "(Mod){}", m),
             Self::Local(n) => write!(f, "(Local){}", n),
             ValType::KwLSelf => write!(f, "(Arg)self"),

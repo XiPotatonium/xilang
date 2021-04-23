@@ -4,6 +4,7 @@ use super::file::IrFile;
 use super::inst::Inst;
 use super::member::MemberForwarded;
 use super::param::Param;
+use super::ty::TypeDefOrRef;
 
 use std::fmt;
 
@@ -27,7 +28,8 @@ impl IrFile {
             flag,
             self.get_str(field.name),
         )?;
-        self.blob_heap[field.sig as usize].fmt(f, self)
+        self.blob_heap[field.sig as usize].fmt(f, self)?;
+        write!(f, "\n")
     }
 
     fn write_named_param(
@@ -71,7 +73,7 @@ impl IrFile {
         let flag = MethodAttrib::from(method.flag);
         let impl_flag = MethodImplAttrib::from(method.impl_flag);
 
-        write!(f, "\n\n{}.method {} ", " ".repeat(indent * 4), flag)?;
+        write!(f, "\n{}.method {} ", " ".repeat(indent * 4), flag)?;
 
         if method.body == 0 {
             // this is an external method
@@ -170,7 +172,7 @@ impl IrFile {
                 inst.fmt(f, self, offset)?;
                 offset += inst.size();
             }
-            write!(f, "\n{}}}", " ".repeat(indent * 4))
+            write!(f, "\n{}}}\n", " ".repeat(indent * 4))
         } else {
             write!(f, " {{}}\n")
         }
@@ -218,6 +220,20 @@ impl fmt::Display for IrFile {
             let flag = TypeAttrib::from(class.flag);
             write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name))?;
 
+            if let Some((extends_idx_tag, extends_idx)) = class.get_extends() {
+                write!(f, " extends ")?;
+                match extends_idx_tag {
+                    TypeDefOrRef::TypeDef => {
+                        self.typedef_tbl[extends_idx].fullname(f, self)?;
+                    }
+                    TypeDefOrRef::TypeRef => {
+                        self.typeref_tbl[extends_idx].fullname(f, self)?;
+                    }
+                    TypeDefOrRef::TypeSpec => unimplemented!(),
+                }
+            }
+            write!(f, " {{ ")?;
+
             while field_i < field_lim {
                 self.write_field(f, 1, field_i)?;
                 field_i += 1;
@@ -227,6 +243,7 @@ impl fmt::Display for IrFile {
                 self.write_method(f, 1, method_i, method_i as u32 + 1 == entrypoint)?;
                 method_i += 1;
             }
+            write!(f, "}}")?;
         }
 
         Ok(())

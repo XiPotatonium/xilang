@@ -1,5 +1,5 @@
 use super::super::ast::AST;
-use super::{gen, CodeGenCtx, RValType, ValType};
+use super::{gen, Class, CodeGenCtx, Field, Method, RValType, ValType};
 
 use xir::attrib::*;
 use xir::util::path::{IModPath, ModPath};
@@ -35,27 +35,19 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
         } else if let Some(c) = ctx.module.classes.get(r) {
             if path.len() == 1 {
                 // class within the same module
-                return ValType::Class(ctx.module.fullname().to_owned(), r.to_string());
+                return ValType::Class(&c.borrow() as &Class as *const Class);
             } else {
                 // fields or method in class within this module
                 let c = c.borrow();
                 let mem = &path[1];
                 let ret = if expect_method {
-                    if c.methods.contains_key(mem) {
-                        ValType::Method(
-                            ctx.module.fullname().to_owned(),
-                            r.to_owned(),
-                            mem.to_owned(),
-                        )
+                    if let Some(ptr) = c.query_method(mem) {
+                        ValType::Method(ptr as *const Method)
                     } else {
                         panic!("No method {} in class {}/{}", mem, ctx.module.fullname(), r);
                     }
-                } else if c.fields.contains_key(mem) {
-                    ValType::Field(
-                        ctx.module.fullname().to_owned(),
-                        r.to_owned(),
-                        mem.to_owned(),
-                    )
+                } else if let Some(f) = c.query_field(mem) {
+                    ValType::Field(f as *const Field)
                 } else {
                     panic!("No field {} in class {}/{}", mem, ctx.module.fullname(), r);
                 };
@@ -70,12 +62,8 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
             (ModPath::from_str(r), path.iter().skip(1))
         } else if path.len() == 1 {
             if expect_method {
-                if ctx.class.methods.contains_key(r) {
-                    return ValType::Method(
-                        ctx.module.fullname().to_owned(),
-                        ctx.class.name.clone(),
-                        r.to_string(),
-                    );
+                if let Some(ptr) = ctx.class.query_method(r) {
+                    return ValType::Method(ptr as *const Method);
                 } else {
                     panic!(
                         "No method {} in class {}/{}",
@@ -98,14 +86,10 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                 } else if let Some(arg) = ctx.ps_map.get(r) {
                     // query args
                     ValType::Arg(*arg)
-                } else if ctx.class.fields.contains_key(r) {
+                } else if let Some(f) = ctx.class.query_field(r) {
                     // query field in this class
                     // either static or non-static is ok
-                    ValType::Field(
-                        ctx.module.fullname().to_owned(),
-                        ctx.class.name.clone(),
-                        r.to_owned(),
-                    )
+                    ValType::Field(f as *const Field)
                 } else {
                     panic!("Cannot found item with path: {}", path);
                 };
@@ -127,15 +111,12 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
             let mod_path = p.get_super();
             let m = ctx.mgr.mod_tbl.get(mod_path.as_str()).unwrap();
             if let Some(c) = m.get_class(seg) {
+                let c = unsafe { c.as_ref().unwrap() };
                 if let Some(mem_seg) = segs.next() {
                     // field/method
                     if expect_method {
-                        if let Some(_) = c.get_method(mem_seg) {
-                            break ValType::Method(
-                                mod_path.to_string(),
-                                seg.to_string(),
-                                mem_seg.to_string(),
-                            );
+                        if let Some(method_ref) = c.query_method(mem_seg) {
+                            break ValType::Method(method_ref as *const Method);
                         } else {
                             panic!(
                                 "No method named {} in class {}/{}",
@@ -145,12 +126,8 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                             );
                         }
                     } else {
-                        if let Some(_) = c.get_field(mem_seg) {
-                            break ValType::Field(
-                                mod_path.to_string(),
-                                seg.to_string(),
-                                mem_seg.to_string(),
-                            );
+                        if let Some(f) = c.query_field(mem_seg) {
+                            break ValType::Field(f as *const Field);
                         } else {
                             panic!(
                                 "No field named {} in class {}/{}",
@@ -161,7 +138,7 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                         }
                     }
                 } else {
-                    break ValType::Class(mod_path.to_string(), seg.to_string());
+                    break ValType::Class(c);
                 }
             } else {
                 panic!("No class named {} in mod {}", seg, m.fullname());
@@ -185,42 +162,42 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
         ValType::Module(name) => {
             // Access a class or sub-module in module
             let lhs = ctx.mgr.mod_tbl.get(&name).unwrap();
-            if let Some(_) = lhs.get_class(rhs) {
-                ValType::Class(name, rhs.to_owned())
+            if let Some(c) = lhs.get_class(rhs) {
+                ValType::Class(c)
             } else if lhs.contains_sub_mod(rhs) {
                 ValType::Module(format!("{}/{}", lhs.fullname(), rhs))
             } else {
                 panic!("No item {} in module {}", rhs, name);
             }
         }
-        ValType::Class(mod_name, name) => {
+        ValType::Class(c) => {
             // Access a static method or static field in class
-            let class_ref = ctx
-                .mgr
-                .mod_tbl
-                .get(&mod_name)
-                .unwrap()
-                .get_class(&name)
-                .unwrap();
+            let class_ref = unsafe { c.as_ref().unwrap() };
             if expect_method {
-                if let Some(m) = class_ref.get_method(rhs) {
+                if let Some(m) = class_ref.query_method(rhs) {
                     if m.attrib.is(MethodAttribFlag::Static) {
-                        ValType::Method(mod_name, name, rhs.to_owned())
+                        ValType::Method(m as *const Method)
                     } else {
-                        panic!("Cannot static access non-static method {}.{}", name, rhs);
+                        panic!(
+                            "Cannot static access non-static method {}.{}",
+                            class_ref, rhs
+                        );
                     }
                 } else {
-                    panic!("No method {} found in class {}", rhs, name);
+                    panic!("No method {} found in class {}", rhs, class_ref);
                 }
             } else {
-                if let Some(f) = class_ref.get_field(rhs) {
+                if let Some(f) = class_ref.query_field(rhs) {
                     if f.attrib.is(FieldAttribFlag::Static) {
-                        ValType::Field(mod_name, name, rhs.to_owned())
+                        ValType::Field(f as *const Field)
                     } else {
-                        panic!("Cannot static access non-static filed {}.{}", name, rhs);
+                        panic!(
+                            "Cannot static access non-static filed {}.{}",
+                            class_ref, rhs
+                        );
                     }
                 } else {
-                    panic!("No field {} found in class {}", rhs, name);
+                    panic!("No field {} found in class {}", rhs, class_ref);
                 }
             }
         }
@@ -237,29 +214,30 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
             match lhs {
                 RValType::Obj(mod_name, name) => {
                     // Access a non-static method or non-static field in class
-                    let class_ref = ctx
+                    let class = ctx
                         .mgr
                         .mod_tbl
                         .get(&mod_name)
                         .unwrap()
                         .get_class(&name)
                         .unwrap();
+                    let class_ref = unsafe { class.as_ref().unwrap() };
                     if expect_method {
-                        if let Some(m) = class_ref.get_method(rhs) {
+                        if let Some(m) = class_ref.query_method(rhs) {
                             if m.attrib.is(MethodAttribFlag::Static) {
                                 panic!("Cannot obj access static method {}::{}", name, rhs);
                             } else {
-                                ValType::Method(mod_name, name, rhs.to_owned())
+                                ValType::Method(m as *const Method)
                             }
                         } else {
                             panic!("No method {} found in class {}", rhs, name);
                         }
                     } else {
-                        if let Some(f) = class_ref.get_field(rhs) {
+                        if let Some(f) = class_ref.query_field(rhs) {
                             if f.attrib.is(FieldAttribFlag::Static) {
                                 panic!("Cannot obj access static filed {}::{}", name, rhs);
                             } else {
-                                ValType::Field(mod_name, name, rhs.to_owned())
+                                ValType::Field(f as *const Field)
                             }
                         } else {
                             panic!("No field {} found in class {}", rhs, name);
