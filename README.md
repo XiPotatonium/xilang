@@ -9,7 +9,10 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * class
   * static/non-static method/field
   * cctor
-  * ctor (only default constructor)
+  * ctor (only one constructor)
+  * inheritance:
+    * all classes except std::Object is derived from std::Object
+    * accessing instance field and method of base class
 * Built-in type:
   * i32
   * bool
@@ -38,27 +41,24 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Local var. 
   * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
+* module存在环形依赖的时候估计是会出现错误的
 
 ### 1.2 RoadMap
-
-#### Ver 0.3.0
-
-* Class inheritance
-* Param table
-* Blob
 
 #### Ver 0.3.1
 
 * Array
 * String
-* Virtual method
+* OOP:
+  * Virtual method
+  * overload
+  * ctor of derived class call default ctor of base class automatically
 
 #### Ver 0.3.2
 
 * Refactor lang
   * DRY
   * make incremental compilation possible
-  * Overload
 * xilang project structure
   * crate
 
@@ -93,7 +93,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 #### Ver 0.6.1
 
 * GC
-* Refactor vm, use unsafe properly
 
 #### Ver 0.6.2
 
@@ -129,7 +128,6 @@ USAGE:
 
 FLAGS:
     -h, --help       Prints help information
-        --no_std     Build without stdlib
     -v, --verbose    Level of verbosity. Level1: Display project tree; Level2: Dump .ast.json
     -V, --version    Prints version information
 

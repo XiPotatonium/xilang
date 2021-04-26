@@ -205,22 +205,22 @@ impl fmt::Display for IrFile {
             self.write_method(f, 0, i, i as u32 + 1 == entrypoint)?;
         }
 
-        for (class_i, class) in self.typedef_tbl.iter().enumerate() {
-            let (field_lim, method_lim) = if class_i + 1 >= self.typedef_tbl.len() {
+        for (typedef_i, typedef) in self.typedef_tbl.iter().enumerate() {
+            let (field_lim, method_lim) = if typedef_i + 1 >= self.typedef_tbl.len() {
                 // last class
                 (self.field_tbl.len(), self.method_tbl.len())
             } else {
-                let next_class = &self.typedef_tbl[class_i + 1];
+                let next_typedef = &self.typedef_tbl[typedef_i + 1];
                 (
-                    next_class.fields as usize - 1,
-                    next_class.methods as usize - 1,
+                    next_typedef.fields as usize - 1,
+                    next_typedef.methods as usize - 1,
                 )
             };
 
-            let flag = TypeAttrib::from(class.flag);
-            write!(f, "\n\n\n.class {} {}", flag, self.get_str(class.name))?;
+            let flag = TypeAttrib::from(typedef.flag);
+            write!(f, "\n\n\n.class {} {}", flag, self.get_str(typedef.name))?;
 
-            if let Some((extends_idx_tag, extends_idx)) = class.get_extends() {
+            if let Some((extends_idx_tag, extends_idx)) = typedef.get_extends() {
                 write!(f, " extends ")?;
                 match extends_idx_tag {
                     TypeDefOrRef::TypeDef => {

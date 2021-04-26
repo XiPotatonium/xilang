@@ -3,11 +3,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
-use std::ptr;
 
 use xir::attrib::*;
 use xir::blob::IrSig;
 use xir::file::*;
+use xir::ty::{ResolutionScope, TypeDefOrRef};
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
@@ -249,6 +249,42 @@ pub fn load_external_crate(
                         external_mod_fullname,
                         sub_mod_path.display()
                     );
+                }
+            }
+        }
+
+        // 3. link extends
+        {
+            let this_mod_mut = unsafe { this_mod_ptr.as_mut().unwrap() };
+            for class_entry in file.typedef_tbl.iter() {
+                let mut class_mut = this_mod_mut
+                    .classes
+                    .get_mut(file.get_str(class_entry.name))
+                    .unwrap();
+                if let Some((tag, idx)) = class_entry.get_extends() {
+                    class_mut.extends = Some(match tag {
+                        TypeDefOrRef::TypeDef => mod_tbl
+                            .get(file.mod_name())
+                            .unwrap()
+                            .get_class(file.get_str(file.typedef_tbl[idx].name))
+                            .unwrap(),
+                        TypeDefOrRef::TypeRef => {
+                            let typeref = &file.typeref_tbl[idx];
+                            let (parent_tag, parent_idx) = typeref.get_parent();
+                            mod_tbl
+                                .get(match parent_tag {
+                                    ResolutionScope::Mod => file.mod_name(),
+                                    ResolutionScope::ModRef => {
+                                        file.get_str(file.modref_tbl[parent_idx].name)
+                                    }
+                                    ResolutionScope::TypeRef => unreachable!(),
+                                })
+                                .unwrap()
+                                .get_class(file.get_str(typeref.name))
+                                .unwrap()
+                        }
+                        TypeDefOrRef::TypeSpec => unimplemented!(),
+                    });
                 }
             }
         }

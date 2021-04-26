@@ -8,7 +8,6 @@ mod op;
 
 pub use basic_block::{BasicBlock, LLCursor};
 pub use builder::Builder;
-use fmt::{Display, Pointer};
 pub use gen::gen;
 pub use method_builder::MethodBuilder;
 
@@ -188,9 +187,9 @@ impl fmt::Display for ValType {
         match self {
             Self::RVal(rval) => write!(f, "(RVal){}", rval),
             Self::Ret(retv) => write!(f, "(Ret){}", retv),
-            Self::Method(method) => method.fmt(f),
-            Self::Field(field) => field.fmt(f),
-            Self::Class(class) => class.fmt(f),
+            Self::Method(method) => write!(f, "{}", unsafe { method.as_ref().unwrap() }),
+            Self::Field(field) => write!(f, "{}", unsafe { field.as_ref().unwrap() }),
+            Self::Class(class) => write!(f, "{}", unsafe { class.as_ref().unwrap() }),
             Self::Module(m) => write!(f, "(Mod){}", m),
             Self::Local(n) => write!(f, "(Local){}", n),
             ValType::KwLSelf => write!(f, "(Arg)self"),

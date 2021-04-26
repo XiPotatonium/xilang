@@ -4,7 +4,6 @@ use super::super::{Class, Locals, Method, ModMgr};
 use super::Module;
 
 use xir::tok::{to_tok, TokTag};
-use xir::util::path::IModPath;
 use xir::{Inst, CCTOR_NAME, CTOR_NAME};
 
 use std::cell::RefCell;
@@ -53,15 +52,15 @@ impl Module {
         for class in self.class_asts.iter() {
             if let AST::Class(class) = class.as_ref() {
                 // Set class extend
-                if !class.extends_or_impls.is_empty() {
+                {
                     let mut builder = self.builder.borrow_mut();
+                    let mut class_mut = self.classes.get(&class.name).unwrap().borrow_mut();
                     for p in class.extends_or_impls.iter() {
                         // find base class
                         let (mod_name, class_name) = self.resolve_path(p, mod_mgr, None);
 
                         let (extends_idx, extends_idx_tag) =
                             builder.add_const_class(&mod_name, &class_name);
-                        let mut class_mut = self.classes.get(&class.name).unwrap().borrow_mut();
                         if let Some(_) = class_mut.extends {
                             panic!("Multiple inheritance for class {}", class.name);
                         }
@@ -74,6 +73,25 @@ impl Module {
                                 .unwrap(),
                         );
                         builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
+                    }
+
+                    if let None = class_mut.extends {
+                        // no explicitly designated base class
+                        // implicitly derived from std::Object
+                        let class_fullname = format!("{}", class_mut);
+                        if class_fullname != "std::Object" {
+                            class_mut.extends = Some(
+                                mod_mgr
+                                    .mod_tbl
+                                    .get("std")
+                                    .unwrap()
+                                    .get_class("Object")
+                                    .unwrap(),
+                            );
+                            let (extends_idx, extends_idx_tag) =
+                                builder.add_const_class("std", "Object");
+                            builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
+                        }
                     }
                 }
 

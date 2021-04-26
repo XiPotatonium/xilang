@@ -7,7 +7,7 @@ use super::stand_alone_sig::IrStandAloneSig;
 use super::ty::{TypeDef, TypeRef};
 
 pub const MAJOR_VERSION: u16 = 0;
-pub const MINOR_VERSION: u16 = 2;
+pub const MINOR_VERSION: u16 = 3;
 
 pub struct IrFile {
     pub major_version: u16,

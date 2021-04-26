@@ -9,12 +9,14 @@ pub struct Param {
 }
 
 pub struct Method {
+    /// module where method is declared
     pub ctx: *const Module,
-    pub parent_class: Option<*const Type>,
+    /// None if parent is ctx
+    pub parent: Option<*const Type>,
 
     pub name: u32,
 
-    pub flag: MethodAttrib,
+    pub attrib: MethodAttrib,
     pub impl_flag: MethodImplAttrib,
 
     pub ps: Vec<Param>,

@@ -21,7 +21,9 @@ impl Heap {
     pub unsafe fn new_obj(&mut self, class: *const Type) -> usize {
         let class = class.as_ref().unwrap();
 
-        if class.obj_size + size_of::<usize>() * 2 + self.next_obj_offset >= self.data.len() {
+        if class.instance_field_size + size_of::<usize>() * 2 + self.next_obj_offset
+            >= self.data.len()
+        {
             // GC
             unimplemented!("GC");
         }
@@ -30,7 +32,7 @@ impl Heap {
             &mut self.data[self.next_obj_offset + size_of::<usize>()] as *mut u8 as *mut usize;
         *pvtbl = class.vtbl_addr;
         let ret = self.next_obj_offset + size_of::<usize>() * 2;
-        self.next_obj_offset = ret + class.obj_size;
+        self.next_obj_offset = ret + class.instance_field_size;
         ret
     }
 
