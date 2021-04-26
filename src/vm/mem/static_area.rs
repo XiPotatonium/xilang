@@ -20,7 +20,7 @@ impl StaticArea {
     /// virt and interface are not implemented
 
     /// return: offset
-    pub unsafe fn add_class(
+    pub fn add_class(
         &mut self,
         vtbl_entry: VTblEntry,
         virts: Vec<*const Method>,
@@ -38,7 +38,9 @@ impl StaticArea {
         }
         self.next_obj_offset += total_size;
         let ptr = &mut self.data[ret] as *mut u8 as *mut VTblEntry;
-        *ptr.as_mut().unwrap() = vtbl_entry;
+        unsafe {
+            *ptr.as_mut().unwrap() = vtbl_entry;
+        }
         for _ in virts.iter() {
             unimplemented!();
         }
@@ -47,6 +49,16 @@ impl StaticArea {
         }
         // no gc, so content of mem are all zeros
         ret
+    }
+
+    /// Same as Heap.access
+    pub fn access<T>(&self, offset: usize) -> *const T {
+        &self.data[offset] as *const u8 as *const T
+    }
+
+    /// Same as Heap.access_mut
+    pub fn access_mut<T>(&mut self, offset: usize) -> *mut T {
+        &mut self.data[offset] as *mut u8 as *mut T
     }
 }
 

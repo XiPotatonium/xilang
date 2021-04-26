@@ -11,6 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use vm::data::Module;
 use vm::exec::TExecutor;
 use vm::loader::load;
 use vm::mem::SharedMem;
@@ -81,6 +82,7 @@ fn main() {
 
     let mut m = SharedMem::new();
 
+    // loading
     let start_time = SystemTime::now();
     let (static_inits, entry) = load(entry, &mut m, &cfg);
     let mod_load_time = SystemTime::now()
@@ -88,13 +90,20 @@ fn main() {
         .unwrap()
         .as_secs_f32();
 
+    // allocate static space for classes
+    for module in m.mods.values_mut() {
+        if let Module::IL(module) = module.as_mut() {
+            for ty in module.types.iter_mut() {
+                ty.dispose_instance_info(&mut m.static_area);
+            }
+        }
+    }
+
     // static inits
     let start_time = SystemTime::now();
     for static_init in static_inits.into_iter() {
-        unsafe {
-            let mut executor = TExecutor::new(static_init);
-            executor.run(&mut m);
-        }
+        let mut executor = TExecutor::new(static_init);
+        executor.run(&mut m);
     }
     let static_exec_time = SystemTime::now()
         .duration_since(start_time)
@@ -102,10 +111,8 @@ fn main() {
         .as_secs_f32();
 
     let start_time = SystemTime::now();
-    let ret = unsafe {
-        let mut executor = TExecutor::new(entry);
-        executor.run(&mut m)
-    };
+    let mut executor = TExecutor::new(entry);
+    let ret = executor.run(&mut m);
     let main_exec_time = SystemTime::now()
         .duration_since(start_time)
         .unwrap()

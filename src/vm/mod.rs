@@ -1,8 +1,7 @@
+pub mod data;
 pub mod exec;
 pub mod loader;
 pub mod mem;
-
-mod data;
 mod native;
 
 use std::path::PathBuf;

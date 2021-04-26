@@ -58,85 +58,89 @@ pub struct TExecutor<'m> {
 
 macro_rules! exec_numeric_op {
     ($op: tt, $lhs: ident, $rhs: ident) => {
-        match $lhs.tag {
-            SlotTag::I32 => match $rhs.tag {
-                SlotTag::I32 => {
-                    $lhs.data.i32_ = $lhs.data.i32_ $op $rhs.data.i32_;
-                }
-                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F => panic!("Cannot add between float and int"),
-                SlotTag::INative => {
-                    $lhs.data.inative_ = $lhs.data.i32_ as isize $op $rhs.data.inative_;
-                    $lhs.tag = SlotTag::INative;
-                }
+        unsafe {
+            match $lhs.tag {
+                SlotTag::I32 => match $rhs.tag {
+                    SlotTag::I32 => {
+                        $lhs.data.i32_ = $lhs.data.i32_ $op $rhs.data.i32_;
+                    }
+                    SlotTag::I64 => panic!("Cannot add between i32 and i64"),
+                    SlotTag::F => panic!("Cannot add between float and int"),
+                    SlotTag::INative => {
+                        $lhs.data.inative_ = $lhs.data.i32_ as isize $op $rhs.data.inative_;
+                        $lhs.tag = SlotTag::INative;
+                    }
+                    SlotTag::Ref => panic!("Cannot add ref"),
+                    SlotTag::Uninit => panic!("Cannot add unint data"),
+                },
+                SlotTag::I64 => unimplemented!(),
+                SlotTag::F => unimplemented!(),
+                SlotTag::INative => match $rhs.tag {
+                    SlotTag::I32 => {
+                        $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.i32_ as isize;
+                    }
+                    SlotTag::I64 => panic!("Cannot add between i32 and i64"),
+                    SlotTag::F => panic!("Cannot add between float and int"),
+                    SlotTag::INative => {
+                        $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.inative_;
+                    }
+                    SlotTag::Ref => panic!("Cannot add ref"),
+                    SlotTag::Uninit => panic!("Cannot add unint data"),
+                },
                 SlotTag::Ref => panic!("Cannot add ref"),
                 SlotTag::Uninit => panic!("Cannot add unint data"),
-            },
-            SlotTag::I64 => unimplemented!(),
-            SlotTag::F => unimplemented!(),
-            SlotTag::INative => match $rhs.tag {
-                SlotTag::I32 => {
-                    $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.i32_ as isize;
-                }
-                SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                SlotTag::F => panic!("Cannot add between float and int"),
-                SlotTag::INative => {
-                    $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.inative_;
-                }
-                SlotTag::Ref => panic!("Cannot add ref"),
-                SlotTag::Uninit => panic!("Cannot add unint data"),
-            },
-            SlotTag::Ref => panic!("Cannot add ref"),
-            SlotTag::Uninit => panic!("Cannot add unint data"),
+            }
         }
     };
 }
 
 macro_rules! exec_cmp_op {
     ($op: tt, $lhs: ident, $rhs: ident) => {
-        match $lhs.tag {
-            SlotTag::I32 => match $rhs.tag {
-                SlotTag::I32 => {
-                    $lhs.data.i32_ $op $rhs.data.i32_
-                }
-                SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                SlotTag::F => panic!("Cannot cmp between float and int"),
-                SlotTag::INative => {
-                    ($lhs.data.i32_ as isize) $op $rhs.data.inative_
-                }
+        unsafe {
+            match $lhs.tag {
+                SlotTag::I32 => match $rhs.tag {
+                    SlotTag::I32 => {
+                        $lhs.data.i32_ $op $rhs.data.i32_
+                    }
+                    SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
+                    SlotTag::F => panic!("Cannot cmp between float and int"),
+                    SlotTag::INative => {
+                        ($lhs.data.i32_ as isize) $op $rhs.data.inative_
+                    }
+                    SlotTag::Ref => panic!("Cannot cmp ref"),
+                    SlotTag::Uninit => panic!("Cannot cmp unint data"),
+                },
+                SlotTag::I64 => unimplemented!(),
+                SlotTag::F => unimplemented!(),
+                SlotTag::INative => match $rhs.tag {
+                    SlotTag::I32 => {
+                        $lhs.data.inative_ $op $rhs.data.i32_ as isize
+                    }
+                    SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
+                    SlotTag::F => panic!("Cannot cmp between float and int"),
+                    SlotTag::INative => {
+                        $lhs.data.inative_ $op $rhs.data.inative_
+                    }
+                    SlotTag::Ref => panic!("Cannot cmp ref"),
+                    SlotTag::Uninit => panic!("Cannot cmp unint data"),
+                },
                 SlotTag::Ref => panic!("Cannot cmp ref"),
                 SlotTag::Uninit => panic!("Cannot cmp unint data"),
-            },
-            SlotTag::I64 => unimplemented!(),
-            SlotTag::F => unimplemented!(),
-            SlotTag::INative => match $rhs.tag {
-                SlotTag::I32 => {
-                    $lhs.data.inative_ $op $rhs.data.i32_ as isize
-                }
-                SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                SlotTag::F => panic!("Cannot cmp between float and int"),
-                SlotTag::INative => {
-                    $lhs.data.inative_ $op $rhs.data.inative_
-                }
-                SlotTag::Ref => panic!("Cannot cmp ref"),
-                SlotTag::Uninit => panic!("Cannot cmp unint data"),
-            },
-            SlotTag::Ref => panic!("Cannot cmp ref"),
-            SlotTag::Uninit => panic!("Cannot cmp unint data"),
+            }
         }
     };
 }
 
 impl<'m> TExecutor<'m> {
-    pub unsafe fn new(entry: *const Method) -> TExecutor<'m> {
+    pub fn new(entry: *const Method) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
-        let entry_ref = entry.as_ref().unwrap();
+        let entry_ref = unsafe { entry.as_ref().unwrap() };
         ret.call(vec![], entry_ref, entry_ref.method_impl.expect_il());
         ret
     }
 
-    unsafe fn call(&mut self, args: Vec<Slot>, method: &'m Method, il_impl: &'m MethodILImpl) {
+    fn call(&mut self, args: Vec<Slot>, method: &'m Method, il_impl: &'m MethodILImpl) {
         // Currently there is no verification of the arg type
         // TODO: Generate locals with type info set
         self.states.push(MethodState {
@@ -149,7 +153,7 @@ impl<'m> TExecutor<'m> {
         });
     }
 
-    pub unsafe fn run(&mut self, mem: &'m mut SharedMem) -> u32 {
+    pub fn run(&mut self, mem: &'m mut SharedMem) -> u32 {
         loop {
             let code = self.states.last_mut().unwrap().consume_u8();
             match code {
@@ -307,16 +311,18 @@ impl<'m> TExecutor<'m> {
                 0x28 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = cur_state.method.ctx.as_ref().unwrap().expect_il();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
                     let (tag, idx) = get_tok_tag(tok);
 
                     let callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => ctx.memberref[idx as usize - 1]
-                            .expect_method()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
+                                .expect_method()
+                                .as_ref()
+                                .unwrap()
+                        },
                         _ => unimplemented!(),
                     };
 
@@ -328,12 +334,15 @@ impl<'m> TExecutor<'m> {
                         MethodImpl::Native(MethodNativeImpl { scope, .. }) => {
                             // currently there is no multi-slot user defined type
                             let mut ret: Vec<Slot> = Vec::new();
-                            let callee_ctx = callee.ctx.as_ref().unwrap().expect_il();
-                            callee_ctx.modref[*scope]
-                                .as_ref()
-                                .unwrap()
-                                .expect_dll()
-                                .call(mem.get_str(callee.name), &args, &mut ret);
+                            unsafe {
+                                let callee_ctx = callee.ctx.as_ref().unwrap().expect_il();
+                                callee_ctx.modrefs[*scope]
+                                    .as_ref()
+                                    .unwrap()
+                                    .expect_dll()
+                                    .call(mem.get_str(callee.name), &args, &mut ret);
+                            }
+
                             self.states.last_mut().unwrap().stack.append(ret);
                         }
                     }
@@ -386,9 +395,11 @@ impl<'m> TExecutor<'m> {
                     let cur_state = self.states.last_mut().unwrap();
                     let offset = cur_state.consume_i32();
                     let v = cur_state.stack.pop();
-                    if v.data.inative_ == 0 {
-                        // false
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    unsafe {
+                        if v.data.inative_ == 0 {
+                            // false
+                            cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                        }
                     }
                 }
                 // brtrue
@@ -396,9 +407,11 @@ impl<'m> TExecutor<'m> {
                     let cur_state = self.states.last_mut().unwrap();
                     let offset = cur_state.consume_i32();
                     let v = cur_state.stack.pop();
-                    if v.data.inative_ != 0 {
-                        // true
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                    unsafe {
+                        if v.data.inative_ != 0 {
+                            // true
+                            cur_state.ip = (cur_state.ip as i32 + offset) as usize;
+                        }
                     }
                 }
                 // beq
@@ -494,196 +507,209 @@ impl<'m> TExecutor<'m> {
                 // neg
                 0x65 => {
                     let lhs = self.states.last_mut().unwrap().stack.peek_mut();
-                    match lhs.tag {
-                        SlotTag::I32 => {
-                            lhs.data.i32_ = -lhs.data.i32_;
+                    unsafe {
+                        match lhs.tag {
+                            SlotTag::I32 => {
+                                lhs.data.i32_ = -lhs.data.i32_;
+                            }
+                            SlotTag::I64 => {
+                                lhs.data.i64_ = -lhs.data.i64_;
+                            }
+                            SlotTag::F => {
+                                unimplemented!();
+                            }
+                            SlotTag::INative => {
+                                lhs.data.inative_ = -lhs.data.inative_;
+                            }
+                            SlotTag::Ref => panic!("Cannot neg ref type"),
+                            SlotTag::Uninit => panic!("Cannot neg uinit slot"),
                         }
-                        SlotTag::I64 => {
-                            lhs.data.i64_ = -lhs.data.i64_;
-                        }
-                        SlotTag::F => {
-                            unimplemented!();
-                        }
-                        SlotTag::INative => {
-                            lhs.data.inative_ = -lhs.data.inative_;
-                        }
-                        SlotTag::Ref => panic!("Cannot neg ref type"),
-                        SlotTag::Uninit => panic!("Cannot neg uinit slot"),
                     }
                 }
                 // callvirt
                 0x6F => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = cur_state.method.ctx.as_ref().unwrap().expect_il();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
                     let (tag, idx) = get_tok_tag(tok);
 
                     let callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => ctx.memberref[idx as usize - 1]
-                            .expect_method()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
+                                .expect_method()
+                                .as_ref()
+                                .unwrap()
+                        },
                         _ => unimplemented!(),
                     };
-                    // TODO: make sure callee is virtual
+
+                    // TODO: If calle is virtual, use dynamic dispatching
 
                     let args = cur_state.stack.pop_n(callee.ps.len() + 1);
+
+                    // TODO: assert args[0] != null
+
                     self.call(args, callee, callee.method_impl.expect_il());
                 }
                 // newobj
                 0x73 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = cur_state.method.ctx.as_ref().unwrap().expect_il();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
                     let (tag, idx) = get_tok_tag(tok);
 
                     let callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => ctx.memberref[idx as usize - 1]
-                            .expect_method()
-                            .as_ref()
-                            .unwrap(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
+                                .expect_method()
+                                .as_ref()
+                                .unwrap()
+                        },
                         _ => unimplemented!(),
                     };
                     // TODO: make sure callee is .ctor
 
                     let mut args: Vec<Slot> = Vec::new();
-                    if callee.flag.is(MethodAttribFlag::Static) {
+                    if callee.attrib.is(MethodAttribFlag::Static) {
                         panic!(".ctor should be a static method");
                     }
                     // TODO: more strict check
 
                     // Alloc space at heap
-                    let offset = mem.heap.new_obj(callee.parent_class.unwrap());
-                    args.push(Slot::new_ref(MemTag::HeapMem, offset));
-                    args.append(&mut cur_state.stack.pop_n(callee.ps.len()));
-                    cur_state.stack.push(Slot::new_ref(MemTag::HeapMem, offset));
+                    unsafe {
+                        let offset = mem.heap.new_obj(callee.parent.unwrap());
+                        args.push(Slot::new_ref(MemTag::HeapMem, offset));
+                        args.append(&mut cur_state.stack.pop_n(callee.ps.len()));
+                        cur_state.stack.push(Slot::new_ref(MemTag::HeapMem, offset));
+                    }
 
                     self.call(args, callee, callee.method_impl.expect_il());
                 }
                 // ldfld
                 0x7B => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+
                     let tok = cur_state.consume_u32();
-                    let (mem_tag, offset) = cur_state.stack.pop().as_addr();
+                    let (tag, idx) = get_tok_tag(tok);
+                    let f = match tag {
+                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
+                                .expect_field()
+                                .as_ref()
+                                .unwrap()
+                        },
+
+                        _ => unimplemented!(),
+                    };
+
+                    let (mem_tag, instance_addr_offset) =
+                        unsafe { cur_state.stack.pop().as_addr() };
                     if let MemTag::HeapMem = mem_tag {
                     } else {
                         panic!("Operand of ldfld is not a heap addr");
                     }
+                    let field_addr = addr_addu(f.addr, instance_addr_offset);
 
-                    let (tag, idx) = get_tok_tag(tok);
-                    let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
-                            [idx as usize - 1]
-                            .as_ref(),
-                        TokTag::MemberRef => {
-                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
-                                [idx as usize - 1]
-                                .expect_field()
-                                .as_ref()
-                                .unwrap()
+                    unsafe {
+                        match f.ty {
+                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                                unreachable!()
+                            }
+                            BuiltinType::Bool => unimplemented!(),
+                            BuiltinType::Char => unimplemented!(),
+                            BuiltinType::U1 => unimplemented!(),
+                            BuiltinType::I1 => unimplemented!(),
+                            BuiltinType::U2 => unimplemented!(),
+                            BuiltinType::I2 => unimplemented!(),
+                            BuiltinType::U4 => unimplemented!(),
+                            BuiltinType::I4 => {
+                                cur_state.stack.push_i32(*mem.heap.access(field_addr));
+                            }
+                            BuiltinType::U8 => unimplemented!(),
+                            BuiltinType::I8 => unimplemented!(),
+                            BuiltinType::UNative => unimplemented!(),
+                            BuiltinType::INative => unimplemented!(),
+                            BuiltinType::R4 => unimplemented!(),
+                            BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::ByRef(_) => unimplemented!(),
+                            BuiltinType::Array(_) => unimplemented!(),
                         }
-                        _ => unimplemented!(),
-                    };
-
-                    let field_addr = addr_addu(f.addr, offset);
-
-                    match f.ty {
-                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
-                            unreachable!()
-                        }
-                        BuiltinType::Bool => unimplemented!(),
-                        BuiltinType::Char => unimplemented!(),
-                        BuiltinType::U1 => unimplemented!(),
-                        BuiltinType::I1 => unimplemented!(),
-                        BuiltinType::U2 => unimplemented!(),
-                        BuiltinType::I2 => unimplemented!(),
-                        BuiltinType::U4 => unimplemented!(),
-                        BuiltinType::I4 => {
-                            cur_state.stack.push_i32(*mem.heap.access(field_addr));
-                        }
-                        BuiltinType::U8 => unimplemented!(),
-                        BuiltinType::I8 => unimplemented!(),
-                        BuiltinType::UNative => unimplemented!(),
-                        BuiltinType::INative => unimplemented!(),
-                        BuiltinType::R4 => unimplemented!(),
-                        BuiltinType::R8 => unimplemented!(),
-                        BuiltinType::ByRef(_) => unimplemented!(),
-                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // stfld
                 0x7D => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+
                     let tok = cur_state.consume_u32();
+                    let (tag, idx) = get_tok_tag(tok);
+                    let f = match tag {
+                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
+                                .expect_field()
+                                .as_ref()
+                                .unwrap()
+                        },
+                        _ => unimplemented!(),
+                    };
+
                     let v = cur_state.stack.pop();
-                    let (mem_tag, offset) = cur_state.stack.pop().as_addr();
+
+                    let (mem_tag, offset) = unsafe { cur_state.stack.pop().as_addr() };
                     if let MemTag::HeapMem = mem_tag {
                     } else {
                         panic!("Operand of stfld is not a heap addr");
                     }
-
-                    let (tag, idx) = get_tok_tag(tok);
-                    let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
-                            [idx as usize - 1]
-                            .as_ref(),
-                        TokTag::MemberRef => {
-                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
-                                [idx as usize - 1]
-                                .expect_field()
-                                .as_ref()
-                                .unwrap()
-                        }
-                        _ => unimplemented!(),
-                    };
-
                     let field_addr = addr_addu(f.addr, offset);
 
-                    match f.ty {
-                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
-                            unreachable!()
+                    unsafe {
+                        match f.ty {
+                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                                unreachable!()
+                            }
+                            BuiltinType::Bool => unimplemented!(),
+                            BuiltinType::Char => unimplemented!(),
+                            BuiltinType::U1 => unimplemented!(),
+                            BuiltinType::I1 => unimplemented!(),
+                            BuiltinType::U2 => unimplemented!(),
+                            BuiltinType::I2 => unimplemented!(),
+                            BuiltinType::U4 => unimplemented!(),
+                            BuiltinType::I4 => {
+                                *mem.heap.access_mut(field_addr) = v.data.i32_;
+                            }
+                            BuiltinType::U8 => unimplemented!(),
+                            BuiltinType::I8 => unimplemented!(),
+                            BuiltinType::UNative => unimplemented!(),
+                            BuiltinType::INative => unimplemented!(),
+                            BuiltinType::R4 => unimplemented!(),
+                            BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::ByRef(_) => unimplemented!(),
+                            BuiltinType::Array(_) => unimplemented!(),
                         }
-                        BuiltinType::Bool => unimplemented!(),
-                        BuiltinType::Char => unimplemented!(),
-                        BuiltinType::U1 => unimplemented!(),
-                        BuiltinType::I1 => unimplemented!(),
-                        BuiltinType::U2 => unimplemented!(),
-                        BuiltinType::I2 => unimplemented!(),
-                        BuiltinType::U4 => unimplemented!(),
-                        BuiltinType::I4 => {
-                            *mem.heap.access_mut(field_addr) = v.data.i32_;
-                        }
-                        BuiltinType::U8 => unimplemented!(),
-                        BuiltinType::I8 => unimplemented!(),
-                        BuiltinType::UNative => unimplemented!(),
-                        BuiltinType::INative => unimplemented!(),
-                        BuiltinType::R4 => unimplemented!(),
-                        BuiltinType::R8 => unimplemented!(),
-                        BuiltinType::ByRef(_) => unimplemented!(),
-                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // ldsfld
                 0x7E => {
                     let cur_state = self.states.last_mut().unwrap();
-                    let tok = cur_state.consume_u32();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
+                    let tok = cur_state.consume_u32();
                     let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
-                            [idx as usize - 1]
-                            .as_ref(),
-                        TokTag::MemberRef => {
-                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
-                                [idx as usize - 1]
+                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
                                 .expect_field()
                                 .as_ref()
                                 .unwrap()
-                        }
+                        },
                         _ => unimplemented!(),
                     };
 
@@ -693,48 +719,48 @@ impl<'m> TExecutor<'m> {
                         panic!("Operand of ldsfld is not a static addr");
                     }
 
-                    match f.ty {
-                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
-                            unreachable!()
+                    unsafe {
+                        match f.ty {
+                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                                unreachable!()
+                            }
+                            BuiltinType::Bool => unimplemented!(),
+                            BuiltinType::Char => unimplemented!(),
+                            BuiltinType::U1 => unimplemented!(),
+                            BuiltinType::I1 => unimplemented!(),
+                            BuiltinType::U2 => unimplemented!(),
+                            BuiltinType::I2 => unimplemented!(),
+                            BuiltinType::U4 => unimplemented!(),
+                            BuiltinType::I4 => {
+                                cur_state.stack.push_i32(*mem.static_area.access(offset));
+                            }
+                            BuiltinType::U8 => unimplemented!(),
+                            BuiltinType::I8 => unimplemented!(),
+                            BuiltinType::UNative => unimplemented!(),
+                            BuiltinType::INative => unimplemented!(),
+                            BuiltinType::R4 => unimplemented!(),
+                            BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::ByRef(_) => unimplemented!(),
+                            BuiltinType::Array(_) => unimplemented!(),
                         }
-                        BuiltinType::Bool => unimplemented!(),
-                        BuiltinType::Char => unimplemented!(),
-                        BuiltinType::U1 => unimplemented!(),
-                        BuiltinType::I1 => unimplemented!(),
-                        BuiltinType::U2 => unimplemented!(),
-                        BuiltinType::I2 => unimplemented!(),
-                        BuiltinType::U4 => unimplemented!(),
-                        BuiltinType::I4 => {
-                            cur_state.stack.push_i32(*mem.heap.access(offset));
-                        }
-                        BuiltinType::U8 => unimplemented!(),
-                        BuiltinType::I8 => unimplemented!(),
-                        BuiltinType::UNative => unimplemented!(),
-                        BuiltinType::INative => unimplemented!(),
-                        BuiltinType::R4 => unimplemented!(),
-                        BuiltinType::R8 => unimplemented!(),
-                        BuiltinType::ByRef(_) => unimplemented!(),
-                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
                 // stsfld
                 0x80 => {
                     let cur_state = self.states.last_mut().unwrap();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+
                     let tok = cur_state.consume_u32();
-                    let v = cur_state.stack.pop();
 
                     let (tag, idx) = get_tok_tag(tok);
                     let f = match tag {
-                        TokTag::Field => cur_state.method.ctx.as_ref().unwrap().expect_il().fields
-                            [idx as usize - 1]
-                            .as_ref(),
-                        TokTag::MemberRef => {
-                            cur_state.method.ctx.as_ref().unwrap().expect_il().memberref
-                                [idx as usize - 1]
+                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
+                        TokTag::MemberRef => unsafe {
+                            ctx.memberref[idx as usize - 1]
                                 .expect_field()
                                 .as_ref()
                                 .unwrap()
-                        }
+                        },
                         _ => unimplemented!(),
                     };
 
@@ -744,28 +770,32 @@ impl<'m> TExecutor<'m> {
                         panic!("Operand of stsfld is not a static addr");
                     }
 
-                    match f.ty {
-                        BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
-                            unreachable!()
+                    let v = cur_state.stack.pop();
+
+                    unsafe {
+                        match f.ty {
+                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                                unreachable!()
+                            }
+                            BuiltinType::Bool => unimplemented!(),
+                            BuiltinType::Char => unimplemented!(),
+                            BuiltinType::U1 => unimplemented!(),
+                            BuiltinType::I1 => unimplemented!(),
+                            BuiltinType::U2 => unimplemented!(),
+                            BuiltinType::I2 => unimplemented!(),
+                            BuiltinType::U4 => unimplemented!(),
+                            BuiltinType::I4 => {
+                                *mem.static_area.access_mut(offset) = v.data.i32_;
+                            }
+                            BuiltinType::U8 => unimplemented!(),
+                            BuiltinType::I8 => unimplemented!(),
+                            BuiltinType::UNative => unimplemented!(),
+                            BuiltinType::INative => unimplemented!(),
+                            BuiltinType::R4 => unimplemented!(),
+                            BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::ByRef(_) => unimplemented!(),
+                            BuiltinType::Array(_) => unimplemented!(),
                         }
-                        BuiltinType::Bool => unimplemented!(),
-                        BuiltinType::Char => unimplemented!(),
-                        BuiltinType::U1 => unimplemented!(),
-                        BuiltinType::I1 => unimplemented!(),
-                        BuiltinType::U2 => unimplemented!(),
-                        BuiltinType::I2 => unimplemented!(),
-                        BuiltinType::U4 => unimplemented!(),
-                        BuiltinType::I4 => {
-                            *mem.heap.access_mut(offset) = v.data.i32_;
-                        }
-                        BuiltinType::U8 => unimplemented!(),
-                        BuiltinType::I8 => unimplemented!(),
-                        BuiltinType::UNative => unimplemented!(),
-                        BuiltinType::INative => unimplemented!(),
-                        BuiltinType::R4 => unimplemented!(),
-                        BuiltinType::R8 => unimplemented!(),
-                        BuiltinType::ByRef(_) => unimplemented!(),
-                        BuiltinType::Array(_) => unimplemented!(),
                     }
                 }
 

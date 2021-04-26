@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use xir::attrib::TypeAttrib;
+use xir::attrib::{FieldAttribFlag, MethodAttribFlag, TypeAttrib};
 
 use super::{Field, Method, ModRef};
 
@@ -27,7 +27,12 @@ pub struct Class {
 
 impl fmt::Display for Class {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        write!(
+            f,
+            "{}::{}",
+            unsafe { self.parent.as_ref().unwrap().fullname() },
+            self.name
+        )
     }
 }
 
@@ -35,11 +40,16 @@ impl Class {
     pub fn query_method(&self, name: &str) -> Option<&Method> {
         // TODO: check access flag
         let mut c = self;
+        let mut is_self = true;
         loop {
             if let Some(m) = c.methods.get(name) {
-                return Some(m.as_ref());
+                if is_self || !m.attrib.is(MethodAttribFlag::Static) {
+                    // static method cannot be accessed from derived class
+                    return Some(m.as_ref());
+                }
             }
             if let Some(base) = c.extends {
+                is_self = false;
                 unsafe {
                     c = base.as_ref().unwrap();
                 }
@@ -53,11 +63,16 @@ impl Class {
     pub fn query_field(&self, name: &str) -> Option<&Field> {
         // TODO: check access flag
         let mut c = self;
+        let mut is_self = true;
         loop {
             if let Some(f) = c.fields.get(name) {
-                return Some(f.as_ref());
+                if is_self || !f.attrib.is(FieldAttribFlag::Static) {
+                    // static field cannot be accessed from derived class
+                    return Some(f.as_ref());
+                }
             }
             if let Some(base) = c.extends {
+                is_self = false;
                 unsafe {
                     c = base.as_ref().unwrap();
                 }

@@ -53,11 +53,11 @@ impl Module {
 }
 
 pub struct ILModule {
-    pub modref: Vec<*const Module>,
+    pub modrefs: Vec<*mut Module>,
 
-    /// name -> class idx
-    pub classes: Vec<Box<Type>>,
-    pub classref: Vec<*const Type>,
+    /// name -> Type idx
+    pub types: Vec<Box<Type>>,
+    pub typerefs: Vec<*mut Type>,
 
     pub methods: Vec<Box<Method>>,
     pub fields: Vec<Box<Field>>,

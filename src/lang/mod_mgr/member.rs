@@ -1,4 +1,6 @@
-use xir::attrib::{FieldAttrib, MethodAttrib, MethodImplAttrib, ParamAttrib};
+use xir::attrib::{
+    FieldAttrib, FieldAttribFlag, MethodAttrib, MethodAttribFlag, MethodImplAttrib, ParamAttrib,
+};
 
 use super::super::gen::RValType;
 use super::Class;
@@ -22,7 +24,25 @@ pub struct Method {
 
 impl fmt::Display for Method {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        write!(f, "{}", unsafe { self.parent.as_ref().unwrap() })?;
+        if self.attrib.is(MethodAttribFlag::Static) {
+            write!(f, "::")?;
+        } else {
+            write!(f, ".")?;
+        }
+        write!(f, "{}: (", self.name)?;
+        for (i, p) in self.ps.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", p.id, p.ty)?;
+        }
+        write!(f, ")")?;
+        if let RValType::Void = self.ret {
+        } else {
+            write!(f, " -> {}", self.ret)?;
+        }
+        Ok(())
     }
 }
 
@@ -46,6 +66,12 @@ pub struct Field {
 
 impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        write!(f, "{}", unsafe { self.parent.as_ref().unwrap() })?;
+        if self.attrib.is(FieldAttribFlag::Static) {
+            write!(f, "::")?;
+        } else {
+            write!(f, ".")?;
+        }
+        write!(f, "{}: {}", self.name, self.ty)
     }
 }

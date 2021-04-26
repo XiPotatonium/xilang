@@ -60,8 +60,8 @@ impl BuiltinType {
                 let (tag, idx) = get_tok_tag(*tok);
                 let idx = idx as usize - 1;
                 BuiltinType::Class(match tag {
-                    TokTag::TypeDef => ctx.classes[idx].as_ref() as *const Type,
-                    TokTag::TypeRef => ctx.classref[idx],
+                    TokTag::TypeDef => ctx.types[idx].as_ref() as *const Type,
+                    TokTag::TypeRef => ctx.typerefs[idx],
                     _ => unreachable!(),
                 })
             }

@@ -8,7 +8,11 @@ mod IOHelper;
 class Program: IOHelper::IOBase {
     fn main() {
         let prog = new Self {};
-        prog.hi();
+        IOHelper::Helper::write_i32_ln(prog.hi_count);      // 0
+        prog.hi();                                          // HI
+        IOHelper::Helper::write_i32_ln(prog.hi_count);      // 1
+        prog.hi();                                          // HI
+        IOHelper::Helper::write_i32_ln(prog.hi_count);      // 2
 
         let d: demo::Demo = crate::demo::Demo::create(1, 24);
         let a = d.foo(6);               // 32
