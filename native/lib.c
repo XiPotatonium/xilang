@@ -3,7 +3,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifdef _WIN32
+
 #include <windows.h>
+
+#endif // _WIN32
 
 typedef enum SlotTag {
     I32,
@@ -33,9 +38,13 @@ typedef enum NativeState {
     WrongArgTy,
 } NativeState;
 
-_declspec(dllexport) NativeState
-    _cdecl native_bridge(const char *fname, int32_t argc, const Slot *args,
-                         Slot *ret) {
+#ifdef _WIN32
+_declspec(dllexport) NativeState _cdecl
+#else
+NativeState
+#endif // _WIN32
+    native_bridge(const char *fname, int32_t argc, const Slot *args,
+                  Slot *ret) {
     if (strcmp(fname, "putchar") == 0) {
         if (argc != 1) {
             return WrongArgc;
@@ -57,7 +66,7 @@ _declspec(dllexport) NativeState
         switch (args[0].tag) {
         case I32:
             fprintf(stdout, "%d", args[0].data.i32_);
-            break; 
+            break;
         default:
             return WrongArgTy;
         }
@@ -66,6 +75,8 @@ _declspec(dllexport) NativeState
     }
     return Ok;
 }
+
+#ifdef _WIN32
 
 BOOL APIENTRY DllMain(HANDLE hModule, DWORD ul_reason_for_call,
                       LPVOID lpReserved) {
@@ -81,3 +92,5 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD ul_reason_for_call,
     }
     return TRUE;
 }
+
+#endif // _WIN32

@@ -7,5 +7,5 @@
 *.xibc
 *.xir
 
-/std-dll/.vs
-/std-dll/out
+/native/.vs
+/native/out
