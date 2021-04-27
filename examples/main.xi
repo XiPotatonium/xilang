@@ -7,7 +7,7 @@ mod IOHelper;
 
 class Program: IOHelper::IOBase {
     fn main() {
-        let prog = new Self {};
+        let prog = new Self();
         IOHelper::Helper::write_i32_ln(prog.hi_count);      // 0
         prog.hi();                                          // HI
         IOHelper::Helper::write_i32_ln(prog.hi_count);      // 1

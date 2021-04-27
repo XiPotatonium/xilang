@@ -6,7 +6,7 @@ use xir::attrib::*;
 use xir::util::path::ModPath;
 
 pub use class::ASTClass;
-pub use method::ASTMethod;
+pub use method::{ASTCtor, ASTMethod};
 
 pub enum AST {
     /// mods, ext_mods, uses, classes: Vec<AST>
@@ -65,9 +65,7 @@ pub enum AST {
     OpCast(Box<AST>, Box<AST>),
     /// f: Box<Expr>, ps: Vec<Expr>
     OpCall(Box<AST>, Vec<Box<AST>>),
-    /// {id: expr}
-    StructExprField(String, Box<AST>),
-    /// ty, struct-inits
+    /// ty, ps: Vec<Expr>
     OpNew(Box<AST>, Vec<Box<AST>>),
 
     Id(String),

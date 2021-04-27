@@ -80,10 +80,10 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
         }
     }
 
-    let mut fields: Vec<Box<AST>> = Vec::new();
-    let mut methods: Vec<Box<AST>> = Vec::new();
+    let mut fields = Vec::new();
+    let mut methods = Vec::new();
     let mut cctor: Option<Box<AST>> = None;
-    let mut ctors: Vec<Box<AST>> = Vec::new();
+    let mut ctors = Vec::new();
     while let Some(_) = iter.peek() {
         let item_attrib = build_attributes(&mut iter);
         let class_item = iter.next().unwrap();
@@ -130,7 +130,7 @@ fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AS
     Box::new(AST::Field(id, flag, attr, build_type(iter.next().unwrap())))
 }
 
-fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
+fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<ASTCtor> {
     let mut iter = tree.into_inner();
 
     let attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
@@ -146,10 +146,14 @@ fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
         Vec::new()
     };
 
-    let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
-        build_type(iter.next().unwrap())
+    let base_args = if let Rule::Args = iter.peek().unwrap().as_rule() {
+        iter.next()
+            .unwrap()
+            .into_inner()
+            .map(|a| build_expr(a))
+            .collect()
     } else {
-        Box::new(AST::None)
+        Vec::new()
     };
 
     let body = iter.next().unwrap();
@@ -159,14 +163,13 @@ fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
         _ => unreachable!(),
     };
 
-    Box::new(AST::Method(ASTMethod {
-        name: String::from(".ctor"),
+    Box::new(ASTCtor {
         attrib,
         custom_attribs,
-        ty,
+        base_args,
         ps,
         body,
-    }))
+    })
 }
 
 fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
@@ -174,18 +177,10 @@ fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     let name = build_id(iter.next().unwrap());
     let mut attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
 
-    let ps = if let Rule::Params = iter.peek().unwrap().as_rule() {
-        // Build parameters
-        let (ps, has_self) = build_params(iter.next().unwrap());
-        if !has_self {
-            attrib.set(MethodAttribFlag::Static);
-        }
-        ps
-    } else {
-        // no param
+    let (ps, has_self) = build_params(iter.next().unwrap());
+    if !has_self {
         attrib.set(MethodAttribFlag::Static);
-        Vec::new()
-    };
+    }
 
     let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
         build_type(iter.next().unwrap())
@@ -204,7 +199,7 @@ fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
         name,
         attrib,
         custom_attribs,
-        ty,
+        ret: ty,
         ps,
         body,
     }))
@@ -215,21 +210,25 @@ fn build_params(tree: Pair<Rule>) -> (Vec<Box<AST>>, bool) {
     let mut ps = Vec::new();
     let mut has_self = false;
     let mut p_iter = tree.into_inner();
-    let p0 = p_iter.next().unwrap();
-    match p0.as_rule() {
-        Rule::KwLSelf => {
-            // non-static method
-            has_self = true;
+    if let Some(p0) = p_iter.next() {
+        match p0.as_rule() {
+            Rule::KwLSelf => {
+                // non-static method
+                has_self = true;
+            }
+            Rule::Id => {
+                // static method
+                ps.push(Box::new(AST::Param(
+                    build_id(p0),
+                    ParamAttrib::from(0),
+                    build_type(p_iter.next().unwrap()),
+                )));
+            }
+            _ => unreachable!(),
         }
-        Rule::Id => {
-            // static method
-            ps.push(Box::new(AST::Param(
-                build_id(p0),
-                ParamAttrib::from(0),
-                build_type(p_iter.next().unwrap()),
-            )));
-        }
-        _ => unreachable!(),
+    } else {
+        // no param
+        return (vec![], false);
     }
 
     loop {
@@ -507,12 +506,8 @@ fn build_cast_expr(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let mut ret = build_unary_expr(iter.next().unwrap());
 
-    loop {
-        if let Some(rhs) = iter.next() {
-            ret = Box::new(AST::OpCast(build_type(rhs), ret));
-        } else {
-            break;
-        }
+    for rhs in iter {
+        ret = Box::new(AST::OpCast(build_type(rhs), ret));
     }
     ret
 }
@@ -520,12 +515,7 @@ fn build_cast_expr(tree: Pair<Rule>) -> Box<AST> {
 fn build_unary_expr(tree: Pair<Rule>) -> Box<AST> {
     // unary is right associative, iterate reversely
     let mut iter = tree.into_inner().rev();
-    let ret = iter.next().unwrap();
-    let mut ret = match ret.as_rule() {
-        Rule::NewExpr => build_new_expr(ret),
-        Rule::CallExpr => build_call_expr(ret),
-        _ => unreachable!(),
-    };
+    let mut ret = build_new_expr(iter.next().unwrap());
 
     for op in iter {
         ret = Box::new(match op.as_rule() {
@@ -540,23 +530,23 @@ fn build_unary_expr(tree: Pair<Rule>) -> Box<AST> {
 
 fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
-    let ty = build_type(iter.next().unwrap());
-    let fields: Vec<Box<AST>> = iter
-        .map(|sub| {
-            let mut sub_iter = sub.into_inner();
-            let id = build_id(sub_iter.next().unwrap());
-            Box::new(AST::StructExprField(
-                id,
-                if let Some(val) = sub_iter.next() {
-                    build_expr(val)
-                } else {
-                    Box::new(AST::None)
-                },
-            ))
-        })
-        .collect();
 
-    Box::new(AST::OpNew(ty, fields))
+    let ret = iter.next().unwrap();
+    match ret.as_rule() {
+        Rule::CallExpr => build_call_expr(ret),
+        Rule::Type => {
+            let ty = build_type(ret);
+            Box::new(AST::OpNew(
+                ty,
+                iter.next()
+                    .unwrap()
+                    .into_inner()
+                    .map(|sub| build_expr(sub))
+                    .collect(),
+            ))
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
@@ -565,9 +555,7 @@ fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
 
     for rhs in iter {
         ret = Box::new(match rhs.as_rule() {
-            Rule::ArgsExpr => {
-                AST::OpCall(ret, rhs.into_inner().map(|sub| build_expr(sub)).collect())
-            }
+            Rule::Args => AST::OpCall(ret, rhs.into_inner().map(|sub| build_expr(sub)).collect()),
             Rule::ObjAccessExpr => {
                 AST::OpObjAccess(ret, build_id(rhs.into_inner().next().unwrap()))
             }

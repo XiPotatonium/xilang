@@ -489,13 +489,12 @@ fn gen_let(
 }
 
 fn build_args(ctx: &CodeGenCtx, ps: &Vec<Param>, args: &Vec<Box<AST>>) {
-    let args_ty: Vec<RValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
-
-    for (i, (p, arg_ty)) in ps.iter().zip(args_ty.iter()).enumerate() {
-        if &p.ty != arg_ty {
+    for (p, arg) in ps.iter().zip(args.iter()) {
+        let ty = gen(ctx, arg).expect_rval();
+        if ty != p.ty {
             panic!(
-                "Call parameter type mismatch, expect {} but found {} at {}",
-                p.ty, arg_ty, i
+                "Call parameter type mismatch, param {} expect {} but found {}",
+                p.id, p.ty, ty
             );
         }
     }
@@ -550,7 +549,7 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
     ret
 }
 
-fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType {
+fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.get_ty(ty);
     match &ret {
         RValType::Obj(mod_name, class_name) => {
@@ -564,62 +563,12 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, fields: &Vec<Box<AST>>) -> RValType 
             let class_ref = unsafe { class.as_ref().unwrap() };
             let ctor = class_ref.methods.get(CTOR_NAME).unwrap().as_ref();
 
-            let mut correct_idx: Vec<i32> = vec![-1; ctor.ps.len()];
-            for (i, field) in fields.iter().enumerate() {
-                if let AST::StructExprField(field_name, _) = field.as_ref() {
-                    let mut matched = false;
-                    for (j, p) in ctor.ps.iter().enumerate() {
-                        if &p.id == field_name {
-                            correct_idx[j] = i as i32;
-                            matched = true;
-                            break;
-                        }
-                    }
-                    if !matched {
-                        panic!("Class {} has no field {}", class_name, field_name);
-                    }
-                }
-            }
-
-            let mut ctor_ps: Vec<Param> = Vec::new();
-            for (i, idx) in correct_idx.iter().enumerate() {
-                if *idx < 0 {
-                    panic!(
-                        "{}.{} is not initialized in new expr",
-                        class_name, ctor.ps[i].id
-                    );
-                }
-
-                if let AST::StructExprField(field_name, expr) = fields[*idx as usize].as_ref() {
-                    let v_ty = match expr.as_ref() {
-                        AST::None => gen(ctx, &Box::new(AST::Id(field_name.to_owned()))),
-                        _ => gen(ctx, expr),
-                    }
-                    .expect_rval();
-
-                    if let Some(field) = class_ref.query_field(field_name) {
-                        let field_ty = field.ty.clone();
-                        if field_ty != v_ty {
-                            panic!(
-                                "Cannot assign {} to {}.{}: {}",
-                                v_ty, class_name, field_name, field_ty
-                            );
-                        }
-                        ctor_ps.push(Param {
-                            id: field_name.clone(),
-                            attrib: ParamAttrib::default(),
-                            ty: field_ty,
-                        });
-                    } else {
-                        unreachable!();
-                    }
-                }
-            }
-
             let mut builder = ctx.module.builder.borrow_mut();
-            let ctor_sig = builder.add_method_sig(true, &ctor_ps, &RValType::Void);
+            let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
             let (ctor_idx, tok_tag) =
                 builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
+
+            build_args(ctx, &ctor.ps, args);
             ctx.method_builder
                 .borrow_mut()
                 .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));

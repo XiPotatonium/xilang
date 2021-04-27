@@ -17,10 +17,10 @@ ExtendsOrImpls = { ":" ~ PathExpr ~ ("," ~ PathExpr)* }
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
-CCtor = { "cctor" ~ BlockExpr }
-Ctor = { "ctor" ~ "(" ~ Params? ~ ")" ~ BlockExpr }
-Method = { "fn" ~ Id ~ "(" ~ Params? ~ ")" ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
-Params = { (KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* }
+CCtor = { "static" ~ BlockExpr }
+Ctor = { "Self" ~ Params ~ (":" ~ "base" ~ Args )? ~ BlockExpr }
+Method = { "fn" ~ Id ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
 
 Pattern = { Id | TuplePattern }
 TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
@@ -33,7 +33,7 @@ Type = {
     | ArrType
 }
 BasicType = _{ KwBool | KwChar | KwI32 | KwF64 }
-TupleType = { "(" ~ Type ~ ("," ~ Type)* ~ ")" }
+TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
 ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
 
 Stmt = { LetStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
@@ -58,14 +58,13 @@ ReturnExpr = { "return" ~ Expr? }
 
 GroupedExpr = { "(" ~ Expr ~ ")" }
 PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | Type }
-ArgsExpr = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
+Args = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
 ObjAccessExpr = { "." ~ Id }
 PathAccessExpr = { "::" ~ Id }
 ArrAccessExpr = { "[" ~ Expr ~ "]" }
-CallExpr = { PrimaryExpr ~ (ArgsExpr | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
-StructExprField = { Id ~ (":" ~ Expr)? }
-NewExpr = { "new" ~ Type ~ ("{" ~ (StructExprField ~ ",")* ~ StructExprField? ~ "}")? }
-UnaryExpr = { (Not | Plus | Minus)* ~ (NewExpr | CallExpr) }
+CallExpr = { PrimaryExpr ~ (Args | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
+NewExpr = { "new" ~ Type ~ Args | CallExpr }
+UnaryExpr = { (Not | Plus | Minus)* ~ NewExpr }
 CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
 MulExpr = { CastExpr ~ ((Star | Slash | Percent) ~ CastExpr)* }
 AddExpr = { MulExpr ~ ((Plus | Minus) ~ MulExpr)* }
@@ -119,7 +118,7 @@ KwFalse = { "false" }
 KwNull = { "null" }
 KeyWord = @{ 
     "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
-    | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override" | "ctor" | "cctor"
+    | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
     | KwLSelf | KwUSelf | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
     | KwBool | KwChar | KwU8 | KwI8 | KwU16 | KwI16 | KwU32 | KwI32 | KwU64 | KwI64 | KwUSize | KwISize | KwF32 | KwF64

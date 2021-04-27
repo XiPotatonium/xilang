@@ -2,7 +2,7 @@ class Helper {
     static SPACE: i32;
     static NEW_LINE: i32;
 
-    cctor {
+    static {
         SPACE = 32;
         NEW_LINE = 10;
     }

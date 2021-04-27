@@ -150,7 +150,7 @@ impl Module {
                                 }
                             })
                             .collect();
-                        let ret = self.get_ty(&method.ty, mod_mgr, &class_mut);
+                        let ret = self.get_ty(&method.ret, mod_mgr, &class_mut);
                         let mut impl_flag = MethodImplAttrib::new(
                             MethodImplAttribCodeTypeFlag::IL,
                             MethodImplAttribManagedFlag::Managed,

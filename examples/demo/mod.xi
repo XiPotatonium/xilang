@@ -5,21 +5,18 @@ class Demo {
     let id: i32;
     let value: i32;
 
-    cctor {
+    static {
         let foo: i32 = 0;
         Demo::TAG = foo;
     }
 
-    ctor(self, id: i32, value: i32) {
+    Self(self, id: i32, value: i32) {
         self.id = id;
         self.value = value;
     }
 
     fn create(id: i32, value: i32) -> Self {
-        let ret = new Demo {
-            id,
-            value: value,
-        };
+        let ret = new Demo(id, value,);
         Demo::TAG = Demo::TAG + 1;
         ret
     }

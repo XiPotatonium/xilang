@@ -207,12 +207,6 @@ impl fmt::Display for AST {
                 func.as_ref(),
                 ASTChildrenWrapper(ps)
             ),
-            Self::StructExprField(id, expr) => write!(
-                f,
-                "{{\"name\":\"(field){}\",\"val\":{}}}",
-                id,
-                expr.as_ref()
-            ),
             Self::OpNew(ty, struct_init) => write!(
                 f,
                 "{{\"name\":\"new\",\"type\":{},\"fields\":{}}}",
@@ -252,9 +246,9 @@ impl fmt::Display for AST {
     }
 }
 
-pub struct ASTChildrenWrapper<'a>(pub &'a Vec<Box<AST>>);
+pub struct ASTChildrenWrapper<'a, T: fmt::Display>(pub &'a Vec<Box<T>>);
 
-impl fmt::Display for ASTChildrenWrapper<'_> {
+impl<T: fmt::Display> fmt::Display for ASTChildrenWrapper<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[")?;
         let mut i = 0;
