@@ -19,6 +19,7 @@ pub enum AST {
     CustomAttrib(String, Vec<Box<AST>>),
 
     Class(ASTClass),
+    Ctor(ASTCtor),
     Method(ASTMethod),
 
     /// id, attrib, custom-attrib, ty

@@ -326,7 +326,13 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let args = self.states.last_mut().unwrap().stack.pop_n(callee.ps.len());
+                    let args = self.states.last_mut().unwrap().stack.pop_n(
+                        if callee.attrib.is(MethodAttribFlag::Static) {
+                            callee.ps.len()
+                        } else {
+                            callee.ps.len() + 1
+                        },
+                    );
                     match &callee.method_impl {
                         MethodImpl::IL(il_impl) => {
                             self.call(args, callee, il_impl);

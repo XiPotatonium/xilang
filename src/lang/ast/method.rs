@@ -32,7 +32,7 @@ impl fmt::Display for ASTMethod {
 pub struct ASTCtor {
     pub attrib: MethodAttrib,
     pub custom_attribs: Vec<Box<AST>>,
-    pub base_args: Vec<Box<AST>>,
+    pub base_args: Option<Vec<Box<AST>>>,
     pub ps: Vec<Box<AST>>,
     pub body: Box<AST>,
 }
@@ -40,13 +40,21 @@ pub struct ASTCtor {
 impl fmt::Display for ASTCtor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-                f,
-                "{{\"name\":\"(.ctor)\",\"attrib\":\"{}\",\"custom-attribs\":{},\"base-args\":{},\"ps\":{},\"body\":{}}}",
-                self.attrib,
-                ASTChildrenWrapper(&self.custom_attribs),
-                ASTChildrenWrapper(&self.base_args),
-                ASTChildrenWrapper(&self.ps),
-                self.body,
-            )
+            f,
+            "{{\"name\":\"(.ctor)\",\"attrib\":\"{}\",\"custom-attribs\":{},\"base-args\":",
+            self.attrib,
+            ASTChildrenWrapper(&self.custom_attribs),
+        )?;
+        if let Some(args) = &self.base_args {
+            write!(f, "{}", ASTChildrenWrapper(args))?;
+        } else {
+            write!(f, "[]")?;
+        }
+        write!(
+            f,
+            ",\"ps\":{},\"body\":{}}}",
+            ASTChildrenWrapper(&self.ps),
+            self.body,
+        )
     }
 }

@@ -168,7 +168,7 @@ impl MethodImplAttrib {
     }
 
     pub fn is_code_ty(&self, flag: MethodImplAttribCodeTypeFlag) -> bool {
-        self.attrib & u16::from(flag) != 0
+        (self.attrib & METHOD_IMPL_ATTRIB_CODE_TYPE_MASK) == u16::from(flag)
     }
 
     pub fn set_code_ty(&mut self, flag: MethodImplAttribCodeTypeFlag) {
@@ -181,7 +181,7 @@ impl MethodImplAttrib {
     }
 
     pub fn is_managed(&self, flag: MethodImplAttribManagedFlag) -> bool {
-        self.attrib & u16::from(flag) != 0
+        (self.attrib & METHOD_IMPL_ATTRIB_MANAGED_MASK) == u16::from(flag)
     }
 
     pub fn set_managed(&mut self, flag: MethodImplAttribManagedFlag) {

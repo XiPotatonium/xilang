@@ -2,7 +2,7 @@ use xir::attrib::TypeAttrib;
 use xir::util::path::{IModPath, ModPath};
 
 use super::disp::ASTChildrenWrapper;
-use super::{ASTCtor, AST};
+use super::AST;
 
 use std::fmt;
 
@@ -15,8 +15,8 @@ pub struct ASTClass {
     pub fields: Vec<Box<AST>>,
     pub methods: Vec<Box<AST>>,
     pub cctor: Box<AST>,
-    /// ASTCtor
-    pub ctors: Vec<Box<ASTCtor>>,
+    /// AST::Ctor
+    pub ctors: Vec<Box<AST>>,
 }
 
 impl fmt::Display for ASTClass {

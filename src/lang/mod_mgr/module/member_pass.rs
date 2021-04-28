@@ -4,40 +4,182 @@ use super::super::{Class, Field, Method, ModMgr, ModRef, Param};
 use super::Module;
 
 use xir::attrib::{
-    FieldAttribFlag, MethodAttrib, MethodAttribFlag, MethodImplAttrib,
-    MethodImplAttribCodeTypeFlag, MethodImplAttribManagedFlag, PInvokeAttrib,
-    PInvokeAttribCallConvFlag, PInvokeAttribCharsetFlag, ParamAttrib,
+    MethodAttrib, MethodAttribFlag, MethodImplAttrib, MethodImplAttribCodeTypeFlag,
+    MethodImplAttribManagedFlag, PInvokeAttrib, PInvokeAttribCallConvFlag,
+    PInvokeAttribCharsetFlag,
 };
 use xir::{CCTOR_NAME, CTOR_NAME};
 
-// use macro to avoid borrow mutable self twice, SB rust
-macro_rules! declare_method {
-    ($class: expr, $builder: expr, $name: expr, $flag: expr, $impl_flag: expr, $ret: expr, $ps: expr) => {{
-        let idx = $builder
-            .borrow_mut()
-            .add_method($name, &$ps, &$ret, $flag, $impl_flag);
-
-        let method = Box::new(Method {
-            parent: &$class as &Class as *const Class,
-            name: $name.to_owned(),
-            ret: $ret,
-            ps: $ps,
-            attrib: $flag.clone(),
-            impl_flag: $impl_flag.clone(),
-            idx,
-        });
-        // let sig = format!("{}{}", $id, method.descriptor());
-
-        if let Some(_) = $class.methods.insert($name.to_owned(), method) {
-            // TODO: use expect_none once it becomes stable
-            panic!("Duplicated method {} in class {}", $name, $class.name);
-        }
-        idx
-    }};
-}
-
 // member pass
 impl Module {
+    /// declare method according to ast
+    fn declare_method(&self, mod_mgr: &ModMgr, class_mut: &mut Class, ast: Option<&Box<AST>>) {
+        let (ast, name, custom_attribs, attrib, ps, ret) = match ast {
+            Some(ast) => {
+                let ast_ptr = Some(ast.as_ref() as *const AST);
+                match ast.as_ref() {
+                    AST::Block(_) => (
+                        ast_ptr,
+                        CCTOR_NAME,
+                        None,
+                        MethodAttrib::from(
+                            u16::from(MethodAttribFlag::Pub)
+                                | u16::from(MethodAttribFlag::Static)
+                                | u16::from(MethodAttribFlag::RTSpecialName),
+                        ),
+                        None,
+                        RValType::Void,
+                    ), // cctor
+                    AST::Ctor(ctor) => (
+                        ast_ptr,
+                        CTOR_NAME,
+                        Some(&ctor.custom_attribs),
+                        ctor.attrib.clone(),
+                        Some(&ctor.ps),
+                        RValType::Void,
+                    ),
+                    AST::Method(method) => (
+                        ast_ptr,
+                        method.name.as_str(),
+                        Some(&method.custom_attribs),
+                        method.attrib.clone(),
+                        Some(&method.ps),
+                        self.get_ty(&method.ret, mod_mgr, class_mut),
+                    ),
+                    _ => unreachable!(),
+                }
+            }
+            None => {
+                // default ctor
+                (
+                    None,
+                    CTOR_NAME,
+                    None,
+                    MethodAttrib::from(
+                        u16::from(MethodAttribFlag::Pub)
+                            | u16::from(MethodAttribFlag::RTSpecialName),
+                    ),
+                    None,
+                    RValType::Void,
+                )
+            }
+        };
+
+        let ps = if let Some(ps) = ps {
+            ps.iter()
+                .map(|p| {
+                    if let AST::Param(id, attrib, ty) = p.as_ref() {
+                        Param {
+                            id: id.to_owned(),
+                            ty: self.get_ty(ty, mod_mgr, class_mut),
+                            attrib: attrib.clone(),
+                        }
+                    } else {
+                        unreachable!();
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let mut impl_flag = MethodImplAttrib::new(
+            MethodImplAttribCodeTypeFlag::IL,
+            MethodImplAttribManagedFlag::Managed,
+        );
+        if let Some(custom_attribs) = custom_attribs {
+            for attr in custom_attribs.iter() {
+                if let AST::CustomAttrib(id, args) = attr.as_ref() {
+                    if id == "Dllimport" {
+                        // TODO: use real attribute object
+                        // Currently it's adhoc
+                        assert_eq!(args.len(), 1, "Invalid arg for Dllimport attribute");
+                        if let AST::String(_) = args[0].as_ref() {
+                            impl_flag.set_code_ty(MethodImplAttribCodeTypeFlag::Native);
+                            impl_flag.set_managed(MethodImplAttribManagedFlag::Unmanaged);
+                        } else {
+                            panic!("Invalid arg for Dllimport attribute");
+                        }
+                    } else {
+                        panic!("Unrecognizable custom attribute {}", id);
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+        }
+
+        let method_idx = self
+            .builder
+            .borrow_mut()
+            .add_method(name, &ps, &ret, &attrib, &impl_flag);
+
+        let method = Box::new(Method {
+            parent: class_mut as &Class as *const Class,
+            name: name.to_owned(),
+            ret,
+            ps,
+            attrib: attrib.clone(),
+            impl_flag: impl_flag.clone(),
+            idx: method_idx,
+            ast,
+        });
+
+        if class_mut.methods.contains_key(name) {
+            // check duplication
+            let methods = class_mut.methods.get_mut(name).unwrap();
+            for m in methods.iter() {
+                if m.ps.len() != method.ps.len() {
+                    continue;
+                }
+                let mut is_match = false;
+                for (p0, p1) in m.ps.iter().zip(method.ps.iter()) {
+                    if p0.ty != p1.ty {
+                        is_match = false;
+                        break;
+                    }
+                }
+                if is_match {
+                    panic!("Duplicated method {}", method);
+                }
+            }
+            methods.push(method);
+        } else {
+            class_mut.methods.insert(name.to_owned(), vec![method]);
+        }
+
+        if let Some(custom_attribs) = custom_attribs {
+            for (attr_name, args) in custom_attribs.iter().map(|attr| {
+                if let AST::CustomAttrib(id, args) = attr.as_ref() {
+                    (id, args)
+                } else {
+                    unreachable!()
+                }
+            }) {
+                if attr_name == "Dllimport" {
+                    // TODO: use real attribute object
+                    // Currently it's adhoc
+                    if let AST::String(v) = args[0].as_ref() {
+                        let pinvoke_attrib = PInvokeAttrib::new(
+                            PInvokeAttribCharsetFlag::Ansi,
+                            PInvokeAttribCallConvFlag::CDecl,
+                        );
+                        self.builder.borrow_mut().add_extern_fn(
+                            v,
+                            name,
+                            &pinvoke_attrib,
+                            method_idx,
+                        );
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+        }
+    }
+
     pub fn member_pass(&self, mod_mgr: &ModMgr) {
         for class in self.class_asts.iter() {
             if let AST::Class(class) = class.as_ref() {
@@ -75,160 +217,37 @@ impl Module {
                 // Add static init
                 match class.cctor.as_ref() {
                     AST::Block(_) => {
-                        let ret = RValType::Void;
-                        let ps: Vec<Param> = vec![];
-                        let flag = MethodAttrib::from(
-                            u16::from(MethodAttribFlag::Pub)
-                                | u16::from(MethodAttribFlag::Static)
-                                | u16::from(MethodAttribFlag::RTSpecialName),
-                        );
-                        let impl_flag = MethodImplAttrib::new(
-                            MethodImplAttribCodeTypeFlag::IL,
-                            MethodImplAttribManagedFlag::Managed,
-                        );
-                        declare_method!(
-                            class_mut,
-                            self.builder,
-                            CCTOR_NAME,
-                            &flag,
-                            &impl_flag,
-                            ret,
-                            ps
-                        );
+                        self.declare_method(mod_mgr, &mut class_mut, Some(&class.cctor));
                     }
                     AST::None => (),
                     _ => unreachable!("Parser error"),
                 };
 
-                // Add default object creator
-                // TODO: use C# like default ctor
-                {
-                    let ret = RValType::Void;
-                    let ps: Vec<Param> = class_mut
-                        .fields
-                        .iter()
-                        .filter(|(_, f)| !f.attrib.is(FieldAttribFlag::Static))
-                        .map(|(id, f)| Param {
-                            id: id.to_owned(),
-                            attrib: ParamAttrib::default(),
-                            ty: f.ty.clone(),
-                        })
-                        .collect();
-                    let flag = MethodAttrib::from(
-                        u16::from(MethodAttribFlag::Pub)
-                            | u16::from(MethodAttribFlag::RTSpecialName),
-                    );
-                    let impl_flag = MethodImplAttrib::new(
-                        MethodImplAttribCodeTypeFlag::IL,
-                        MethodImplAttribManagedFlag::Managed,
-                    );
-                    declare_method!(
-                        class_mut,
-                        self.builder,
-                        CTOR_NAME,
-                        &flag,
-                        &impl_flag,
-                        ret,
-                        ps
-                    );
-                }
-
-                for method in class.methods.iter() {
-                    if let AST::Method(method) = method.as_ref() {
-                        let ps = method
-                            .ps
-                            .iter()
-                            .map(|p| {
-                                if let AST::Param(id, attrib, ty) = p.as_ref() {
-                                    Param {
-                                        id: id.to_owned(),
-                                        ty: self.get_ty(ty, mod_mgr, &class_mut),
-                                        attrib: attrib.clone(),
-                                    }
-                                } else {
-                                    unreachable!();
-                                }
-                            })
-                            .collect();
-                        let ret = self.get_ty(&method.ret, mod_mgr, &class_mut);
-                        let mut impl_flag = MethodImplAttrib::new(
-                            MethodImplAttribCodeTypeFlag::IL,
-                            MethodImplAttribManagedFlag::Managed,
-                        );
-                        for attr in method.custom_attribs.iter() {
-                            if let AST::CustomAttrib(id, args) = attr.as_ref() {
-                                if id == "Dllimport" {
-                                    // TODO: use real attribute object
-                                    // Currently it's adhoc
-                                    assert_eq!(
-                                        args.len(),
-                                        1,
-                                        "Invalid arg for Dllimport attribute"
-                                    );
-                                    if let AST::String(_) = args[0].as_ref() {
-                                        impl_flag.set_code_ty(MethodImplAttribCodeTypeFlag::Native);
-                                        impl_flag
-                                            .set_managed(MethodImplAttribManagedFlag::Unmanaged);
-                                    } else {
-                                        panic!("Invalid arg for Dllimport attribute");
-                                    }
-                                } else {
-                                    panic!("Unrecognizable custom attribute {}", id);
-                                }
-                            } else {
-                                unreachable!();
-                            }
-                        }
-
-                        let method_idx = declare_method!(
-                            class_mut,
-                            self.builder,
-                            &method.name,
-                            &method.attrib,
-                            &impl_flag,
-                            ret,
-                            ps
-                        );
-                        for (attr_name, args) in method.custom_attribs.iter().map(|attr| {
-                            if let AST::CustomAttrib(id, args) = attr.as_ref() {
-                                (id, args)
-                            } else {
-                                unreachable!()
-                            }
-                        }) {
-                            if attr_name == "Dllimport" {
-                                // TODO: use real attribute object
-                                // Currently it's adhoc
-                                if let AST::String(v) = args[0].as_ref() {
-                                    let pinvoke_attrib = PInvokeAttrib::new(
-                                        PInvokeAttribCharsetFlag::Ansi,
-                                        PInvokeAttribCallConvFlag::CDecl,
-                                    );
-                                    self.builder.borrow_mut().add_extern_fn(
-                                        v,
-                                        &method.name,
-                                        &pinvoke_attrib,
-                                        method_idx,
-                                    );
-                                } else {
-                                    unreachable!();
-                                }
-                            } else {
-                                unreachable!();
-                            }
-                        }
+                if class.ctors.is_empty() {
+                    // Add default object creator
+                    self.declare_method(mod_mgr, &mut class_mut, None);
+                } else {
+                    for ctor_ast in class.ctors.iter() {
+                        self.declare_method(mod_mgr, &mut class_mut, Some(ctor_ast));
                     }
                 }
 
+                for method_ast in class.methods.iter() {
+                    self.declare_method(mod_mgr, &mut class_mut, Some(method_ast));
+                }
+
                 if self.is_root() && class.name == "Program" {
-                    if let Some(m) = class_mut.methods.get("main") {
-                        if let RValType::Void = m.ret {
-                            if m.ps.len() == 0
-                                && m.attrib.is(MethodAttribFlag::Pub)
-                                && m.attrib.is(MethodAttribFlag::Static)
-                            {
-                                // pub Program::main()
-                                self.builder.borrow_mut().file.mod_tbl[0].entrypoint = m.idx;
+                    if let Some(ms) = class_mut.methods.get("main") {
+                        for m in ms.iter() {
+                            if let RValType::Void = m.ret {
+                                if m.ps.len() == 0
+                                    && m.attrib.is(MethodAttribFlag::Pub)
+                                    && m.attrib.is(MethodAttribFlag::Static)
+                                {
+                                    // pub Program::main()
+                                    self.builder.borrow_mut().file.mod_tbl[0].entrypoint = m.idx;
+                                    break;
+                                }
                             }
                         }
                     }

@@ -1,16 +1,16 @@
 use super::super::super::ast::AST;
-use super::super::super::gen::{gen, CodeGenCtx, MethodBuilder, ValType};
+use super::super::super::gen::{gen, gen_base_ctor, CodeGenCtx, MethodBuilder, RValType, ValType};
 use super::super::{Class, Locals, Method, ModMgr};
 use super::Module;
 
-use xir::tok::{to_tok, TokTag};
+use xir::attrib::MethodImplAttribCodeTypeFlag;
 use xir::{Inst, CCTOR_NAME, CTOR_NAME};
 
 use std::cell::RefCell;
 
 // code gen
 impl Module {
-    fn code_gen_method(&self, c: &ModMgr, class: &Class, m: &Method, body: &Box<AST>) {
+    fn code_gen_method(&self, c: &ModMgr, class: &Class, m: &Method) {
         let ctx = CodeGenCtx {
             mgr: c,
             module: self,
@@ -26,7 +26,44 @@ impl Module {
             method_builder: RefCell::new(MethodBuilder::new()),
             loop_ctx: RefCell::new(vec![]),
         };
-        let ret = gen(&ctx, body);
+
+        let ret = match m.ast {
+            Some(ast) => {
+                let ast = unsafe { ast.as_ref().unwrap() };
+                match ast {
+                    AST::Block(_) => gen(&ctx, ast), // cctor
+                    AST::Ctor(ctor) => {
+                        if class.extends.is_some() {
+                            // has base class, call base ctor for each ctor
+                            if let Some(base_args) = &ctor.base_args {
+                                gen_base_ctor(&ctx, base_args);
+                            } else {
+                                // call default ctor
+                                let base_args = Vec::new();
+                                gen_base_ctor(&ctx, &base_args);
+                            }
+                        } else if ctor.base_args.is_some() {
+                            // has no base class but has base args
+                            panic!(
+                                "{} call base ctor but {} actually has no base class",
+                                ctor, class
+                            );
+                        }
+                        gen(&ctx, &ctor.body)
+                    }
+                    AST::Method(method) => gen(&ctx, &method.body),
+                    _ => unreachable!(),
+                }
+            }
+            None => {
+                // default ctor
+                if class.extends.is_some() {
+                    let base_args = Vec::new();
+                    gen_base_ctor(&ctx, &base_args);
+                }
+                ValType::RVal(RValType::Void)
+            }
+        };
 
         // Check type equivalent
         match &ret {
@@ -99,60 +136,34 @@ impl Module {
                 // gen static init
                 match class.cctor.as_ref() {
                     AST::Block(_) => {
-                        let m = class_ref.methods.get(CCTOR_NAME).unwrap();
-                        self.code_gen_method(mod_mgr, &class_ref, m, &class.cctor);
+                        let ms = class_ref.methods.get(CCTOR_NAME).unwrap();
+                        // only 1 cctor
+                        self.code_gen_method(mod_mgr, &class_ref, &ms[0]);
                     }
                     AST::None => (),
                     _ => unreachable!("Parser error"),
                 };
 
-                // gen default creator
-                // ldarg.0
-                // dup
-                // ...
-                // dup
-                // ldarg.1
-                // stfld <field0>
-                // ldarg.2
-                // stfld <field1>
-                // ...
-                {
-                    let m = class_ref.methods.get(CTOR_NAME).unwrap();
-                    let mut method_builder = MethodBuilder::new();
-                    if m.ps.len() == 0 {
-                        // no field
-                    } else {
-                        method_builder.add_inst_ldarg(0);
-                        for _ in (1..m.ps.len()).into_iter() {
-                            method_builder.add_inst(Inst::Dup);
-                        }
-                        for (i, p) in m.ps.iter().enumerate() {
-                            method_builder.add_inst_ldarg((i + 1) as u16);
-                            method_builder.add_inst(Inst::StFld(to_tok(
-                                class_ref.fields.get(&p.id).unwrap().idx,
-                                TokTag::Field,
-                            )));
+                let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
+                if class.ctors.is_empty() {
+                    // gen default creator
+                    assert_eq!(ctors.len(), 1); // default ctor
+                    self.code_gen_method(mod_mgr, &class_ref, &ctors[0]);
+                } else {
+                    for ctor in ctors.iter() {
+                        if ctor.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
+                            // only code gen IL method
+                            self.code_gen_method(mod_mgr, &class_ref, ctor);
                         }
                     }
-                    method_builder.add_inst(Inst::Ret);
-                    self.builder.borrow_mut().done(
-                        &mut method_builder,
-                        m.idx,
-                        &vec![],
-                        mod_mgr.cfg.optim >= 1,
-                    );
                 }
 
-                for method_ast in class.methods.iter() {
-                    if let AST::Method(method) = method_ast.as_ref() {
-                        if let AST::None = method.body.as_ref() {
-                            // extern function
-                        } else {
-                            let m = class_ref.methods.get(&method.name).unwrap();
-                            self.code_gen_method(mod_mgr, &class_ref, m, &method.body);
+                for ms in class_ref.methods.values() {
+                    for m in ms.iter() {
+                        if m.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
+                            // only code gen IL method
+                            self.code_gen_method(mod_mgr, &class_ref, m);
                         }
-                    } else {
-                        unreachable!("Parser error");
                     }
                 }
             } else {

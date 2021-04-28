@@ -18,7 +18,7 @@ StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
 CCtor = { "static" ~ BlockExpr }
-Ctor = { "Self" ~ Params ~ (":" ~ "base" ~ Args )? ~ BlockExpr }
+Ctor = { "Self" ~ Params ~ (":" ~ KwBase ~ Args )? ~ BlockExpr }
 Method = { "fn" ~ Id ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
 Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
 
@@ -95,6 +95,7 @@ CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 PathExpr = ${ (Id | KwCrate | KwSuper) ~ ("::" ~ (Id | KwSuper))* }
 Id = @{ !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
+KwBase = { "base" }
 KwLSelf = { "self" }
 KwUSelf = { "Self" }
 KwSuper = { "super" }
@@ -119,7 +120,7 @@ KwNull = { "null" }
 KeyWord = @{ 
     "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
     | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
-    | KwLSelf | KwUSelf | KwSuper | KwCrate | "extern" | "mod" | "use"
+    | KwLSelf | KwUSelf | KwBase | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
     | KwBool | KwChar | KwU8 | KwI8 | KwU16 | KwI16 | KwU32 | KwI32 | KwU64 | KwI64 | KwUSize | KwISize | KwF32 | KwF64
     | KwFalse | KwTrue | KwNull

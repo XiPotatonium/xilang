@@ -41,6 +41,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 * Local var. 
   * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
+* bool占用1byte内存
 * module存在环形依赖的时候估计是会出现错误的
 
 ### 1.2 RoadMap
@@ -64,7 +65,9 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 #### Ver 0.4.0
 
-* Interface
+* Generic
+* stdlib
+  * collections
 
 #### Ver 0.4.1
 
@@ -78,11 +81,30 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 #### Ver 0.5.0
 
-* Generic
+* Interface
+* for loop
 * stdlib
-  * collections
+  * Iterator interface
+
+#### Ver 0.5.1
+
+* match expr
+
+#### Ver 0.5.2
+
+* enum
+
+#### Ver 0.5.3
+
+* union
 
 #### Ver 0.6.0
+
+* struct
+* stdlib
+  * tuple
+
+#### Ver 0.7.0
 
 * pub use
 * priv/pub flag
@@ -90,33 +112,9 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * stdlib
   * Dllimport attribute
 
-#### Ver 0.6.1
+#### Ver 0.1.0
 
 * GC
-
-#### Ver 0.6.2
-
-* match expr
-* Default value and StructExprEtCetera
-
-#### Ver 0.7.0
-
-* struct
-* stdlib
-  * tuple
-
-#### Ver 0.8.0
-
-* enum
-
-#### Ver 0.8.1
-
-* union
-
-#### Ver 0.8.2
-
-* for loop
-* Iterator interface
 
 ## 2 Usage
 

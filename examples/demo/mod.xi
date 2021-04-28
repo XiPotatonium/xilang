@@ -13,12 +13,13 @@ class Demo {
     Self(self, id: i32, value: i32) {
         self.id = id;
         self.value = value;
+        Self::TAG = Self::TAG + 1;
     }
 
-    fn create(id: i32, value: i32) -> Self {
-        let ret = new Demo(id, value,);
+    Self(self, id: i32) {
+        self.id = id;
+        self.value = 0;
         Demo::TAG = Demo::TAG + 1;
-        ret
     }
 
     fn foo(self, a: i32) -> i32 {

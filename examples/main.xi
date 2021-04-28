@@ -8,17 +8,19 @@ mod IOHelper;
 class Program: IOHelper::IOBase {
     fn main() {
         let prog = new Self();
-        IOHelper::Helper::write_i32_ln(prog.hi_count);      // 0
-        prog.hi();                                          // HI
-        IOHelper::Helper::write_i32_ln(prog.hi_count);      // 1
-        prog.hi();                                          // HI
-        IOHelper::Helper::write_i32_ln(prog.hi_count);      // 2
+        std::IO::writeln(prog.hi_count);        // 0
+        prog.hi();                              // HI
+        std::IO::writeln(prog.hi_count);        // 1
+        prog.hi();                              // HI
+        std::IO::writeln(prog.hi_count);        // 2
 
-        let d: demo::Demo = crate::demo::Demo::create(1, 24);
+        let d: demo::Demo = new crate::demo::Demo(1, 24);
         let a = d.foo(6);               // 32
-        IOHelper::Helper::write_i32_ln(a);
+        std::IO::writeln(a);
         let d: i32 = demo::algo::Algorithm::gcd(a, d.value);    // gcd(32, 24)
-        IOHelper::Helper::write_i32_ln(d);
+        std::IO::writeln(d);
+        let d = new demo::Demo(30);
+        std::IO::writeln(d.foo(4));     // 0 + 2 + 4 + 30
 
         let res = demo::algo::Algorithm::is_prime(12);
         let res = demo::algo::Algorithm::is_prime(13);

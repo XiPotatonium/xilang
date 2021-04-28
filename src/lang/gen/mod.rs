@@ -1,6 +1,6 @@
 mod basic_block;
 mod builder;
-mod gen;
+mod il_gen;
 // mod interpreter;
 mod lval;
 mod method_builder;
@@ -8,7 +8,7 @@ mod op;
 
 pub use basic_block::{BasicBlock, LLCursor};
 pub use builder::Builder;
-pub use gen::gen;
+pub use il_gen::{gen, gen_base_ctor};
 pub use method_builder::MethodBuilder;
 
 use xir::blob::EleType;
@@ -72,7 +72,7 @@ pub enum ValType {
     RVal(RValType),
     Ret(RValType),
 
-    Method(*const Method),
+    Method(Vec<*const Method>),
     Field(*const Field),
     Class(*const Class),
     // mod fullname
@@ -187,9 +187,9 @@ impl fmt::Display for ValType {
         match self {
             Self::RVal(rval) => write!(f, "(RVal){}", rval),
             Self::Ret(retv) => write!(f, "(Ret){}", retv),
-            Self::Method(method) => write!(f, "{}", unsafe { method.as_ref().unwrap() }),
-            Self::Field(field) => write!(f, "{}", unsafe { field.as_ref().unwrap() }),
-            Self::Class(class) => write!(f, "{}", unsafe { class.as_ref().unwrap() }),
+            Self::Method(method) => write!(f, "(Method){}", unsafe { method[0].as_ref().unwrap() }),
+            Self::Field(field) => write!(f, "(Field){}", unsafe { field.as_ref().unwrap() }),
+            Self::Class(class) => write!(f, "(Class){}", unsafe { class.as_ref().unwrap() }),
             Self::Module(m) => write!(f, "(Mod){}", m),
             Self::Local(n) => write!(f, "(Local){}", n),
             ValType::KwLSelf => write!(f, "(Arg)self"),

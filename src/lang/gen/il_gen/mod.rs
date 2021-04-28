@@ -1,5 +1,5 @@
 use super::super::ast::AST;
-use super::super::mod_mgr::Param;
+use super::super::mod_mgr::Method;
 // use super::interpreter::constant_folding;
 use super::lval::{gen_lval, gen_path_lval};
 use super::op::BinOp;
@@ -11,14 +11,43 @@ use xir::tok::to_tok;
 use xir::util::path::IModPath;
 use xir::CTOR_NAME;
 
-pub fn gen(ctx: &CodeGenCtx, ast: &Box<AST>) -> ValType {
+pub fn gen_base_ctor(ctx: &CodeGenCtx, args: &Vec<Box<AST>>) {
+    let base = unsafe { ctx.class.extends.unwrap().as_ref().unwrap() };
+
+    // similar to gen_new
+    let ctors = base.methods.get(CTOR_NAME).unwrap();
+    let args_ty: Vec<RValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
+
+    let ctor = pick_method_from_refs(ctors, &args_ty);
+    let ctor = if let Some(ctor) = ctor {
+        ctor
+    } else {
+        panic!("Cannot find ctor");
+    };
+
+    let mut builder = ctx.module.builder.borrow_mut();
+    let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
+    let (ctor_idx, tok_tag) = builder.add_const_member(
+        unsafe { base.parent.as_ref().unwrap().fullname() },
+        &base.name,
+        CTOR_NAME,
+        ctor_sig,
+    );
+
+    ctx.method_builder.borrow_mut().add_inst(Inst::LdArg0); // load self
+    ctx.method_builder
+        .borrow_mut()
+        .add_inst(Inst::Call(to_tok(ctor_idx, tok_tag)));
+}
+
+pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
     /*
     if ctx.mgr.cfg.optim >= 1 && ast.is_constant() {
         return gen(ctx, &Box::new(constant_folding(ast)));
     }
     */
 
-    match ast.as_ref() {
+    match ast {
         AST::Block(children) => gen_block(ctx, children),
         AST::ExprStmt(stmt) => gen_expr_stmt(ctx, stmt),
         AST::If(cond, then, els) => ValType::RVal(gen_if(ctx, cond, then, els)),
@@ -471,10 +500,7 @@ fn gen_let(
                     // check type match
                     let ty = ctx.get_ty(ty);
                     if ty != init_ty {
-                        panic!(
-                            "Invalid let statement: Incompatible type {} and {}",
-                            ty, init_ty
-                        );
+                        panic!("Cannot assign {} to local var {}: {}", init_ty, id, ty);
                     }
                 }
             }
@@ -488,30 +514,72 @@ fn gen_let(
     RValType::Void
 }
 
-fn build_args(ctx: &CodeGenCtx, ps: &Vec<Param>, args: &Vec<Box<AST>>) {
-    for (p, arg) in ps.iter().zip(args.iter()) {
-        let ty = gen(ctx, arg).expect_rval();
-        if ty != p.ty {
-            panic!(
-                "Call parameter type mismatch, param {} expect {} but found {}",
-                p.id, p.ty, ty
-            );
+fn pick_method_from_ptrs(
+    candidates: &Vec<*const Method>,
+    args_ty: &Vec<RValType>,
+) -> Option<*const Method> {
+    for candidate in candidates.iter() {
+        let candidate_ref = unsafe { candidate.as_ref().unwrap() };
+        if candidate_ref.ps.len() == args_ty.len() {
+            let mut is_match = true;
+            for (param, arg_ty) in candidate_ref.ps.iter().zip(args_ty.iter()) {
+                if &param.ty != arg_ty {
+                    is_match = false;
+                    break;
+                }
+            }
+            if is_match {
+                return Some(*candidate);
+            }
         }
     }
+    None
+}
+
+fn pick_method_from_refs<'m>(
+    candidates: &'m Vec<Box<Method>>,
+    args_ty: &Vec<RValType>,
+) -> Option<&'m Method> {
+    for candidate in candidates.iter() {
+        if candidate.ps.len() == args_ty.len() {
+            let mut is_match = true;
+            for (param, arg_ty) in candidate.ps.iter().zip(args_ty.iter()) {
+                if &param.ty != arg_ty {
+                    is_match = false;
+                    break;
+                }
+            }
+            if is_match {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
     let lval = gen_lval(ctx, f, true);
     let (inst, ret) = match &lval {
-        ValType::Method(m) => {
-            // TODO priavte and public
+        ValType::Method(candidates) => {
+            // build args
+            let args_ty: Vec<RValType> =
+                args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
 
-            // Find method
-            let (mod_name, class_name, m_ref) = unsafe {
-                let m_ref = m.as_ref().unwrap();
-                let class_ref = m_ref.parent.as_ref().unwrap();
-                let module_ref = class_ref.parent.as_ref().unwrap();
-                (module_ref.fullname(), &class_ref.name, m_ref)
+            // only type is checked in gen_call
+            // accessibility should be checked in class.query_method
+            // static/instance should be checked in gen_val
+
+            // Pick method
+            let m_ref = pick_method_from_ptrs(candidates, &args_ty);
+            let (mod_name, class_name, m_ref) = if let Some(m_ref) = m_ref {
+                unsafe {
+                    let m_ref = m_ref.as_ref().unwrap();
+                    let class_ref = m_ref.parent.as_ref().unwrap();
+                    let module_ref = class_ref.parent.as_ref().unwrap();
+                    (module_ref.fullname(), &class_ref.name, m_ref)
+                }
+            } else {
+                panic!("Cannot find method");
             };
 
             // Add to class file
@@ -526,8 +594,6 @@ fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
                 &m_ref.name,
                 sig,
             );
-
-            build_args(ctx, &m_ref.ps, args);
 
             (
                 if m_ref.attrib.is(MethodAttribFlag::Static) {
@@ -553,6 +619,9 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.get_ty(ty);
     match &ret {
         RValType::Obj(mod_name, class_name) => {
+            let args_ty: Vec<RValType> =
+                args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
+
             let class = ctx
                 .mgr
                 .mod_tbl
@@ -561,14 +630,20 @@ fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
                 .get_class(class_name)
                 .unwrap();
             let class_ref = unsafe { class.as_ref().unwrap() };
-            let ctor = class_ref.methods.get(CTOR_NAME).unwrap().as_ref();
+            let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
+
+            let ctor = pick_method_from_refs(ctors, &args_ty);
+            let ctor = if let Some(ctor) = ctor {
+                ctor
+            } else {
+                panic!("Cannot find ctor");
+            };
 
             let mut builder = ctx.module.builder.borrow_mut();
             let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
             let (ctor_idx, tok_tag) =
                 builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
 
-            build_args(ctx, &ctor.ps, args);
             ctx.method_builder
                 .borrow_mut()
                 .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));

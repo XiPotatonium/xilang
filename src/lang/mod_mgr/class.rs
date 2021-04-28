@@ -15,7 +15,7 @@ pub struct Class {
     /// Overload is currently not supported
     ///
     /// key: method_name
-    pub methods: HashMap<String, Box<Method>>,
+    pub methods: HashMap<String, Vec<Box<Method>>>,
 
     pub attrib: TypeAttrib,
 
@@ -37,16 +37,23 @@ impl fmt::Display for Class {
 }
 
 impl Class {
-    pub fn query_method(&self, name: &str) -> Option<&Method> {
+    pub fn query_method(&self, name: &str) -> Vec<&Method> {
         // TODO: check access flag
+        let mut ret = Vec::new();
         let mut c = self;
         let mut is_self = true;
         loop {
-            if let Some(m) = c.methods.get(name) {
-                if is_self || !m.attrib.is(MethodAttribFlag::Static) {
-                    // static method cannot be accessed from derived class
-                    return Some(m.as_ref());
+            if let Some(ms) = c.methods.get(name) {
+                for m in ms.iter() {
+                    if (is_self || !m.attrib.is(MethodAttribFlag::Static))
+                        && !m.attrib.is(MethodAttribFlag::Priv)
+                    {
+                        // static method cannot be accessed from derived class
+                        // priv cannot be accessed from derived class
+                        ret.push(m.as_ref());
+                    }
                 }
+                break;
             }
             if let Some(base) = c.extends {
                 is_self = false;
@@ -57,7 +64,7 @@ impl Class {
                 break;
             }
         }
-        None
+        ret
     }
 
     pub fn query_field(&self, name: &str) -> Option<&Field> {

@@ -54,6 +54,7 @@ impl fmt::Display for AST {
                 ASTChildrenWrapper(args)
             ),
             Self::Class(class) => class.fmt(f),
+            Self::Ctor(ctor) => ctor.fmt(f),
             Self::Method(method) => method.fmt(f),
             Self::Field(id, flag, attr, ty) => write!(
                 f,
@@ -246,9 +247,9 @@ impl fmt::Display for AST {
     }
 }
 
-pub struct ASTChildrenWrapper<'a, T: fmt::Display>(pub &'a Vec<Box<T>>);
+pub struct ASTChildrenWrapper<'a>(pub &'a Vec<Box<AST>>);
 
-impl<T: fmt::Display> fmt::Display for ASTChildrenWrapper<'_, T> {
+impl fmt::Display for ASTChildrenWrapper<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[")?;
         let mut i = 0;

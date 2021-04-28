@@ -2,6 +2,7 @@ use xir::attrib::{
     FieldAttrib, FieldAttribFlag, MethodAttrib, MethodAttribFlag, MethodImplAttrib, ParamAttrib,
 };
 
+use super::super::ast::AST;
 use super::super::gen::RValType;
 use super::Class;
 
@@ -20,6 +21,15 @@ pub struct Method {
 
     /// index into methoddef tbl
     pub idx: u32,
+
+    /// None for external method (IL or dll) or automatically generated methods (default ctor)
+    ///
+    /// Some(AST::Body) for cctor
+    ///
+    /// Some(AST::Ctor) for ctor
+    ///
+    /// Some(AST::Method) for normal method
+    pub ast: Option<*const AST>,
 }
 
 impl fmt::Display for Method {
@@ -30,19 +40,7 @@ impl fmt::Display for Method {
         } else {
             write!(f, ".")?;
         }
-        write!(f, "{}: (", self.name)?;
-        for (i, p) in self.ps.iter().enumerate() {
-            if i != 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}: {}", p.id, p.ty)?;
-        }
-        write!(f, ")")?;
-        if let RValType::Void = self.ret {
-        } else {
-            write!(f, " -> {}", self.ret)?;
-        }
-        Ok(())
+        write!(f, "{}", self.name)
     }
 }
 
@@ -50,6 +48,12 @@ pub struct Param {
     pub id: String,
     pub attrib: ParamAttrib,
     pub ty: RValType,
+}
+
+impl AsRef<RValType> for Param {
+    fn as_ref(&self) -> &RValType {
+        &self.ty
+    }
 }
 
 pub struct Field {

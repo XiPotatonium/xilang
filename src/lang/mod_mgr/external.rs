@@ -128,12 +128,16 @@ pub fn load_external_crate(
                     ret: RValType::from_ir_ele_ty(ret, &file),
                     attrib: flag,
                     impl_flag,
-                    // idx of external method will not be used
-                    idx: 0,
+                    ast: None, // external method has no ast
+                    idx: 0,    // idx of external method will not be used
                 });
-                class
-                    .methods
-                    .insert(file.get_str(method_entry.name).to_owned(), method);
+
+                let method_name = file.get_str(method_entry.name);
+                if class.methods.contains_key(method_name) {
+                    class.methods.get_mut(method_name).unwrap().push(method);
+                } else {
+                    class.methods.insert(method_name.to_owned(), vec![method]);
+                }
             } else {
                 panic!();
             }

@@ -41,11 +41,11 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                 let c = c.borrow();
                 let mem = &path[1];
                 let ret = if expect_method {
-                    if let Some(ptr) = c.query_method(mem) {
-                        ValType::Method(ptr as *const Method)
-                    } else {
+                    let ms = c.query_method(mem);
+                    if ms.is_empty() {
                         panic!("No method {} in class {}/{}", mem, ctx.module.fullname(), r);
                     }
+                    ValType::Method(ms.into_iter().map(|m| m as *const Method).collect())
                 } else if let Some(f) = c.query_field(mem) {
                     ValType::Field(f as *const Field)
                 } else {
@@ -62,9 +62,8 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
             (ModPath::from_str(r), path.iter().skip(1))
         } else if path.len() == 1 {
             if expect_method {
-                if let Some(ptr) = ctx.class.query_method(r) {
-                    return ValType::Method(ptr as *const Method);
-                } else {
+                let ms = ctx.class.query_method(r);
+                if ms.is_empty() {
                     panic!(
                         "No method {} in class {}/{}",
                         r,
@@ -72,6 +71,7 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                         ctx.class.name
                     );
                 }
+                return ValType::Method(ms.into_iter().map(|m| m as *const Method).collect());
             } else {
                 let is_instance_method = !ctx.method.attrib.is(MethodAttribFlag::Static);
                 return if r == "self" {
@@ -115,9 +115,8 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                 if let Some(mem_seg) = segs.next() {
                     // field/method
                     if expect_method {
-                        if let Some(method_ref) = c.query_method(mem_seg) {
-                            break ValType::Method(method_ref as *const Method);
-                        } else {
+                        let ms = c.query_method(mem_seg);
+                        if ms.is_empty() {
                             panic!(
                                 "No method named {} in class {}/{}",
                                 mem_seg,
@@ -125,6 +124,9 @@ pub fn gen_path_lval(ctx: &CodeGenCtx, path: &ModPath, expect_method: bool) -> V
                                 seg
                             );
                         }
+                        break ValType::Method(
+                            ms.into_iter().map(|m| m as *const Method).collect(),
+                        );
                     } else {
                         if let Some(f) = c.query_field(mem_seg) {
                             break ValType::Field(f as *const Field);
@@ -174,18 +176,16 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
             // Access a static method or static field in class
             let class_ref = unsafe { c.as_ref().unwrap() };
             if expect_method {
-                if let Some(m) = class_ref.query_method(rhs) {
-                    if m.attrib.is(MethodAttribFlag::Static) {
-                        ValType::Method(m as *const Method)
-                    } else {
-                        panic!(
-                            "Cannot static access non-static method {}.{}",
-                            class_ref, rhs
-                        );
-                    }
-                } else {
-                    panic!("No method {} found in class {}", rhs, class_ref);
+                let ms = class_ref.query_method(rhs);
+                let ms: Vec<*const Method> = ms
+                    .into_iter()
+                    .filter(|m| m.attrib.is(MethodAttribFlag::Static))
+                    .map(|m| m as *const Method)
+                    .collect();
+                if ms.is_empty() {
+                    panic!("No static method {} found in class {}", rhs, class_ref);
                 }
+                ValType::Method(ms)
             } else {
                 if let Some(f) = class_ref.query_field(rhs) {
                     if f.attrib.is(FieldAttribFlag::Static) {
@@ -205,8 +205,8 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
     }
 }
 
-pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValType {
-    match ast.as_ref() {
+pub fn gen_lval(ctx: &CodeGenCtx, ast: &AST, expect_method: bool) -> ValType {
+    match ast {
         AST::Path(path) => gen_path_lval(ctx, path, expect_method),
         AST::OpObjAccess(lhs, rhs) => {
             // generate lhs as lval (as the first arg in non-static method or objectref of putfield)
@@ -223,15 +223,16 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &Box<AST>, expect_method: bool) -> ValTyp
                         .unwrap();
                     let class_ref = unsafe { class.as_ref().unwrap() };
                     if expect_method {
-                        if let Some(m) = class_ref.query_method(rhs) {
-                            if m.attrib.is(MethodAttribFlag::Static) {
-                                panic!("Cannot obj access static method {}::{}", name, rhs);
-                            } else {
-                                ValType::Method(m as *const Method)
-                            }
-                        } else {
-                            panic!("No method {} found in class {}", rhs, name);
+                        let ms = class_ref.query_method(rhs);
+                        let ms: Vec<*const Method> = ms
+                            .into_iter()
+                            .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
+                            .map(|m| m as *const Method)
+                            .collect();
+                        if ms.is_empty() {
+                            panic!("No instance method {} found in class {}", rhs, name);
                         }
+                        ValType::Method(ms)
                     } else {
                         if let Some(f) = class_ref.query_field(rhs) {
                             if f.attrib.is(FieldAttribFlag::Static) {

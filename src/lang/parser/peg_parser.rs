@@ -130,7 +130,7 @@ fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AS
     Box::new(AST::Field(id, flag, attr, build_type(iter.next().unwrap())))
 }
 
-fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<ASTCtor> {
+fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
 
     let attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
@@ -146,14 +146,17 @@ fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<ASTCtor> {
         Vec::new()
     };
 
-    let base_args = if let Rule::Args = iter.peek().unwrap().as_rule() {
-        iter.next()
-            .unwrap()
-            .into_inner()
-            .map(|a| build_expr(a))
-            .collect()
+    let base_args = if let Rule::KwBase = iter.peek().unwrap().as_rule() {
+        iter.next(); // skip base
+        Some(
+            iter.next()
+                .unwrap()
+                .into_inner()
+                .map(|a| build_expr(a))
+                .collect(),
+        )
     } else {
-        Vec::new()
+        None
     };
 
     let body = iter.next().unwrap();
@@ -163,13 +166,13 @@ fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<ASTCtor> {
         _ => unreachable!(),
     };
 
-    Box::new(ASTCtor {
+    Box::new(AST::Ctor(ASTCtor {
         attrib,
         custom_attribs,
         base_args,
         ps,
         body,
-    })
+    }))
 }
 
 fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
