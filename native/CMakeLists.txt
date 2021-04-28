@@ -3,17 +3,17 @@
 #
 cmake_minimum_required (VERSION 3.8)
 
-project ("std-dll")
+project ("xtd-native")
 
 # Add source to this project's executable.
-add_library (std-dll SHARED "lib.c")
+add_library (xtd SHARED "lib.c")
 
 add_custom_command(
-       TARGET std-dll 
+       TARGET xtd 
        POST_BUILD
        COMMAND ${CMAKE_COMMAND} -E copy
-           $<TARGET_FILE:std-dll>
-           ${CMAKE_SOURCE_DIR}/../target/std/std.dll
+           $<TARGET_FILE:xtd>
+           ${CMAKE_SOURCE_DIR}/../target/std/
 )
 
 # TODO: Add tests and install targets if needed.

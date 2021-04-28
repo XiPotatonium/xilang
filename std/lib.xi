@@ -9,10 +9,10 @@ class IO {
         NEW_LINE = 10;
     }
 
-    #[Dllimport("std.dll")]
+    #[Dllimport("xtd.dll")]
     fn putchar(ch: i32);
 
-    #[Dllimport("std.dll")]
+    #[Dllimport("xtd.dll")]
     fn puti32(i: i32);
 
     fn write(i: i32) {
