@@ -19,7 +19,7 @@ NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
 CCtor = { "static" ~ BlockExpr }
 Ctor = { "Self" ~ Params ~ (":" ~ KwBase ~ Args )? ~ BlockExpr }
-Method = { "fn" ~ Id ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+Method = { (KwOverride | KwVirtual)* ~ "fn" ~ Id ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
 Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
 
 Pattern = { Id | TuplePattern }
@@ -98,6 +98,10 @@ Id = @{ !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 KwBase = { "base" }
 KwLSelf = { "self" }
 KwUSelf = { "Self" }
+KwVirtual = { "virtual" }
+KwOverride = { "override" }
+KwPub = { "pub" }
+KwPriv = { "priv" }
 KwSuper = { "super" }
 KwCrate = { "crate" }
 KwBool = { "bool" }
@@ -119,7 +123,7 @@ KwFalse = { "false" }
 KwNull = { "null" }
 KeyWord = @{ 
     "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
-    | "static" | "const" | "mut" | "priv" | "pub" | "virtual" | "override"
+    | "static" | "const" | "mut" | KwPub | KwPriv | KwVirtual | KwOverride
     | KwLSelf | KwUSelf | KwBase | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
     | KwBool | KwChar | KwU8 | KwI8 | KwU16 | KwI16 | KwU32 | KwI32 | KwU64 | KwI64 | KwUSize | KwISize | KwF32 | KwF64

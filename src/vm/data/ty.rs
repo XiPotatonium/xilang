@@ -6,7 +6,7 @@ use super::{Field, Method};
 use std::mem::size_of;
 
 pub struct Type {
-    pub name: u32,
+    pub name: usize,
     pub attrib: TypeAttrib,
 
     pub extends: Option<*mut Type>,
@@ -21,12 +21,9 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn is_initialized(&self) -> bool {
-        self.vtbl_addr != 0
-    }
-
     pub fn dispose_instance_info(&mut self, static_area: &mut StaticArea) {
-        if self.is_initialized() {
+        if self.vtbl_addr != 0 {
+            // already initialized
             return;
         }
 

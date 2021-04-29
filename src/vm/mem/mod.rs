@@ -17,7 +17,8 @@ pub struct SharedMem {
     pub heap: Heap,
     pub static_area: StaticArea,
 
-    pub mods: HashMap<u32, Box<Module>>,
+    /// name -> module
+    pub mods: HashMap<usize, Box<Module>>,
 
     pub str_pool: Vec<String>,
 }
@@ -37,8 +38,8 @@ impl SharedMem {
         }
     }
 
-    pub fn get_str(&self, i: u32) -> &str {
-        &self.str_pool[i as usize]
+    pub fn get_str(&self, i: usize) -> &str {
+        &self.str_pool[i]
     }
 }
 

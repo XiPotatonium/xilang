@@ -43,9 +43,9 @@ pub fn load(
 struct Loader<'c> {
     cfg: &'c VMCfg,
     mem: &'c mut SharedMem,
-    str_map: HashMap<String, u32>,
-    cctor_name: u32,
-    empty_str: u32, // ""
+    str_map: HashMap<String, usize>,
+    cctor_name: usize,
+    empty_str: usize, // ""
     cctors: Vec<*const Method>,
 }
 
@@ -65,25 +65,25 @@ impl<'c> Loader<'c> {
         loader
     }
 
-    pub fn add_const_string(&mut self, s: String) -> u32 {
+    pub fn add_const_string(&mut self, s: String) -> usize {
         if let Some(ret) = self.str_map.get(&s) {
             *ret
         } else {
-            let ret = self.mem.str_pool.len() as u32;
+            let ret = self.mem.str_pool.len();
             self.str_map.insert(s.clone(), ret);
             self.mem.str_pool.push(s);
             ret
         }
     }
 
-    fn load(&mut self, file: IrFile, root_dir: &Path) -> u32 {
+    fn load(&mut self, file: IrFile, root_dir: &Path) -> usize {
         // Some external mods is not loadable modules but dlls
         let mut ext_mods_mask: Vec<bool> = vec![true; file.modref_tbl.len()];
         for implmap in file.implmap_tbl.iter() {
             ext_mods_mask[implmap.scope as usize - 1] = false;
         }
 
-        let str_heap: Vec<u32> = file
+        let str_heap: Vec<usize> = file
             .str_heap
             .into_iter()
             .map(|s| self.add_const_string(s))

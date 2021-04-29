@@ -3,7 +3,7 @@ use xir::attrib::FieldAttrib;
 use super::BuiltinType;
 
 pub struct Field {
-    pub name: u32,
+    pub name: usize,
     pub attrib: FieldAttrib,
     pub ty: BuiltinType,
 

@@ -6,6 +6,9 @@ const METHOD_ATTRIB_ACC_MASK: u16 = 0x0007;
 const METHOD_ATTRIB_PRIV_FLAG: u16 = 0x0001;
 const METHOD_ATTRIB_PUB_FLAG: u16 = 0x0006;
 const METHOD_ATTRIB_STATIC_FLAG: u16 = 0x0010;
+const METHOD_ATTRIB_VIRTUAL_FLAG: u16 = 0x0040;
+const METHOD_ATTRIB_NEWSLOT_FLAG: u16 = 0x0100;
+const METHOD_ATTRIB_SPECIAL_NAME_FLAG: u16 = 0x0800;
 const METHOD_ATTRIB_PINVOKEIMPL_FLAG: u16 = 0x2000;
 const METHOD_ATTRIB_RT_SPECIAL_NAME_FLAG: u16 = 0x1000;
 
@@ -13,6 +16,10 @@ pub enum MethodAttribFlag {
     Priv,
     Pub,
     Static,
+    Virtual,
+    /// for ReuseSlot, just unset NewSlot
+    NewSlot,
+    SpecialName,
     PInvokeImpl,
     RTSpecialName,
 }
@@ -27,6 +34,9 @@ impl TryFrom<u16> for MethodAttribFlag {
             METHOD_ATTRIB_STATIC_FLAG => Ok(Self::Static),
             METHOD_ATTRIB_PINVOKEIMPL_FLAG => Ok(Self::PInvokeImpl),
             METHOD_ATTRIB_RT_SPECIAL_NAME_FLAG => Ok(Self::RTSpecialName),
+            METHOD_ATTRIB_VIRTUAL_FLAG => Ok(Self::Virtual),
+            METHOD_ATTRIB_SPECIAL_NAME_FLAG => Ok(Self::SpecialName),
+            METHOD_ATTRIB_NEWSLOT_FLAG => Ok(Self::NewSlot),
             _ => Err("Invalid value for MethodFlagTag"),
         }
     }
@@ -40,6 +50,9 @@ impl From<MethodAttribFlag> for u16 {
             MethodAttribFlag::Static => METHOD_ATTRIB_STATIC_FLAG,
             MethodAttribFlag::PInvokeImpl => METHOD_ATTRIB_PINVOKEIMPL_FLAG,
             MethodAttribFlag::RTSpecialName => METHOD_ATTRIB_RT_SPECIAL_NAME_FLAG,
+            MethodAttribFlag::Virtual => METHOD_ATTRIB_VIRTUAL_FLAG,
+            MethodAttribFlag::SpecialName => METHOD_ATTRIB_SPECIAL_NAME_FLAG,
+            MethodAttribFlag::NewSlot => METHOD_ATTRIB_NEWSLOT_FLAG,
         }
     }
 }
@@ -64,7 +77,12 @@ impl MethodAttrib {
     }
 
     pub fn is(&self, flag: MethodAttribFlag) -> bool {
-        self.attrib & u16::from(flag) != 0
+        match flag {
+            MethodAttribFlag::Pub | MethodAttribFlag::Priv => {
+                (self.attrib & METHOD_ATTRIB_ACC_MASK) == u16::from(flag)
+            }
+            _ => (self.attrib & u16::from(flag)) != 0,
+        }
     }
 }
 
@@ -78,6 +96,18 @@ impl fmt::Display for MethodAttrib {
 
         if self.is(MethodAttribFlag::Static) {
             write!(f, " static")?;
+        }
+
+        if self.is(MethodAttribFlag::Virtual) {
+            write!(f, " virtual")?;
+        }
+
+        if self.is(MethodAttribFlag::NewSlot) {
+            write!(f, " newslot")?;
+        }
+
+        if self.is(MethodAttribFlag::SpecialName) {
+            write!(f, " specialname")?;
         }
 
         if self.is(MethodAttribFlag::RTSpecialName) {

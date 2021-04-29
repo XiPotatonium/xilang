@@ -5,6 +5,18 @@
 mod demo;
 mod IOHelper;
 
+class Base {
+    virtual fn say(self) {
+        std::IO::writeln(1000);
+    }
+}
+
+class Derived: Base {
+    override fn say(self) {
+        std::IO::writeln(1001);
+    }
+}
+
 class Program: IOHelper::IOBase {
     fn main() {
         let prog = new Self();

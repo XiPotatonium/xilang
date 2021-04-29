@@ -133,7 +133,11 @@ fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AS
 fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
 
-    let attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
+    let attrib = MethodAttrib::from(
+        u16::from(MethodAttribFlag::Pub)
+            | u16::from(MethodAttribFlag::SpecialName)
+            | u16::from(MethodAttribFlag::RTSpecialName),
+    );
     let ps = if let Rule::Params = iter.peek().unwrap().as_rule() {
         // Build parameters
         let (ps, has_self) = build_params(iter.next().unwrap());
@@ -177,8 +181,33 @@ fn build_ctor(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
 
 fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     let mut iter = tree.into_inner();
-    let name = build_id(iter.next().unwrap());
+
+    // built-in attributes
     let mut attrib = MethodAttrib::from(MethodAttribFlag::Pub.into());
+    let mut ast_attrib = ASTMethodAttrib::default();
+    loop {
+        match iter.peek().unwrap().as_rule() {
+            Rule::KwOverride => {
+                iter.next();
+                if ast_attrib.is(ASTMethodAttribFlag::Override) {
+                    panic!("Duplicated override modifier");
+                } else {
+                    ast_attrib.set(ASTMethodAttribFlag::Override);
+                }
+            }
+            Rule::KwVirtual => {
+                iter.next();
+                if attrib.is(MethodAttribFlag::Virtual) {
+                    panic!("Duplicated virtual modifier");
+                } else {
+                    attrib.set(MethodAttribFlag::Virtual);
+                }
+            }
+            _ => break,
+        }
+    }
+
+    let name = build_id(iter.next().unwrap());
 
     let (ps, has_self) = build_params(iter.next().unwrap());
     if !has_self {
@@ -201,6 +230,7 @@ fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     Box::new(AST::Method(ASTMethod {
         name,
         attrib,
+        ast_attrib,
         custom_attribs,
         ret: ty,
         ps,

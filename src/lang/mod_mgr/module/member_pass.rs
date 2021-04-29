@@ -25,7 +25,8 @@ impl Module {
                         MethodAttrib::from(
                             u16::from(MethodAttribFlag::Pub)
                                 | u16::from(MethodAttribFlag::Static)
-                                | u16::from(MethodAttribFlag::RTSpecialName),
+                                | u16::from(MethodAttribFlag::RTSpecialName)
+                                | u16::from(MethodAttribFlag::SpecialName),
                         ),
                         None,
                         RValType::Void,
@@ -57,6 +58,7 @@ impl Module {
                     None,
                     MethodAttrib::from(
                         u16::from(MethodAttribFlag::Pub)
+                            | u16::from(MethodAttribFlag::SpecialName)
                             | u16::from(MethodAttribFlag::RTSpecialName),
                     ),
                     None,

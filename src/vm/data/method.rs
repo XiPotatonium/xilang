@@ -3,7 +3,7 @@ use xir::attrib::{MethodAttrib, MethodImplAttrib, PInvokeAttrib, ParamAttrib};
 use super::{BuiltinType, Module, Type};
 
 pub struct Param {
-    pub name: u32,
+    pub name: usize,
     pub attrib: ParamAttrib,
     pub ty: BuiltinType,
 }
@@ -14,7 +14,7 @@ pub struct Method {
     /// None if parent is ctx
     pub parent: Option<*const Type>,
 
-    pub name: u32,
+    pub name: usize,
 
     pub attrib: MethodAttrib,
     pub impl_flag: MethodImplAttrib,
@@ -48,6 +48,6 @@ pub struct MethodILImpl {
 pub struct MethodNativeImpl {
     // index of modref (dll)
     pub scope: usize,
-    pub name: u32,
+    pub name: usize,
     pub flag: PInvokeAttrib,
 }

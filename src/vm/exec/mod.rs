@@ -581,7 +581,7 @@ impl<'m> TExecutor<'m> {
 
                     let mut args: Vec<Slot> = Vec::new();
                     if callee.attrib.is(MethodAttribFlag::Static) {
-                        panic!(".ctor should be a static method");
+                        panic!(".ctor should be an instance method");
                     }
                     // TODO: more strict check
 

@@ -6,7 +6,7 @@ use xir::attrib::*;
 use xir::util::path::ModPath;
 
 pub use class::ASTClass;
-pub use method::{ASTCtor, ASTMethod};
+pub use method::{ASTCtor, ASTMethod, ASTMethodAttrib, ASTMethodAttribFlag};
 
 pub enum AST {
     /// mods, ext_mods, uses, classes: Vec<AST>
