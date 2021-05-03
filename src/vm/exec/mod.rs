@@ -1,134 +1,15 @@
-use super::data::{BuiltinType, Method, MethodILImpl, MethodImpl, MethodNativeImpl};
-use super::mem::{addr_addu, to_relative, MemTag, SharedMem, Slot, SlotTag, Stack};
+mod op;
 
-use xir::attrib::MethodAttribFlag;
+use super::data::{BuiltinType, Method, MethodILImpl, MethodImpl, MethodNativeImpl};
+use super::shared_mem::SharedMem;
+use super::stack::{ActivationRecord, Args, EvalStack, ILocals, Locals, Slot, SlotTag};
+
 use xir::tok::{get_tok_tag, TokTag};
 
-use std::mem::transmute;
-
-struct MethodState<'m> {
-    ip: usize,
-    method: &'m Method,
-    method_impl: &'m MethodILImpl,
-    stack: Stack,
-    locals: Vec<Slot>,
-    args: Vec<Slot>,
-}
-
-impl<'m> MethodState<'m> {
-    pub fn consume_u8(&mut self) -> u8 {
-        self.ip += 1;
-        self.method_impl.insts[self.ip - 1]
-    }
-
-    pub fn consume_u16(&mut self) -> u16 {
-        self.ip += 2;
-        ((self.method_impl.insts[self.ip - 2] as u16) << 8)
-            + (self.method_impl.insts[self.ip - 1] as u16)
-    }
-
-    pub fn consume_u32(&mut self) -> u32 {
-        self.ip += 4;
-        ((self.method_impl.insts[self.ip - 4] as u32) << 24)
-            + ((self.method_impl.insts[self.ip - 3] as u32) << 16)
-            + ((self.method_impl.insts[self.ip - 2] as u32) << 8)
-            + (self.method_impl.insts[self.ip - 1] as u32)
-    }
-
-    pub fn consume_i8(&mut self) -> i8 {
-        self.ip += 1;
-        unsafe { transmute(self.method_impl.insts[self.ip - 1]) }
-    }
-
-    pub fn consume_i32(&mut self) -> i32 {
-        self.ip += 4;
-        let bytes = [
-            self.method_impl.insts[self.ip - 4],
-            self.method_impl.insts[self.ip - 3],
-            self.method_impl.insts[self.ip - 2],
-            self.method_impl.insts[self.ip - 1],
-        ];
-        i32::from_be_bytes(bytes)
-    }
-}
+use std::ptr;
 
 pub struct TExecutor<'m> {
-    states: Vec<MethodState<'m>>,
-}
-
-macro_rules! exec_numeric_op {
-    ($op: tt, $lhs: ident, $rhs: ident) => {
-        unsafe {
-            match $lhs.tag {
-                SlotTag::I32 => match $rhs.tag {
-                    SlotTag::I32 => {
-                        $lhs.data.i32_ = $lhs.data.i32_ $op $rhs.data.i32_;
-                    }
-                    SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                    SlotTag::F => panic!("Cannot add between float and int"),
-                    SlotTag::INative => {
-                        $lhs.data.inative_ = $lhs.data.i32_ as isize $op $rhs.data.inative_;
-                        $lhs.tag = SlotTag::INative;
-                    }
-                    SlotTag::Ref => panic!("Cannot add ref"),
-                    SlotTag::Uninit => panic!("Cannot add unint data"),
-                },
-                SlotTag::I64 => unimplemented!(),
-                SlotTag::F => unimplemented!(),
-                SlotTag::INative => match $rhs.tag {
-                    SlotTag::I32 => {
-                        $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.i32_ as isize;
-                    }
-                    SlotTag::I64 => panic!("Cannot add between i32 and i64"),
-                    SlotTag::F => panic!("Cannot add between float and int"),
-                    SlotTag::INative => {
-                        $lhs.data.inative_ = $lhs.data.inative_ $op $rhs.data.inative_;
-                    }
-                    SlotTag::Ref => panic!("Cannot add ref"),
-                    SlotTag::Uninit => panic!("Cannot add unint data"),
-                },
-                SlotTag::Ref => panic!("Cannot add ref"),
-                SlotTag::Uninit => panic!("Cannot add unint data"),
-            }
-        }
-    };
-}
-
-macro_rules! exec_cmp_op {
-    ($op: tt, $lhs: ident, $rhs: ident) => {
-        unsafe {
-            match $lhs.tag {
-                SlotTag::I32 => match $rhs.tag {
-                    SlotTag::I32 => {
-                        $lhs.data.i32_ $op $rhs.data.i32_
-                    }
-                    SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                    SlotTag::F => panic!("Cannot cmp between float and int"),
-                    SlotTag::INative => {
-                        ($lhs.data.i32_ as isize) $op $rhs.data.inative_
-                    }
-                    SlotTag::Ref => panic!("Cannot cmp ref"),
-                    SlotTag::Uninit => panic!("Cannot cmp unint data"),
-                },
-                SlotTag::I64 => unimplemented!(),
-                SlotTag::F => unimplemented!(),
-                SlotTag::INative => match $rhs.tag {
-                    SlotTag::I32 => {
-                        $lhs.data.inative_ $op $rhs.data.i32_ as isize
-                    }
-                    SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                    SlotTag::F => panic!("Cannot cmp between float and int"),
-                    SlotTag::INative => {
-                        $lhs.data.inative_ $op $rhs.data.inative_
-                    }
-                    SlotTag::Ref => panic!("Cannot cmp ref"),
-                    SlotTag::Uninit => panic!("Cannot cmp unint data"),
-                },
-                SlotTag::Ref => panic!("Cannot cmp ref"),
-                SlotTag::Uninit => panic!("Cannot cmp unint data"),
-            }
-        }
-    };
+    states: Vec<ActivationRecord<'m>>,
 }
 
 impl<'m> TExecutor<'m> {
@@ -136,24 +17,36 @@ impl<'m> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
         let entry_ref = unsafe { entry.as_ref().unwrap() };
-        ret.call(vec![], entry_ref, entry_ref.method_impl.expect_il());
+        ret.call(
+            Args::new(entry_ref),
+            ptr::null_mut(),
+            entry_ref,
+            entry_ref.method_impl.expect_il(),
+        );
         ret
     }
 
-    fn call(&mut self, args: Vec<Slot>, method: &'m Method, il_impl: &'m MethodILImpl) {
+    fn call(
+        &mut self,
+        args: Args<'m>,
+        ret_addr: *mut Slot,
+        method: &'m Method,
+        il_impl: &'m MethodILImpl,
+    ) {
         // Currently there is no verification of the arg type
         // TODO: Generate locals with type info set
-        self.states.push(MethodState {
-            stack: Stack::new(),
-            locals: vec![Slot::default(); il_impl.locals.len()],
-            args,
-            ip: 0,
+        self.states.push(ActivationRecord {
             method,
             method_impl: il_impl,
+            args,
+            ret_addr,
+            eval_stack: EvalStack::new(),
+            locals: Locals::new(method),
+            ip: 0,
         });
     }
 
-    pub fn run(&mut self, mem: &'m mut SharedMem) -> u32 {
+    pub fn run(&mut self, mem: &'m mut SharedMem) -> isize {
         loop {
             let code = self.states.last_mut().unwrap().consume_u8();
             match code {
@@ -162,151 +55,137 @@ impl<'m> TExecutor<'m> {
                 // ldarg0
                 0x02 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.args[0]);
+                    cur_state.args.load(0, &mut cur_state.eval_stack);
                 }
                 // ldarg1
                 0x03 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.args[1]);
+                    cur_state.args.load(1, &mut cur_state.eval_stack);
                 }
                 // ldarg2
                 0x04 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.args[2]);
+                    cur_state.args.load(2, &mut cur_state.eval_stack);
                 }
                 // ldarg3
                 0x05 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.args[3]);
+                    cur_state.args.load(3, &mut cur_state.eval_stack);
                 }
                 // ldloc0
                 0x06 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.locals[0]);
+                    cur_state.locals.load(0, &mut cur_state.eval_stack);
                 }
                 // ldloc1
                 0x07 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.locals[1]);
+                    cur_state.locals.load(1, &mut cur_state.eval_stack);
                 }
                 // ldloc2
                 0x08 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.locals[2]);
+                    cur_state.locals.load(2, &mut cur_state.eval_stack);
                 }
                 // ldloc3
                 0x09 => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.stack.push(cur_state.locals[3]);
+                    cur_state.locals.load(3, &mut cur_state.eval_stack);
                 }
                 // stloc0
                 0x0A => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.locals[0] = cur_state.stack.pop();
+                    cur_state.locals.store(0, &mut cur_state.eval_stack);
                 }
                 // stloc1
                 0x0B => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.locals[1] = cur_state.stack.pop();
+                    cur_state.locals.store(1, &mut cur_state.eval_stack);
                 }
                 // stloc2
                 0x0C => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.locals[2] = cur_state.stack.pop();
+                    cur_state.locals.store(2, &mut cur_state.eval_stack);
                 }
                 // stloc3
                 0x0D => {
                     let cur_state = self.states.last_mut().unwrap();
-                    cur_state.locals[3] = cur_state.stack.pop();
+                    cur_state.locals.store(3, &mut cur_state.eval_stack);
                 }
                 // ldarg.s
                 0x0E => {
                     let cur_state = self.states.last_mut().unwrap();
                     let idx = cur_state.consume_u8();
-                    cur_state.stack.push(cur_state.args[idx as usize]);
+                    cur_state.args.load(idx as usize, &mut cur_state.eval_stack);
                 }
                 // starg.s
                 0x10 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let idx = cur_state.consume_u8();
-                    cur_state.args[idx as usize] = cur_state.stack.pop();
+                    cur_state
+                        .args
+                        .store(idx as usize, &mut cur_state.eval_stack);
                 }
                 // ldloc.s
                 0x11 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let idx = cur_state.consume_u8();
-                    cur_state.stack.push(cur_state.locals[idx as usize]);
+                    cur_state
+                        .locals
+                        .load(idx as usize, &mut cur_state.eval_stack);
                 }
                 // stloc.s
                 0x13 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let idx = cur_state.consume_u8();
-                    cur_state.locals[idx as usize] = cur_state.stack.pop();
+                    cur_state
+                        .locals
+                        .store(idx as usize, &mut cur_state.eval_stack);
                 }
                 // ldnull
                 0x14 => {
-                    self.states.last_mut().unwrap().stack.push(Slot::null());
+                    self.states
+                        .last_mut()
+                        .unwrap()
+                        .eval_stack
+                        .push_slot(Slot::null());
                 }
                 // ldc.i4.m1
-                0x15 => {
-                    self.states.last_mut().unwrap().stack.push_i32(-1);
-                }
+                0x15 => self.states.last_mut().unwrap().eval_stack.push_i32(-1),
                 // ldc.i4.0
-                0x16 => {
-                    self.states.last_mut().unwrap().stack.push_i32(0);
-                }
+                0x16 => self.states.last_mut().unwrap().eval_stack.push_i32(0),
                 // ldc.i4.1
-                0x17 => {
-                    self.states.last_mut().unwrap().stack.push_i32(1);
-                }
+                0x17 => self.states.last_mut().unwrap().eval_stack.push_i32(1),
                 // ldc.i4.2
-                0x18 => {
-                    self.states.last_mut().unwrap().stack.push_i32(2);
-                }
+                0x18 => self.states.last_mut().unwrap().eval_stack.push_i32(2),
                 // ldc.i4.3
-                0x19 => {
-                    self.states.last_mut().unwrap().stack.push_i32(3);
-                }
+                0x19 => self.states.last_mut().unwrap().eval_stack.push_i32(3),
                 // ldc.i4.4
-                0x1A => {
-                    self.states.last_mut().unwrap().stack.push_i32(4);
-                }
+                0x1A => self.states.last_mut().unwrap().eval_stack.push_i32(4),
                 // ldc.i4.5
-                0x1B => {
-                    self.states.last_mut().unwrap().stack.push_i32(5);
-                }
+                0x1B => self.states.last_mut().unwrap().eval_stack.push_i32(5),
                 // ldc.i4.6
-                0x1C => {
-                    self.states.last_mut().unwrap().stack.push_i32(6);
-                }
+                0x1C => self.states.last_mut().unwrap().eval_stack.push_i32(6),
                 // ldc.i4.7
-                0x1D => {
-                    self.states.last_mut().unwrap().stack.push_i32(7);
-                }
+                0x1D => self.states.last_mut().unwrap().eval_stack.push_i32(7),
                 // ldc.i4.8
-                0x1E => {
-                    self.states.last_mut().unwrap().stack.push_i32(8);
-                }
+                0x1E => self.states.last_mut().unwrap().eval_stack.push_i32(8),
                 // ldc.i4.s
                 0x1F => {
                     let cur_state = self.states.last_mut().unwrap();
                     let v = cur_state.consume_i8();
-                    cur_state.stack.push_i32(v as i32);
+                    cur_state.eval_stack.push_i32(v as i32);
                 }
                 // ldc.i4
                 0x20 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let v = cur_state.consume_i32();
-                    cur_state.stack.push_i32(v);
+                    cur_state.eval_stack.push_i32(v);
                 }
                 // dup
-                0x25 => {
-                    self.states.last_mut().unwrap().stack.dup();
-                }
+                0x25 => self.states.last_mut().unwrap().eval_stack.dup(),
                 // pop
-                0x26 => {
-                    self.states.last_mut().unwrap().stack.pop();
-                }
+                0x26 => self.states.last_mut().unwrap().eval_stack.pop(),
                 // call
                 0x28 => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -326,30 +205,23 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let args = self.states.last_mut().unwrap().stack.pop_n(
-                        if callee.attrib.is(MethodAttribFlag::Static) {
-                            callee.ps.len()
-                        } else {
-                            callee.ps.len() + 1
-                        },
-                    );
+                    let mut args = Args::new(callee);
+                    args.fill_args(&mut cur_state.eval_stack);
+                    let ret_addr = cur_state.eval_stack.alloc_ret(&callee.ret.ty);
                     match &callee.method_impl {
                         MethodImpl::IL(il_impl) => {
-                            self.call(args, callee, il_impl);
+                            self.call(args, ret_addr, callee, il_impl);
                         }
                         MethodImpl::Native(MethodNativeImpl { scope, .. }) => {
                             // currently there is no multi-slot user defined type
-                            let mut ret: Vec<Slot> = Vec::new();
                             unsafe {
                                 let callee_ctx = callee.ctx.as_ref().unwrap().expect_il();
                                 callee_ctx.modrefs[*scope]
                                     .as_ref()
                                     .unwrap()
                                     .expect_dll()
-                                    .call(mem.get_str(callee.name), &args, &mut ret);
+                                    .call(mem.get_str(callee.name), args, ret_addr);
                             }
-
-                            self.states.last_mut().unwrap().stack.append(ret);
                         }
                     }
                 }
@@ -379,12 +251,14 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::R8
                         | BuiltinType::ByRef(_)
                         | BuiltinType::Array(_) => {
-                            let ret_v = cur_state.stack.pop();
-                            self.states.pop();
+                            let ret_v = cur_state.eval_stack.pop_with_slot();
+                            let state = self.states.pop().unwrap();
                             if self.states.is_empty() {
-                                return ret_v.as_u32();
+                                return unsafe { ret_v.data.inative_ };
                             }
-                            self.states.last_mut().unwrap().stack.push(ret_v);
+                            unsafe {
+                                *state.ret_addr = ret_v;
+                            }
                         }
                         BuiltinType::Class(_) => unreachable!(),
                         BuiltinType::Unk => unreachable!(),
@@ -400,9 +274,10 @@ impl<'m> TExecutor<'m> {
                 0x39 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let offset = cur_state.consume_i32();
-                    let v = cur_state.stack.pop();
+                    let v = cur_state.eval_stack.pop_with_slot();
                     unsafe {
-                        if v.data.inative_ == 0 {
+                        v.expect(SlotTag::I32);
+                        if v.data.i32_ == 0 {
                             // false
                             cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                         }
@@ -412,126 +287,26 @@ impl<'m> TExecutor<'m> {
                 0x3A => {
                     let cur_state = self.states.last_mut().unwrap();
                     let offset = cur_state.consume_i32();
-                    let v = cur_state.stack.pop();
+                    let v = cur_state.eval_stack.pop_with_slot();
                     unsafe {
-                        if v.data.inative_ != 0 {
+                        v.expect(SlotTag::I32);
+                        if v.data.i32_ != 0 {
                             // true
                             cur_state.ip = (cur_state.ip as i32 + offset) as usize;
                         }
                     }
                 }
-                // beq
-                0x3B => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let offset = cur_state.consume_i32();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.pop();
-                    let b = exec_cmp_op!(==, lhs, rhs);
-                    if b {
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
-                    }
-                }
-                // bge
-                0x3C => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let offset = cur_state.consume_i32();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.pop();
-                    let b = exec_cmp_op!(>=, lhs, rhs);
-                    if b {
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
-                    }
-                }
-                // bgt
-                0x3D => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let offset = cur_state.consume_i32();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.pop();
-                    let b = exec_cmp_op!(>, lhs, rhs);
-                    if b {
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
-                    }
-                }
-                // ble
-                0x3E => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let offset = cur_state.consume_i32();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.pop();
-                    let b = exec_cmp_op!(<=, lhs, rhs);
-                    if b {
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
-                    }
-                }
-                // blt
-                0x3F => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let offset = cur_state.consume_i32();
-                    let rhs = cur_state.stack.pop();
-                    let lhs = cur_state.stack.pop();
-                    let b = exec_cmp_op!(<, lhs, rhs);
-                    if b {
-                        cur_state.ip = (cur_state.ip as i32 + offset) as usize;
-                    }
-                }
-                // add
-                0x58 => {
-                    let stack = &mut self.states.last_mut().unwrap().stack;
-                    let rhs = stack.pop();
-                    let lhs = stack.peek_mut();
-                    exec_numeric_op!(+, lhs, rhs);
-                }
-                // sub
-                0x59 => {
-                    let stack = &mut self.states.last_mut().unwrap().stack;
-                    let rhs = stack.pop();
-                    let lhs = stack.peek_mut();
-                    exec_numeric_op!(-, lhs, rhs);
-                }
-                // mul
-                0x5A => {
-                    let stack = &mut self.states.last_mut().unwrap().stack;
-                    let rhs = stack.pop();
-                    let lhs = stack.peek_mut();
-                    exec_numeric_op!(*, lhs, rhs);
-                }
-                // div
-                0x5B => {
-                    let stack = &mut self.states.last_mut().unwrap().stack;
-                    let rhs = stack.pop();
-                    let lhs = stack.peek_mut();
-                    exec_numeric_op!(/, lhs, rhs);
-                }
-                // rem
-                0x5D => {
-                    let stack = &mut self.states.last_mut().unwrap().stack;
-                    let rhs = stack.pop();
-                    let lhs = stack.peek_mut();
-                    exec_numeric_op!(%, lhs, rhs);
-                }
-                // neg
-                0x65 => {
-                    let lhs = self.states.last_mut().unwrap().stack.peek_mut();
-                    unsafe {
-                        match lhs.tag {
-                            SlotTag::I32 => {
-                                lhs.data.i32_ = -lhs.data.i32_;
-                            }
-                            SlotTag::I64 => {
-                                lhs.data.i64_ = -lhs.data.i64_;
-                            }
-                            SlotTag::F => {
-                                unimplemented!();
-                            }
-                            SlotTag::INative => {
-                                lhs.data.inative_ = -lhs.data.inative_;
-                            }
-                            SlotTag::Ref => panic!("Cannot neg ref type"),
-                            SlotTag::Uninit => panic!("Cannot neg uinit slot"),
-                        }
-                    }
-                }
+                0x3B => op::exec_beq(self.states.last_mut().unwrap()),
+                0x3C => op::exec_bge(self.states.last_mut().unwrap()),
+                0x3D => op::exec_bgt(self.states.last_mut().unwrap()),
+                0x3E => op::exec_ble(self.states.last_mut().unwrap()),
+                0x3F => op::exec_blt(self.states.last_mut().unwrap()),
+                0x58 => op::exec_add(self.states.last_mut().unwrap()),
+                0x59 => op::exec_sub(self.states.last_mut().unwrap()),
+                0x5A => op::exec_mul(self.states.last_mut().unwrap()),
+                0x5B => op::exec_div(self.states.last_mut().unwrap()),
+                0x5D => op::exec_rem(self.states.last_mut().unwrap()),
+                0x65 => op::exec_neg(self.states.last_mut().unwrap()),
                 // callvirt
                 0x6F => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -553,11 +328,13 @@ impl<'m> TExecutor<'m> {
 
                     // TODO: If calle is virtual, use dynamic dispatching
 
-                    let args = cur_state.stack.pop_n(callee.ps.len() + 1);
+                    let mut args = Args::new(callee);
+                    args.fill_args(&mut cur_state.eval_stack);
+                    let ret_addr = cur_state.eval_stack.alloc_ret(&callee.ret.ty);
 
                     // TODO: assert args[0] != null
 
-                    self.call(args, callee, callee.method_impl.expect_il());
+                    self.call(args, ret_addr, callee, callee.method_impl.expect_il());
                 }
                 // newobj
                 0x73 => {
@@ -579,21 +356,27 @@ impl<'m> TExecutor<'m> {
                     };
                     // TODO: make sure callee is .ctor
 
-                    let mut args: Vec<Slot> = Vec::new();
-                    if callee.attrib.is(MethodAttribFlag::Static) {
+                    if callee.is_static() {
                         panic!(".ctor should be an instance method");
                     }
                     // TODO: more strict check
 
                     // Alloc space at heap
+                    let mut args = Args::new(callee);
                     unsafe {
-                        let offset = mem.heap.new_obj(callee.parent.unwrap());
-                        args.push(Slot::new_ref(MemTag::HeapMem, offset));
-                        args.append(&mut cur_state.stack.pop_n(callee.ps.len()));
-                        cur_state.stack.push(Slot::new_ref(MemTag::HeapMem, offset));
+                        assert!(!callee.parent.is_null());
+                        let instance_addr = mem.heap.new_obj(callee.parent);
+                        args.store_slot(0, Slot::new_ref(instance_addr));
+                        args.fill_args_except_self(&mut cur_state.eval_stack);
+                        cur_state.eval_stack.push_slot(Slot::new_ref(instance_addr));
                     }
 
-                    self.call(args, callee, callee.method_impl.expect_il());
+                    self.call(
+                        args,
+                        ptr::null_mut(),
+                        callee,
+                        callee.method_impl.expect_il(),
+                    );
                 }
                 // ldfld
                 0x7B => {
@@ -614,13 +397,9 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let (mem_tag, instance_addr_offset) =
-                        unsafe { cur_state.stack.pop().as_addr() };
-                    if let MemTag::HeapMem = mem_tag {
-                    } else {
-                        panic!("Operand of ldfld is not a heap addr");
-                    }
-                    let field_addr = addr_addu(f.addr, instance_addr_offset);
+                    let instance_addr: *mut u8 =
+                        unsafe { cur_state.eval_stack.pop_with_slot().as_addr() };
+                    let field_addr = instance_addr.wrapping_add(f.offset);
 
                     unsafe {
                         match f.ty {
@@ -635,7 +414,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
-                                cur_state.stack.push_i32(*mem.heap.access(field_addr));
+                                cur_state.eval_stack.push_i32(*(field_addr as *const i32));
                             }
                             BuiltinType::U8 => unimplemented!(),
                             BuiltinType::I8 => unimplemented!(),
@@ -666,14 +445,11 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let v = cur_state.stack.pop();
+                    let v = cur_state.eval_stack.pop_with_slot();
 
-                    let (mem_tag, offset) = unsafe { cur_state.stack.pop().as_addr() };
-                    if let MemTag::HeapMem = mem_tag {
-                    } else {
-                        panic!("Operand of stfld is not a heap addr");
-                    }
-                    let field_addr = addr_addu(f.addr, offset);
+                    let instance_addr: *mut u8 =
+                        unsafe { cur_state.eval_stack.pop_with_slot().as_addr() };
+                    let field_addr = instance_addr.wrapping_add(f.offset);
 
                     unsafe {
                         match f.ty {
@@ -688,7 +464,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
-                                *mem.heap.access_mut(field_addr) = v.data.i32_;
+                                *(field_addr as *mut i32) = v.data.i32_;
                             }
                             BuiltinType::U8 => unimplemented!(),
                             BuiltinType::I8 => unimplemented!(),
@@ -719,12 +495,6 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let (mem_tag, offset) = to_relative(f.addr);
-                    if let MemTag::StaticMem = mem_tag {
-                    } else {
-                        panic!("Operand of ldsfld is not a static addr");
-                    }
-
                     unsafe {
                         match f.ty {
                             BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
@@ -738,7 +508,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
-                                cur_state.stack.push_i32(*mem.static_area.access(offset));
+                                cur_state.eval_stack.push_i32(*(f.addr as *const i32));
                             }
                             BuiltinType::U8 => unimplemented!(),
                             BuiltinType::I8 => unimplemented!(),
@@ -770,13 +540,7 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let (mem_tag, offset) = to_relative(f.addr);
-                    if let MemTag::StaticMem = mem_tag {
-                    } else {
-                        panic!("Operand of stsfld is not a static addr");
-                    }
-
-                    let v = cur_state.stack.pop();
+                    let v = cur_state.eval_stack.pop_with_slot();
 
                     unsafe {
                         match f.ty {
@@ -791,7 +555,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
-                                *mem.static_area.access_mut(offset) = v.data.i32_;
+                                *(f.addr as *mut i32) = v.data.i32_;
                             }
                             BuiltinType::U8 => unimplemented!(),
                             BuiltinType::I8 => unimplemented!(),
@@ -808,44 +572,24 @@ impl<'m> TExecutor<'m> {
                 0xFE => {
                     let inner_code = self.states.last_mut().unwrap().consume_u8();
                     match inner_code {
-                        // ceq
-                        0x01 => {
-                            let cur_state = self.states.last_mut().unwrap();
-                            let rhs = cur_state.stack.pop();
-                            let lhs = cur_state.stack.peek_mut();
-                            let t = exec_cmp_op!(==, lhs, rhs);
-                            lhs.data.inative_ = if t { 1 } else { 0 };
-                            lhs.tag = SlotTag::INative;
-                        }
-                        // cgt
-                        0x02 => {
-                            let cur_state = self.states.last_mut().unwrap();
-                            let rhs = cur_state.stack.pop();
-                            let lhs = cur_state.stack.peek_mut();
-                            let t = exec_cmp_op!(>, lhs, rhs);
-                            lhs.data.inative_ = if t { 1 } else { 0 };
-                            lhs.tag = SlotTag::INative;
-                        }
-                        // clt
-                        0x04 => {
-                            let cur_state = self.states.last_mut().unwrap();
-                            let rhs = cur_state.stack.pop();
-                            let lhs = cur_state.stack.peek_mut();
-                            let t = exec_cmp_op!(<, lhs, rhs);
-                            lhs.data.inative_ = if t { 1 } else { 0 };
-                            lhs.tag = SlotTag::INative;
-                        }
+                        0x01 => op::exec_ceq(self.states.last_mut().unwrap()),
+                        0x02 => op::exec_cgt(self.states.last_mut().unwrap()),
+                        0x04 => op::exec_clt(self.states.last_mut().unwrap()),
                         // ldloc
                         0x0C => {
                             let cur_state = self.states.last_mut().unwrap();
                             let idx = cur_state.consume_u16();
-                            cur_state.stack.push(cur_state.locals[idx as usize]);
+                            cur_state
+                                .locals
+                                .load(idx as usize, &mut cur_state.eval_stack);
                         }
                         // stloc
                         0x0E => {
                             let cur_state = self.states.last_mut().unwrap();
                             let idx = cur_state.consume_u16();
-                            cur_state.locals[idx as usize] = cur_state.stack.pop();
+                            cur_state
+                                .locals
+                                .store(idx as usize, &mut cur_state.eval_stack);
                         }
                         _ => panic!("Unknown inst 0xFE{:X}", inner_code),
                     }

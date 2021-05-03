@@ -14,7 +14,7 @@ use std::time::SystemTime;
 use vm::data::Module;
 use vm::exec::TExecutor;
 use vm::loader::load;
-use vm::mem::SharedMem;
+use vm::shared_mem::SharedMem;
 use vm::VMCfg;
 
 fn main() {
@@ -94,7 +94,7 @@ fn main() {
     for module in m.mods.values_mut() {
         if let Module::IL(module) = module.as_mut() {
             for ty in module.types.iter_mut() {
-                ty.dispose_instance_info(&mut m.static_area);
+                ty.dispose_instance_info();
             }
         }
     }

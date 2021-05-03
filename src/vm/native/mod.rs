@@ -1,7 +1,8 @@
-use super::mem::slot::Slot;
-use core::panic;
+use super::stack::{Args, Slot};
+
 use std::ffi::CString;
 use std::ops::Deref;
+use std::os::raw::{c_char, c_uchar};
 
 #[cfg(windows)]
 use winapi::shared::minwindef::{FARPROC, HMODULE};
@@ -18,17 +19,13 @@ enum NativeState {
     Ok,
     /// Function not found
     NoFunc,
-    /// Wrong argument number
-    WrongArgc,
-    /// Wrong argument type
-    WrongArgTy,
 }
 
 pub struct VMDll {
     dll: ExternalDll,
     /// TODO: use hashmap to optimize funtion dispatch
     bridge_fn:
-        ExternalFn<unsafe extern "C" fn(*const i8, i32, *const Slot, *mut Slot) -> NativeState>,
+        ExternalFn<unsafe extern "C" fn(*const c_char, *const c_uchar, *mut Slot) -> NativeState>,
 }
 
 impl VMDll {
@@ -38,26 +35,14 @@ impl VMDll {
         Ok(VMDll { dll, bridge_fn })
     }
 
-    pub fn call(&self, name: &str, args: &Vec<Slot>, ret: &mut [Slot]) {
+    pub fn call(&self, name: &str, args: Args, ret: *mut Slot) {
         let fname = CString::new(name).unwrap();
-        let state = unsafe {
-            (*self.bridge_fn)(
-                fname.as_ptr(),
-                args.len() as i32,
-                args.as_ptr(),
-                ret.as_mut_ptr(),
-            )
-        };
+        let state =
+            unsafe { (*self.bridge_fn)(fname.as_ptr(), args.as_ptr() as *const c_uchar, ret) };
         match state {
             NativeState::Ok => {}
             NativeState::NoFunc => {
-                panic!("No function {} in dll {}", name, self.dll.rust_name());
-            }
-            NativeState::WrongArgc => {
-                panic!("Mismatch arg number");
-            }
-            NativeState::WrongArgTy => {
-                panic!("Mismatch arg type");
+                panic!("No function {} in dll {}", name, self.dll.get_name());
             }
         }
     }
@@ -81,7 +66,7 @@ impl ExternalDll {
         }
     }
 
-    pub fn rust_name(&self) -> &str {
+    pub fn get_name(&self) -> &str {
         self.name.to_str().unwrap()
     }
 
@@ -94,7 +79,7 @@ impl ExternalDll {
                 Err(format!(
                     "{}: Fail to load symbol {} in {}",
                     GetLastError(),
-                    self.rust_name(),
+                    self.get_name(),
                     fn_name
                 ))
             } else {

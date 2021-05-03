@@ -9,9 +9,11 @@ use xir::tok::{get_tok_tag, TokTag};
 use std::mem::size_of;
 
 pub use self::field::Field;
-pub use self::method::{Method, MethodILImpl, MethodImpl, MethodNativeImpl, Param};
+pub use self::method::{Local, Method, MethodILImpl, MethodImpl, MethodNativeImpl, Param};
 pub use self::module::{ILModule, MemberRef, Module};
 pub use self::ty::Type;
+
+pub const REF_SIZE: usize = size_of::<*mut u8>();
 
 /// VM representation of IrSig
 #[derive(PartialEq, Eq)]
@@ -68,10 +70,10 @@ impl BuiltinType {
         }
     }
 
-    pub fn heap_size(&self) -> usize {
+    pub fn byte_size(&self) -> usize {
         match self {
-            BuiltinType::Void => panic!("Void type has no heap size"),
-            BuiltinType::Bool => size_of::<i32>(),
+            BuiltinType::Void => panic!("Void type has no byte size"),
+            BuiltinType::Bool => size_of::<i8>(),
             BuiltinType::Char => size_of::<u16>(),
             BuiltinType::U1 => size_of::<u8>(),
             BuiltinType::I1 => size_of::<i8>(),
@@ -85,7 +87,7 @@ impl BuiltinType {
             BuiltinType::INative => size_of::<isize>(),
             BuiltinType::R4 => size_of::<f32>(),
             BuiltinType::R8 => size_of::<f64>(),
-            BuiltinType::ByRef(_) => size_of::<usize>(),
+            BuiltinType::ByRef(_) => REF_SIZE,
             BuiltinType::Array(_) => unimplemented!(),
             BuiltinType::Class(_) => unreachable!(),
             BuiltinType::Unk => unreachable!(),

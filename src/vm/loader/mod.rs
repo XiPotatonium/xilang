@@ -1,6 +1,6 @@
 use super::data::*;
-use super::mem::SharedMem;
 use super::native::VMDll;
+use super::shared_mem::SharedMem;
 use super::VMCfg;
 
 use xir::attrib::*;
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::ptr::null;
+use std::ptr;
 
 pub fn load(
     entry: PathBuf,
@@ -122,7 +122,7 @@ impl<'c> Loader<'c> {
                 )
             };
 
-            let type_flag = TypeAttrib::from(typedef_entry.flag);
+            let type_attrib = TypeAttrib::from(typedef_entry.flag);
             let type_name = str_heap[typedef_entry.name as usize];
             let mut type_methods: Vec<*mut Method> = Vec::new();
             let mut type_fields: Vec<*mut Field> = Vec::new();
@@ -140,11 +140,7 @@ impl<'c> Loader<'c> {
                         let body = &file.codes[method_entry.body as usize - 1];
                         // Currently virtual method is not implemented
                         // Callvirt actually call non virtual method, which offset = 0
-                        MethodImpl::IL(MethodILImpl {
-                            offset: 0,
-                            locals: Vec::new(),
-                            insts: body.insts.to_owned(),
-                        })
+                        MethodImpl::IL(MethodILImpl::new(body.insts.to_owned()))
                     }
                     MethodImplAttribCodeTypeFlag::Native => {
                         // O(N), might need optimization
@@ -177,11 +173,7 @@ impl<'c> Loader<'c> {
                     if let IrSig::Method(_, ps, _) = &file.blob_heap[method_entry.sig as usize] {
                         (0..ps.len())
                             .into_iter()
-                            .map(|_| Param {
-                                name: self.empty_str,
-                                attrib: ParamAttrib::default(),
-                                ty: BuiltinType::Unk,
-                            })
+                            .map(|_| Param::new(self.empty_str, ParamAttrib::default()))
                             .collect()
                     } else {
                         panic!();
@@ -196,35 +188,24 @@ impl<'c> Loader<'c> {
                 }
 
                 let mut method = Box::new(Method {
-                    ctx: null(),
+                    ctx: ptr::null(),
                     name,
                     attrib: flag,
                     impl_flag,
                     // fill later
-                    parent: None,
+                    parent: ptr::null(),
                     // fill in link stage
                     ret: if let Some(p) = param.first() {
                         if p.sequence == 0 {
-                            Param {
-                                name: str_heap[p.name as usize],
-                                attrib: ParamAttrib::from(p.flag),
-                                ty: BuiltinType::Unk,
-                            }
+                            Param::new(str_heap[p.name as usize], ParamAttrib::from(p.flag))
                         } else {
-                            Param {
-                                name: self.empty_str,
-                                attrib: ParamAttrib::default(),
-                                ty: BuiltinType::Unk,
-                            }
+                            Param::new(self.empty_str, ParamAttrib::default())
                         }
                     } else {
-                        Param {
-                            name: self.empty_str,
-                            attrib: ParamAttrib::default(),
-                            ty: BuiltinType::Unk,
-                        }
+                        Param::new(self.empty_str, ParamAttrib::default())
                     },
                     ps,
+                    ps_size: 0,
                     method_impl,
                 });
 
@@ -248,7 +229,8 @@ impl<'c> Loader<'c> {
                     attrib: flag,
                     // fill in link stage
                     ty: BuiltinType::Unk,
-                    addr: 0,
+                    offset: 0,
+                    addr: ptr::null_mut(),
                 });
                 type_fields.push(field.as_mut() as *mut Field);
                 fields.push(field);
@@ -256,21 +238,10 @@ impl<'c> Loader<'c> {
                 field_i += 1;
             }
 
-            let ty = Box::new(Type {
-                name: type_name,
-                attrib: type_flag,
-                fields: type_fields,
-                methods: type_methods,
-                // fill in link stage
-                extends: None,
-                // fill in allocation stage
-                instance_field_size: 0,
-                static_field_size: 0,
-                vtbl_addr: 0,
-            });
+            let ty = Box::new(Type::new(type_name, type_attrib, type_fields, type_methods));
 
             for method in ty.methods.iter() {
-                unsafe { method.as_mut().unwrap().parent = Some(ty.as_ref() as *const Type) };
+                unsafe { method.as_mut().unwrap().parent = ty.as_ref() as *const Type };
             }
 
             types.push(ty);
@@ -530,9 +501,7 @@ impl<'c> Loader<'c> {
             let sig = &file.blob_heap[method_entry.sig as usize];
             if let IrSig::Method(_, ps, ret) = sig {
                 method.ret.ty = BuiltinType::from_ir_ele_ty(ret, this_mod_ref);
-                for (i, p) in ps.iter().enumerate() {
-                    method.ps[i].ty = BuiltinType::from_ir_ele_ty(p, this_mod_ref);
-                }
+                method.init_ps_ty(ps, this_mod_ref);
             } else {
                 panic!();
             }
@@ -544,11 +513,7 @@ impl<'c> Loader<'c> {
                         if let IrSig::LocalVar(locals) = &file.blob_heap
                             [file.stand_alone_sig_tbl[body.locals as usize - 1].sig as usize]
                         {
-                            for var in locals.iter() {
-                                il_impl
-                                    .locals
-                                    .push(BuiltinType::from_ir_ele_ty(var, this_mod_ref))
-                            }
+                            il_impl.init_locals(&locals, this_mod_ref);
                         }
                     }
                 }
@@ -559,14 +524,14 @@ impl<'c> Loader<'c> {
         // 3.6 Link class extends
         for (ty, type_entry) in this_mod_mut.types.iter_mut().zip(file.typedef_tbl.iter()) {
             if let Some((parent_tag, parent_idx)) = type_entry.get_extends() {
-                ty.extends = Some(match parent_tag {
+                ty.extends = match parent_tag {
                     TypeDefOrRef::TypeDef => unsafe {
                         this_mod.as_mut().unwrap().expect_il_mut().types[parent_idx].as_mut()
                             as *mut Type
                     },
                     TypeDefOrRef::TypeRef => this_mod_ref.typerefs[parent_idx],
                     TypeDefOrRef::TypeSpec => unimplemented!(),
-                });
+                };
             }
         }
 

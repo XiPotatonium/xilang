@@ -27,3 +27,8 @@ class IO {
 
 // Root of all classes
 class Object {}
+
+
+class String {}
+
+class Array {}

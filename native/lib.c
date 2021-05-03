@@ -13,17 +13,27 @@
 typedef enum SlotTag {
     I32,
     I64,
+    U32,
+    U64,
     INative,
+    UNative,
+    F32,
+    F64,
     Ref,
-    F,
+    Value,
     Uninit,
 } SlotTag;
 
 typedef union SlotData {
     int32_t i32_;
     int64_t i64_;
+    uint32_t u32_;
+    uint64_t u64_;
     int inative_;
     unsigned int unative_;
+    float f32_;
+    double f64_;
+    uint8_t *ptr_;
 } SlotData;
 
 typedef struct Slot {
@@ -34,42 +44,25 @@ typedef struct Slot {
 typedef enum NativeState {
     Ok,
     NoFunc,
-    WrongArgc,
-    WrongArgTy,
 } NativeState;
 
+
+#define NEXT_ARG(T, var) { (var) = *(T*)(args + offset); offset += sizeof(T); }
+
 #ifdef _WIN32
-_declspec(dllexport) NativeState _cdecl
-#else
-NativeState
+_declspec(dllexport)
 #endif // _WIN32
-    native_bridge(const char *fname, int32_t argc, const Slot *args,
-                  Slot *ret) {
+    NativeState native_bridge(const char *fname, const uint8_t *args, Slot *ret) {
+    int offset = 0;
     if (strcmp(fname, "putchar") == 0) {
-        if (argc != 1) {
-            return WrongArgc;
-        }
-        switch (args[0].tag) {
-        case I32:
-            putchar(args[0].data.i32_);
-            break;
-        case INative:
-            putchar(args[0].data.inative_);
-            break;
-        default:
-            return WrongArgTy;
-        }
+        // TODO: utf-16 support after char is implemented
+        int32_t v0;
+        NEXT_ARG(int32_t, v0); 
+        putchar(v0);
     } else if (strcmp(fname, "puti32") == 0) {
-        if (argc != 1) {
-            return WrongArgc;
-        }
-        switch (args[0].tag) {
-        case I32:
-            fprintf(stdout, "%d", args[0].data.i32_);
-            break;
-        default:
-            return WrongArgTy;
-        }
+        int32_t v0;
+        NEXT_ARG(int32_t, v0); 
+        fprintf(stdout, "%d", v0);
     } else {
         return NoFunc;
     }

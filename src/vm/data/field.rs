@@ -7,7 +7,9 @@ pub struct Field {
     pub attrib: FieldAttrib,
     pub ty: BuiltinType,
 
-    /// for static field, this is address in memory;
+    /// for static field, this is offset in Type.static_fields
     /// for non static field, this is the offset to the start of object
-    pub addr: usize,
+    pub offset: usize,
+    // &parent.static_fields[self.offset]
+    pub addr: *mut u8,
 }

@@ -9,10 +9,10 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * class
   * static/non-static method/field
   * cctor
-  * ctor (only one constructor)
+  * ctor
   * inheritance:
-    * all classes except std::Object is derived from std::Object
-    * accessing instance field and method of base class
+    * all classes except std::Object are derived from std::Object
+    * accessing instance fields and methods of base classes
 * Built-in type:
   * i32
   * bool
@@ -23,7 +23,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
     * loop loop
     * break
     * continue
-  * numerical expr: `+ - * /`
+  * numerical expr: `+ - * / %`
   * cmp: `> < == != >= <=`
   * logical: `&& || !`
 * Built-in attribute:
@@ -39,10 +39,9 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 ### 1.1 FIX
 
-* Local var. 
-  * ldloc.n的n不是slot的下标，而是第几个局部变量。因为存在用户定义struct，因此栈不能使用定长的slot
-* bool占用1byte内存
 * module存在环形依赖的时候估计是会出现错误的
+* 出现泛型之后，类型也是允许环形依赖的，目前的type loader算法有误
+* 探讨一下Native部分使用LLVM工具来实现JIT的可能性
 
 ### 1.2 RoadMap
 
@@ -60,6 +59,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * Refactor lang
   * DRY
   * make incremental compilation possible
+  * lazy loading external class
 * xilang project structure
   * crate
 
@@ -78,6 +78,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * i16/u16
   * u32
   * f32/f64
+* Native type convert stub
 
 #### Ver 0.5.0
 
