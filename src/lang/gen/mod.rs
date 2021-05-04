@@ -2,9 +2,7 @@ mod basic_block;
 mod builder;
 mod il_gen;
 // mod interpreter;
-mod lval;
 mod method_builder;
-mod op;
 
 pub use basic_block::{BasicBlock, LLCursor};
 pub use builder::Builder;
@@ -47,7 +45,7 @@ pub struct CodeGenCtx<'c> {
 }
 
 impl<'mgr> CodeGenCtx<'mgr> {
-    fn get_ty(&self, ast: &Box<AST>) -> RValType {
+    fn get_ty(&self, ast: &AST) -> RValType {
         self.module.get_ty(ast, self.mgr, self.class)
     }
 

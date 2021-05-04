@@ -1,5 +1,6 @@
-use super::super::ast::AST;
-use super::{gen, Class, CodeGenCtx, Field, Method, RValType, ValType};
+use super::super::super::ast::AST;
+use super::super::{Class, CodeGenCtx, Field, Method, RValType, ValType};
+use super::gen;
 
 use xir::attrib::*;
 use xir::util::path::{IModPath, ModPath};

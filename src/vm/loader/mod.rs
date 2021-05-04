@@ -1,3 +1,5 @@
+mod linker;
+
 use super::data::*;
 use super::native::VMDll;
 use super::shared_mem::SharedMem;
@@ -6,8 +8,7 @@ use super::VMCfg;
 use xir::attrib::*;
 use xir::blob::IrSig;
 use xir::file::*;
-use xir::member::{MemberForwarded, MemberRefParent};
-use xir::ty::{ResolutionScope, TypeDefOrRef};
+use xir::member::MemberForwarded;
 use xir::util::path::{IModPath, ModPath};
 use xir::CCTOR_NAME;
 
@@ -21,7 +22,7 @@ pub fn load(
     entry: PathBuf,
     mem: &mut SharedMem,
     cfg: &VMCfg,
-) -> (Vec<*const Method>, *const Method) {
+) -> (Vec<*const MethodDesc>, *const MethodDesc) {
     let f = IrFile::from_binary(Box::new(fs::File::open(&entry).unwrap()));
 
     let entrypoint = f.mod_tbl[0].entrypoint as usize;
@@ -36,7 +37,8 @@ pub fn load(
 
     (
         loader.cctors,
-        mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref() as *const Method,
+        mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref()
+            as *const MethodDesc,
     )
 }
 
@@ -46,7 +48,7 @@ struct Loader<'c> {
     str_map: HashMap<String, usize>,
     cctor_name: usize,
     empty_str: usize, // ""
-    cctors: Vec<*const Method>,
+    cctors: Vec<*const MethodDesc>,
 }
 
 impl<'c> Loader<'c> {
@@ -85,13 +87,13 @@ impl<'c> Loader<'c> {
 
         let str_heap: Vec<usize> = file
             .str_heap
-            .into_iter()
-            .map(|s| self.add_const_string(s))
+            .iter()
+            .map(|s| self.add_const_string(s.clone()))
             .collect();
 
         // 1. Fill classes methods and fields that defined in this file
         let mut types: Vec<Box<Type>> = Vec::new();
-        let mut methods: Vec<Box<Method>> = Vec::new();
+        let mut methods: Vec<Box<MethodDesc>> = Vec::new();
         let mut fields: Vec<Box<Field>> = Vec::new();
 
         let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
@@ -124,14 +126,14 @@ impl<'c> Loader<'c> {
 
             let type_attrib = TypeAttrib::from(typedef_entry.flag);
             let type_name = str_heap[typedef_entry.name as usize];
-            let mut type_methods: Vec<*mut Method> = Vec::new();
-            let mut type_fields: Vec<*mut Field> = Vec::new();
+            let mut type_methods: HashMap<String, *mut MethodDesc> = HashMap::new();
+            let mut type_fields: HashMap<usize, *mut Field> = HashMap::new();
 
             while method_i < method_lim {
                 let method_entry = &file.method_tbl[method_i];
                 let name = str_heap[method_entry.name as usize];
 
-                let flag = MethodAttrib::from(method_entry.flag);
+                let method_attrib = MethodAttrib::from(method_entry.flag);
                 let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
 
                 let method_impl = match impl_flag.code_ty() {
@@ -169,15 +171,17 @@ impl<'c> Loader<'c> {
                     &file.param_tbl[(method_entry.param_list as usize - 1)
                         ..(file.method_tbl[method_i + 1].param_list as usize - 1)]
                 };
-                let mut ps: Vec<Param> =
-                    if let IrSig::Method(_, ps, _) = &file.blob_heap[method_entry.sig as usize] {
-                        (0..ps.len())
-                            .into_iter()
-                            .map(|_| Param::new(self.empty_str, ParamAttrib::default()))
-                            .collect()
-                    } else {
-                        panic!();
-                    };
+                let ps = if let IrSig::Method(_, ps, _) = &file.blob_heap[method_entry.sig as usize]
+                {
+                    ps
+                } else {
+                    panic!();
+                };
+                let method_sig = method_sig_from_ir(&file, method_entry.name, ps);
+                let mut ps: Vec<Param> = (0..ps.len())
+                    .into_iter()
+                    .map(|_| Param::new(self.empty_str, ParamAttrib::default()))
+                    .collect();
                 for p in param.iter() {
                     if p.sequence == 0 {
                         // return value
@@ -187,11 +191,12 @@ impl<'c> Loader<'c> {
                     ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
                 }
 
-                let mut method = Box::new(Method {
+                let mut method = Box::new(MethodDesc {
                     ctx: ptr::null(),
                     name,
-                    attrib: flag,
-                    impl_flag,
+                    slot: 0,
+                    attrib: method_attrib,
+                    impl_attrib: impl_flag,
                     // fill later
                     parent: ptr::null(),
                     // fill in link stage
@@ -210,10 +215,10 @@ impl<'c> Loader<'c> {
                 });
 
                 if name == self.cctor_name {
-                    self.cctors.push(method.as_ref() as *const Method);
+                    self.cctors.push(method.as_ref() as *const MethodDesc);
                 }
 
-                type_methods.push(method.as_mut() as *mut Method);
+                type_methods.insert(method_sig, method.as_mut() as *mut MethodDesc);
                 methods.push(method);
 
                 method_i += 1;
@@ -232,15 +237,23 @@ impl<'c> Loader<'c> {
                     offset: 0,
                     addr: ptr::null_mut(),
                 });
-                type_fields.push(field.as_mut() as *mut Field);
+                if let Some(_) = type_fields.insert(field.name, field.as_mut() as *mut Field) {
+                    panic!("Duplicate field name");
+                }
                 fields.push(field);
 
                 field_i += 1;
             }
 
-            let ty = Box::new(Type::new(type_name, type_attrib, type_fields, type_methods));
+            let ty = Box::new(Type::new(
+                ptr::null(),
+                type_name,
+                type_attrib,
+                type_fields,
+                type_methods,
+            ));
 
-            for method in ty.methods.iter() {
+            for method in ty.ee_class.methods.values() {
                 unsafe { method.as_mut().unwrap().parent = ty.as_ref() as *const Type };
             }
 
@@ -250,6 +263,8 @@ impl<'c> Loader<'c> {
         let this_mod_fullname_addr = str_heap[file.mod_tbl[0].name as usize];
         let this_mod_path = ModPath::from_str(self.mem.get_str(this_mod_fullname_addr));
         let mut this_mod = Box::new(Module::IL(ILModule {
+            fullname: this_mod_fullname_addr,
+
             types,
 
             methods,
@@ -366,174 +381,13 @@ impl<'c> Loader<'c> {
             .get_mut(&this_mod_fullname_addr)
             .unwrap()
             .as_mut() as *mut Module;
-        // 3.1 Link modref
-        let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
-        for modref in file.modref_tbl.iter() {
-            let name = str_heap[modref.name as usize];
-            this_mod_mut
-                .modrefs
-                .push(self.mem.mods.get_mut(&name).unwrap().as_mut() as *mut Module);
-        }
 
-        // 3.2 link typeref
-        for typeref in file.typeref_tbl.iter() {
-            let name = str_heap[typeref.name as usize];
-            let (parent_tag, parent_idx) = typeref.get_parent();
-            match parent_tag {
-                ResolutionScope::Mod => unimplemented!(), // this is ok
-                ResolutionScope::ModRef => {
-                    let parent = unsafe { this_mod_mut.modrefs[parent_idx].as_mut().unwrap() };
-                    let ty = parent
-                        .expect_il_mut()
-                        .types
-                        .iter_mut()
-                        .find(|c| c.as_ref().name == name);
-                    if let Some(ty) = ty {
-                        this_mod_mut.typerefs.push(ty.as_mut() as *mut Type);
-                    } else {
-                        panic!("External symbol not found");
-                    }
-                }
-                ResolutionScope::TypeRef => unimplemented!(),
-            }
-        }
-
-        // 3.3 link member ref
-        for memberref in file.memberref_tbl.iter() {
-            let name = str_heap[memberref.name as usize];
-            let mut found = false;
-
-            let sig = &file.blob_heap[memberref.sig as usize];
-            let (parent_tag, parent_idx) = memberref.get_parent();
-            let parent_idx = parent_idx as usize - 1;
-
-            match sig {
-                IrSig::Method(_, ps, ret) => {
-                    // this member ref is a function
-                    let ret_ty = BuiltinType::from_ir_ele_ty(ret, this_mod_mut);
-
-                    match parent_tag {
-                        MemberRefParent::TypeRef => {
-                            let parent =
-                                unsafe { this_mod_mut.typerefs[parent_idx].as_ref().unwrap() };
-                            let ps_ty: Vec<BuiltinType> = ps
-                                .iter()
-                                .map(|p| BuiltinType::from_ir_ele_ty(p, this_mod_mut))
-                                .collect();
-                            for m in parent.methods.iter() {
-                                let m_ref = unsafe { m.as_ref().unwrap() };
-                                if m_ref.name == name
-                                    && ret_ty == m_ref.ret.ty
-                                    && ps_ty.len() == m_ref.ps.len()
-                                {
-                                    let mut is_match = true;
-                                    for (p0, p1) in ps_ty.iter().zip(m_ref.ps.iter()) {
-                                        if p0 != &p1.ty {
-                                            is_match = false;
-                                            break;
-                                        }
-                                    }
-                                    if is_match {
-                                        // method found
-                                        this_mod_mut.memberref.push(MemberRef::Method(*m));
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        MemberRefParent::ModRef => {
-                            unimplemented!("Member that has no class parent is not implemented");
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                IrSig::Field(f_sig) => {
-                    // this member ref is a field
-                    let sig = BuiltinType::from_ir_ele_ty(f_sig, this_mod_mut);
-                    match parent_tag {
-                        MemberRefParent::TypeRef => {
-                            // check if parent has this field
-                            for f in unsafe {
-                                this_mod_mut.typerefs[parent_idx]
-                                    .as_ref()
-                                    .unwrap()
-                                    .fields
-                                    .iter()
-                            } {
-                                let f_ref = unsafe { f.as_ref().unwrap() };
-                                if f_ref.name == name && sig == f_ref.ty {
-                                    // field found
-                                    this_mod_mut.memberref.push(MemberRef::Field(*f));
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                        MemberRefParent::ModRef => {
-                            unimplemented!("Member that has no class parent is not implemented");
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                IrSig::LocalVar(_) => unreachable!(),
-            }
-
-            if !found {
-                panic!("External symbol not found");
-            }
-        }
-
-        // to avoid mutable borrow issue
-        let this_mod_ref = unsafe { this_mod.as_ref().unwrap().expect_il() };
-
-        // 3.4 fill field type info
-        for (field, field_entry) in this_mod_mut.fields.iter_mut().zip(file.field_tbl.iter()) {
-            if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
-                field.ty = BuiltinType::from_ir_ele_ty(f_sig, this_mod_ref);
-            } else {
-                panic!();
-            }
-        }
-
-        // 3.5 fill method type info
-        for (method, method_entry) in this_mod_mut.methods.iter_mut().zip(file.method_tbl.iter()) {
-            let sig = &file.blob_heap[method_entry.sig as usize];
-            if let IrSig::Method(_, ps, ret) = sig {
-                method.ret.ty = BuiltinType::from_ir_ele_ty(ret, this_mod_ref);
-                method.init_ps_ty(ps, this_mod_ref);
-            } else {
-                panic!();
-            }
-
-            match &mut method.method_impl {
-                MethodImpl::IL(il_impl) => {
-                    let body = &file.codes[method_entry.body as usize - 1];
-                    if body.locals != 0 {
-                        if let IrSig::LocalVar(locals) = &file.blob_heap
-                            [file.stand_alone_sig_tbl[body.locals as usize - 1].sig as usize]
-                        {
-                            il_impl.init_locals(&locals, this_mod_ref);
-                        }
-                    }
-                }
-                MethodImpl::Native(_) => {}
-            }
-        }
-
-        // 3.6 Link class extends
-        for (ty, type_entry) in this_mod_mut.types.iter_mut().zip(file.typedef_tbl.iter()) {
-            if let Some((parent_tag, parent_idx)) = type_entry.get_extends() {
-                ty.extends = match parent_tag {
-                    TypeDefOrRef::TypeDef => unsafe {
-                        this_mod.as_mut().unwrap().expect_il_mut().types[parent_idx].as_mut()
-                            as *mut Type
-                    },
-                    TypeDefOrRef::TypeRef => this_mod_ref.typerefs[parent_idx],
-                    TypeDefOrRef::TypeSpec => unimplemented!(),
-                };
-            }
-        }
+        linker::link_modref(&file, this_mod, &str_heap, &mut self.mem.mods);
+        linker::link_typeref(&file, this_mod, &str_heap);
+        linker::link_member_ref(&file, this_mod, &str_heap, &self.mem.str_pool);
+        linker::fill_field_info(&file, this_mod);
+        linker::fill_method_info(&file, this_mod);
+        linker::link_class_extends(&file, this_mod);
 
         this_mod_fullname_addr
     }

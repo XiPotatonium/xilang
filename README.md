@@ -39,9 +39,10 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 ### 1.1 FIX
 
-* module存在环形依赖的时候估计是会出现错误的
+* module存在环形依赖的时候估计是会出现错误的，加载的时候需要检查是否已经加载了
 * 出现泛型之后，类型也是允许环形依赖的，目前的type loader算法有误
-* 探讨一下Native部分使用LLVM工具来实现JIT的可能性
+* 研究一下Native部分使用LLVM工具来实现JIT的可能性，CLR-like的Native交互相比JNI-like的Native交互更加舒服
+* IrFile在读写时候需要检查一些内容（如attribute）是否是compliant的
 
 ### 1.2 RoadMap
 
@@ -54,31 +55,31 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * overload
   * ctor of derived class call default ctor of base class automatically
 
-#### Ver 0.3.2
-
-* Refactor lang
-  * DRY
-  * make incremental compilation possible
-  * lazy loading external class
-* xilang project structure
-  * crate
-
 #### Ver 0.4.0
 
 * Generic
 * stdlib
   * collections
+* Refactor lang
+  * DRY
+  * make incremental compilation possible
+  * lazy loading external class
+* Refactor vm
+  * lazy type loading
+  * less unsafe
+* xilang project structure
+  * crate
 
 #### Ver 0.4.1
 
 * More builtin type
   * char
   * bool
-  * i8/u8
-  * i16/u16
-  * u32
+  * u8
   * f32/f64
-* Native type convert stub
+  * usize/isize
+* pub use
+* priv/pub flag
 
 #### Ver 0.5.0
 
@@ -94,23 +95,14 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 #### Ver 0.5.2
 
 * enum
-
-#### Ver 0.5.3
-
 * union
 
 #### Ver 0.6.0
 
+* Attribute
 * struct
 * stdlib
   * tuple
-
-#### Ver 0.7.0
-
-* pub use
-* priv/pub flag
-* Attribute
-* stdlib
   * Dllimport attribute
 
 #### Ver 0.1.0

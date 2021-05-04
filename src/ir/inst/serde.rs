@@ -142,6 +142,36 @@ impl ISerializable for Inst {
                 0x80u8.serialize(buf);
                 idx.serialize(buf);
             }
+
+            Inst::LdStr(tok) => {
+                0x72u8.serialize(buf);
+                tok.serialize(buf);
+            }
+
+            Inst::NewArr(tok) => {
+                0x8Du8.serialize(buf);
+                tok.serialize(buf);
+            }
+
+            Inst::LdLen => {
+                0x8Eu8.serialize(buf);
+            }
+
+            Inst::LdElemI4 => {
+                0x94u8.serialize(buf);
+            }
+            Inst::StElemI4 => {
+                0x9Eu8.serialize(buf);
+            }
+
+            Inst::LdElem(tok) => {
+                0xA3u8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::StElem(tok) => {
+                0xA4u8.serialize(buf);
+                tok.serialize(buf);
+            }
         }
     }
 
@@ -208,11 +238,19 @@ impl ISerializable for Inst {
             0x65 => Inst::Neg,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
+            0x72 => Inst::LdStr(u32::deserialize(buf)),
             0x73 => Inst::NewObj(u32::deserialize(buf)),
             0x7B => Inst::LdFld(u32::deserialize(buf)),
             0x7D => Inst::StFld(u32::deserialize(buf)),
             0x7E => Inst::LdSFld(u32::deserialize(buf)),
             0x80 => Inst::StSFld(u32::deserialize(buf)),
+
+            0x8D => Inst::NewArr(u32::deserialize(buf)),
+            0x8E => Inst::LdLen,
+            0x94 => Inst::LdElemI4,
+            0x9E => Inst::StElemI4,
+            0xA3 => Inst::LdElem(u32::deserialize(buf)),
+            0xA4 => Inst::StElem(u32::deserialize(buf)),
 
             0xFE => {
                 let inner_code = u8::deserialize(buf);

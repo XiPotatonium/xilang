@@ -1,6 +1,8 @@
 mod fmt;
 mod serde;
 
+use std::mem;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Inst {
     /// 0x00, nop
@@ -18,12 +20,12 @@ pub enum Inst {
     LdArg2,
     /// 0x05, ldarg.3
     LdArg3,
-    /// 0x0E, ldarg.s <idx>
+    /// 0x0E, ldarg.s idx
     LdArgS(u8),
 
-    /// 0x10, starg.s <idx>
+    /// 0x10, starg.s idx
     ///
-    /// Store argument to index <odx>
+    /// Store argument to **idx**
     ///
     /// `..., val -> ...,`
     StArgS(u8),
@@ -40,9 +42,9 @@ pub enum Inst {
     LdLoc2,
     /// 0x09, ldloc.3
     LdLoc3,
-    /// 0x11, ldloc.s <idx>
+    /// 0x11, ldloc.s idx
     LdLocS(u8),
-    /// 0xFE0C, ldloc <idx>
+    /// 0xFE0C, ldloc idx
     LdLoc(u16),
 
     /// 0x0A, stloc.0
@@ -57,9 +59,9 @@ pub enum Inst {
     StLoc2,
     /// 0x0D, stloc.3
     StLoc3,
-    /// 0x13, stloc.s <idx>
+    /// 0x13, stloc.s idx
     StLocS(u8),
-    /// 0xFE0E, stloc <idx>
+    /// 0xFE0E, stloc idx
     StLoc(u16),
 
     /// 0x14, ldnull
@@ -92,9 +94,9 @@ pub enum Inst {
     LdC7,
     /// 0x1E, ldc.i4.8
     LdC8,
-    /// 0x1F, ldc.i4.s <num>
+    /// 0x1F, ldc.i4.s num
     LdCI4S(i8),
-    /// 0x20, ldc.i4 <num>
+    /// 0x20, ldc.i4 num
     LdCI4(i32),
 
     /// 0x25, dup
@@ -110,7 +112,7 @@ pub enum Inst {
     /// `..., val -> ...`
     Pop,
 
-    /// 0x28, call <tok>
+    /// 0x28, call func
     ///
     /// Call a func, See ECMA-335 page 368.
     /// tok is MethodDef/MemberRef/MethodSpec
@@ -181,117 +183,150 @@ pub enum Inst {
     /// neg int or float
     Neg,
 
-    /// 0x6F, callvirt <tok>
+    /// 0x6F, callvirt method
     ///
     /// Call a virtual method associate with an obj
     ///
     /// `..., obj, arg1, ..., argN -> ..., retVal`
     CallVirt(u32),
-    /// 0x73, new <tok>
+    /// 0x73, new ctor
     ///
     /// Call a creator, return obj addr
     ///
     /// `..., arg0, ..., argN -> ..., obj`
     NewObj(u32),
-    /// 0x7B, ldfld <field>
+    /// 0x7B, ldfld field
     ///
-    /// Load a field onto the stack, <field> is Field/MemberRef
+    /// Load a field onto the stack, **field** is Field/MemberRef token
     ///
     /// `..., obj -> ..., val`
     LdFld(u32),
-    /// 0x7D, stfld <field>
+    /// 0x7D, stfld field
     ///
     /// Store a value to field
     ///
     /// `..., obj, val -> ...,`
     StFld(u32),
-    /// 0x7E, ldsfld <field>
+    /// 0x7E, ldsfld field
     ///
     /// Load a static field onto the stack
     ///
     /// `..., -> ..., val`
     LdSFld(u32),
-    /// 0x80, stsfld <field>
+    /// 0x80, stsfld field
     ///
     /// Store a value to field
     ///
     /// `..., val -> ...,`
     StSFld(u32),
+
+    /// 0x72, ldstr literal
+    ///
+    /// load **str**: std::String from with **literal**: idx into usr str heap.
+    /// String interning will be used to eliminate duplication
+    ///
+    /// ..., -> ..., str
+    LdStr(u32),
+
+    /// 0x8D, newarr ty
+    ///
+    /// create arr of **size**: unative|i32 size
+    ///
+    /// ..., size -> ..., arr
+    NewArr(u32),
+    /// 0x8E, ldlen
+    ///
+    /// load the **len**: unative of the **arr**: O
+    ///
+    /// ..., arr -> len
+    LdLen,
+    /// 0x94, ldelem.i4
+    LdElemI4,
+    /// 0x9E, stelem.i4
+    StElemI4,
+    /// 0xA3, ldelem ty
+    ///
+    /// load elem at **idx**: i32|inative onto the stack
+    ///
+    /// ..., arr, idx -> ..., val
+    LdElem(u32),
+    /// 0xA4, stelem ty
+    ///
+    /// ..., arr, idx, val -> ...
+    StElem(u32),
 }
+
+const INST_SIZE: usize = 1;
+// 0xFEXX
+const FAT_INST_SIZE: usize = 2;
 
 impl Inst {
     pub fn size(&self) -> usize {
         match self {
-            Inst::Nop => 1,
+            Inst::Nop => INST_SIZE,
 
-            Inst::LdArg0 => 1,
-            Inst::LdArg1 => 1,
-            Inst::LdArg2 => 1,
-            Inst::LdArg3 => 1,
-            Inst::LdArgS(_) => 2,
+            Inst::LdArg0 | Inst::LdArg1 | Inst::LdArg2 | Inst::LdArg3 => INST_SIZE,
+            Inst::LdArgS(_) | Inst::StArgS(_) => INST_SIZE + mem::size_of::<u8>(),
 
-            Inst::StArgS(_) => 2,
+            Inst::LdLoc0 | Inst::LdLoc1 | Inst::LdLoc2 | Inst::LdLoc3 => INST_SIZE,
+            Inst::LdLocS(_) => INST_SIZE + mem::size_of::<u8>(),
+            Inst::LdLoc(_) => FAT_INST_SIZE + mem::size_of::<u16>(),
 
-            Inst::LdLoc0 => 1,
-            Inst::LdLoc1 => 1,
-            Inst::LdLoc2 => 1,
-            Inst::LdLoc3 => 1,
-            Inst::LdLocS(_) => 2,
-            Inst::LdLoc(_) => 4,
-            Inst::StLoc0 => 1,
-            Inst::StLoc1 => 1,
-            Inst::StLoc2 => 1,
-            Inst::StLoc3 => 1,
-            Inst::StLocS(_) => 2,
-            Inst::StLoc(_) => 4,
+            Inst::StLoc0 | Inst::StLoc1 | Inst::StLoc2 | Inst::StLoc3 => INST_SIZE,
+            Inst::StLocS(_) => INST_SIZE + mem::size_of::<u8>(),
+            Inst::StLoc(_) => FAT_INST_SIZE + mem::size_of::<u16>(),
 
-            Inst::LdNull => 1,
-            Inst::LdCM1 => 1,
-            Inst::LdC0 => 1,
-            Inst::LdC1 => 1,
-            Inst::LdC2 => 1,
-            Inst::LdC3 => 1,
-            Inst::LdC4 => 1,
-            Inst::LdC5 => 1,
-            Inst::LdC6 => 1,
-            Inst::LdC7 => 1,
-            Inst::LdC8 => 1,
-            Inst::LdCI4S(_) => 2,
-            Inst::LdCI4(_) => 5,
+            Inst::LdNull
+            | Inst::LdCM1
+            | Inst::LdC0
+            | Inst::LdC1
+            | Inst::LdC2
+            | Inst::LdC3
+            | Inst::LdC4
+            | Inst::LdC5
+            | Inst::LdC6
+            | Inst::LdC7
+            | Inst::LdC8 => INST_SIZE,
+            Inst::LdCI4S(_) => INST_SIZE + mem::size_of::<u8>(),
+            Inst::LdCI4(_) => INST_SIZE + mem::size_of::<i32>(),
 
-            Inst::Dup => 1,
-            Inst::Pop => 1,
+            Inst::Dup => INST_SIZE,
+            Inst::Pop => INST_SIZE,
 
-            Inst::Call(_) => 5,
-            Inst::Ret => 1,
+            Inst::Call(_) => INST_SIZE + mem::size_of::<u32>(),
+            Inst::Ret => INST_SIZE,
 
-            Inst::Br(_) => 5,
-            Inst::BrFalse(_) => 5,
-            Inst::BrTrue(_) => 5,
-            Inst::BEq(_) => 5,
-            Inst::BGe(_) => 5,
-            Inst::BGt(_) => 5,
-            Inst::BLe(_) => 5,
-            Inst::BLt(_) => 5,
+            Inst::Br(_)
+            | Inst::BrFalse(_)
+            | Inst::BrTrue(_)
+            | Inst::BEq(_)
+            | Inst::BGe(_)
+            | Inst::BGt(_)
+            | Inst::BLe(_)
+            | Inst::BLt(_) => INST_SIZE + mem::size_of::<i32>(),
 
-            Inst::CEq => 2,
-            Inst::CGt => 2,
-            Inst::CLt => 2,
+            Inst::CEq | Inst::CGt | Inst::CLt => FAT_INST_SIZE,
 
-            Inst::Add => 1,
-            Inst::Sub => 1,
-            Inst::Mul => 1,
-            Inst::Div => 1,
-            Inst::Rem => 1,
+            Inst::Add | Inst::Sub | Inst::Mul | Inst::Div | Inst::Rem => INST_SIZE,
 
-            Inst::Neg => 1,
+            Inst::Neg => INST_SIZE,
 
-            Inst::CallVirt(_) => 5,
-            Inst::NewObj(_) => 5,
-            Inst::LdFld(_) => 5,
-            Inst::StFld(_) => 5,
-            Inst::LdSFld(_) => 5,
-            Inst::StSFld(_) => 5,
+            Inst::CallVirt(_)
+            | Inst::NewObj(_)
+            | Inst::LdFld(_)
+            | Inst::StFld(_)
+            | Inst::LdSFld(_)
+            | Inst::StSFld(_) => INST_SIZE + mem::size_of::<u32>(),
+
+            Inst::LdStr(_) => INST_SIZE + mem::size_of::<u32>(),
+
+            Inst::NewArr(_) => INST_SIZE + mem::size_of::<u32>(),
+
+            Inst::LdLen => INST_SIZE,
+
+            Inst::LdElemI4 | Inst::StElemI4 => INST_SIZE,
+
+            Inst::LdElem(_) | Inst::StElem(_) => INST_SIZE + mem::size_of::<u32>(),
         }
     }
 }

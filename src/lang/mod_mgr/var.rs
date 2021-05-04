@@ -63,13 +63,4 @@ impl Locals {
         }
         None
     }
-
-    pub fn contains_key(&self, id: &str) -> bool {
-        for frame in self.sym_tbl.iter().rev() {
-            if frame.contains_key(id) {
-                return true;
-            }
-        }
-        false
-    }
 }

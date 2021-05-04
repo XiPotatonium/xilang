@@ -1,9 +1,11 @@
 mod op;
 
-use super::data::{BuiltinType, Method, MethodILImpl, MethodImpl, MethodNativeImpl};
+use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl, Type};
+use super::heap::Heap;
 use super::shared_mem::SharedMem;
 use super::stack::{ActivationRecord, Args, EvalStack, ILocals, Locals, Slot, SlotTag};
 
+use xir::attrib::MethodAttribFlag;
 use xir::tok::{get_tok_tag, TokTag};
 
 use std::ptr;
@@ -13,7 +15,7 @@ pub struct TExecutor<'m> {
 }
 
 impl<'m> TExecutor<'m> {
-    pub fn new(entry: *const Method) -> TExecutor<'m> {
+    pub fn new(entry: *const MethodDesc) -> TExecutor<'m> {
         let mut ret = TExecutor { states: Vec::new() };
         // currently executor entry has no arguments
         let entry_ref = unsafe { entry.as_ref().unwrap() };
@@ -30,7 +32,7 @@ impl<'m> TExecutor<'m> {
         &mut self,
         args: Args<'m>,
         ret_addr: *mut Slot,
-        method: &'m Method,
+        method: &'m MethodDesc,
         il_impl: &'m MethodILImpl,
     ) {
         // Currently there is no verification of the arg type
@@ -315,7 +317,7 @@ impl<'m> TExecutor<'m> {
 
                     let (tag, idx) = get_tok_tag(tok);
 
-                    let callee = match tag {
+                    let mut callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
                         TokTag::MemberRef => unsafe {
                             ctx.memberref[idx as usize - 1]
@@ -326,16 +328,27 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    // TODO: If calle is virtual, use dynamic dispatching
-
                     let mut args = Args::new(callee);
                     args.fill_args(&mut cur_state.eval_stack);
-                    let ret_addr = cur_state.eval_stack.alloc_ret(&callee.ret.ty);
+                    if let Some(self_ptr) = args.get_self() {
+                        assert!(!self_ptr.is_null());
 
-                    // TODO: assert args[0] != null
+                        // If calle is virtual, use dynamic dispatching
+                        if callee.attrib.is(MethodAttribFlag::Virtual) {
+                            let callee_ptr = Heap::get_vtbl_ptr(self_ptr);
+                            callee = unsafe {
+                                callee_ptr.as_ref().unwrap().vtbl[callee.slot]
+                                    .as_ref()
+                                    .unwrap()
+                            };
+                        }
+                    }
+                    let ret_addr = cur_state.eval_stack.alloc_ret(&callee.ret.ty);
 
                     self.call(args, ret_addr, callee, callee.method_impl.expect_il());
                 }
+                // ldstr
+                0x72 => unimplemented!(),
                 // newobj
                 0x73 => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -568,6 +581,18 @@ impl<'m> TExecutor<'m> {
                         }
                     }
                 }
+                // newarr
+                0x8D => unimplemented!(),
+                // ldlen
+                0x8E => unimplemented!(),
+                // ldelem.i4
+                0x94 => unimplemented!(),
+                // stelem.i4
+                0x9E => unimplemented!(),
+                // ldelem
+                0xA3 => unimplemented!(),
+                // stelem
+                0xA4 => unimplemented!(),
 
                 0xFE => {
                     let inner_code = self.states.last_mut().unwrap().consume_u8();

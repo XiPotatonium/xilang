@@ -93,7 +93,10 @@ StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
 PathExpr = ${ (Id | KwCrate | KwSuper) ~ ("::" ~ (Id | KwSuper))* }
-Id = @{ !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+Id = @{ 
+    KeyWord ~ (ASCII_ALPHANUMERIC | "_")+ 
+    | !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* 
+}
 
 KwBase = { "base" }
 KwLSelf = { "self" }

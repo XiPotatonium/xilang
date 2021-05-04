@@ -8,7 +8,6 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::ptr;
-use std::rc::Rc;
 
 use xir::file::IrFile;
 use xir::util::path::{IModPath, ModPath};
@@ -24,7 +23,7 @@ pub struct Module {
     pub mod_path: ModPath,
     pub sub_mods: HashSet<String>,
     /// key: class_name
-    pub classes: HashMap<String, Rc<RefCell<Class>>>,
+    pub classes: HashMap<String, RefCell<Class>>,
 
     /// Vec<Box<AST::Class>>
     class_asts: Vec<Box<AST>>,
@@ -200,7 +199,7 @@ impl Module {
 
                     class_map.insert(
                         class.name.to_owned(),
-                        Rc::new(RefCell::new(Class {
+                        RefCell::new(Class {
                             name: class.name.to_owned(),
                             fields: HashMap::new(),
                             methods: HashMap::new(),
@@ -208,7 +207,7 @@ impl Module {
                             idx: 0,
                             extends: None,
                             attrib: class.attrib.clone(),
-                        })),
+                        }),
                     );
                 } else {
                     unreachable!();
@@ -397,8 +396,8 @@ impl Module {
         }
     }
 
-    pub fn get_ty(&self, ast: &Box<AST>, mod_mgr: &ModMgr, class: &Class) -> RValType {
-        match ast.as_ref() {
+    pub fn get_ty(&self, ast: &AST, mod_mgr: &ModMgr, class: &Class) -> RValType {
+        match ast {
             AST::TypeI32 => RValType::I32,
             AST::TypeF64 => RValType::F64,
             AST::TypeBool => RValType::Bool,

@@ -22,7 +22,7 @@ pub struct Method {
     /// index into methoddef tbl
     pub idx: u32,
 
-    /// None for external method (IL or dll) or automatically generated methods (default ctor)
+    /// None for automatically generated methods (default ctor)
     ///
     /// Some(AST::Body) for cctor
     ///
@@ -30,6 +30,25 @@ pub struct Method {
     ///
     /// Some(AST::Method) for normal method
     pub ast: Option<*const AST>,
+}
+
+impl Method {
+    pub fn sig_match(&self, m1: &Method) -> bool {
+        if self.name != m1.name
+            || self.ps.len() != m1.ps.len()
+            || self.attrib.is(MethodAttribFlag::Static) != m1.attrib.is(MethodAttribFlag::Static)
+        {
+            return false;
+        }
+
+        for (p, p1) in self.ps.iter().zip(m1.ps.iter()) {
+            if p.ty != p1.ty {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 impl fmt::Display for Method {

@@ -17,13 +17,17 @@ impl Heap {
         }
     }
 
+    pub fn get_vtbl_ptr(instance_ptr: *mut u8) -> *mut Type {
+        unsafe { *(instance_ptr.wrapping_sub(size_of::<VTblPtr>()) as *const *mut Type) }
+    }
+
     /// New obj
     ///
     /// [header: usize] [vtblptr: *const Type] [content...]
     pub unsafe fn new_obj(&mut self, class: *const Type) -> *mut u8 {
         let class = class.as_ref().unwrap();
 
-        let offset_after_alloc = class.instance_field_size
+        let offset_after_alloc = class.basic_instance_size
             + size_of::<usize>()
             + size_of::<VTblPtr>()
             + self.next_obj_offset;
@@ -34,7 +38,7 @@ impl Heap {
 
         let pvtbl =
             &mut self.data[self.next_obj_offset + size_of::<usize>()] as *mut u8 as *mut VTblPtr;
-        *pvtbl = class;
+        *pvtbl = class as *const Type;
         let ret = &mut self.data[self.next_obj_offset + size_of::<usize>() + size_of::<VTblPtr>()]
             as *mut u8;
         self.next_obj_offset = offset_after_alloc;

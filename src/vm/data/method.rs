@@ -1,7 +1,8 @@
 use xir::attrib::{MethodAttrib, MethodAttribFlag, MethodImplAttrib, PInvokeAttrib, ParamAttrib};
 use xir::blob::EleType;
+use xir::file::IrFile;
 
-use super::{BuiltinType, ILModule, Module, Type, REF_SIZE};
+use super::{builtin_ty_sig, ir_ty_sig, BuiltinType, ILModule, Module, Type, REF_SIZE};
 
 pub struct Param {
     pub name: usize,
@@ -21,16 +22,17 @@ impl Param {
     }
 }
 
-pub struct Method {
+pub struct MethodDesc {
     /// module where method is declared
     pub ctx: *const Module,
 
     pub parent: *const Type,
+    pub slot: usize,
 
     pub name: usize,
 
     pub attrib: MethodAttrib,
-    pub impl_flag: MethodImplAttrib,
+    pub impl_attrib: MethodImplAttrib,
 
     pub ps: Vec<Param>,
     /// size of self ref is included
@@ -40,7 +42,7 @@ pub struct Method {
     pub method_impl: MethodImpl,
 }
 
-impl Method {
+impl MethodDesc {
     pub fn init_ps_ty(&mut self, ps_ty: &Vec<EleType>, ctx: &ILModule) {
         assert_eq!(self.ps.len(), ps_ty.len());
         let mut offset = if self.is_static() { 0 } else { REF_SIZE };
@@ -56,6 +58,30 @@ impl Method {
     pub fn is_static(&self) -> bool {
         self.attrib.is(MethodAttribFlag::Static)
     }
+}
+
+pub fn method_sig(str_pool: &Vec<String>, name: usize, ps: &Vec<BuiltinType>) -> String {
+    let mut sig = format!("{}(", str_pool[name]);
+
+    for p in ps.iter() {
+        sig.push_str(&builtin_ty_sig(p, str_pool));
+    }
+
+    sig.push(')');
+
+    sig
+}
+
+pub fn method_sig_from_ir(ctx: &IrFile, name: u32, ps: &Vec<EleType>) -> String {
+    let mut sig = format!("{}(", ctx.get_str(name));
+
+    for p in ps.iter() {
+        sig.push_str(&ir_ty_sig(p, ctx));
+    }
+
+    sig.push(')');
+
+    sig
 }
 
 pub enum MethodImpl {
@@ -115,9 +141,5 @@ impl MethodILImpl {
             offset += local_size;
         }
         self.locals_size = offset;
-    }
-
-    pub fn alloc_locals(&self) -> Vec<u8> {
-        vec![0; self.locals_size]
     }
 }

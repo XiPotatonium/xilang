@@ -1,4 +1,4 @@
-use super::super::data::{Method, MethodILImpl};
+use super::super::data::{MethodDesc, MethodILImpl};
 use super::{Args, EvalStack, Locals, Slot};
 
 use std::mem::transmute;
@@ -6,7 +6,7 @@ use std::mem::transmute;
 pub struct ActivationRecord<'m> {
     pub ip: usize,
     pub ret_addr: *mut Slot,
-    pub method: &'m Method,
+    pub method: &'m MethodDesc,
     pub method_impl: &'m MethodILImpl,
     pub eval_stack: EvalStack,
     pub locals: Locals<'m>,

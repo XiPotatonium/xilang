@@ -1,4 +1,4 @@
-use super::super::super::ast::AST;
+use super::super::super::ast::{ASTMethodAttribFlag, AST};
 use super::super::super::gen::RValType;
 use super::super::{Class, Field, Method, ModMgr, ModRef, Param};
 use super::Module;
@@ -39,14 +39,28 @@ impl Module {
                         Some(&ctor.ps),
                         RValType::Void,
                     ),
-                    AST::Method(method) => (
-                        ast_ptr,
-                        method.name.as_str(),
-                        Some(&method.custom_attribs),
-                        method.attrib.clone(),
-                        Some(&method.ps),
-                        self.get_ty(&method.ret, mod_mgr, class_mut),
-                    ),
+                    AST::Method(method) => {
+                        let mut attrib = method.attrib.clone();
+                        if method.ast_attrib.is(ASTMethodAttribFlag::Override) {
+                            // override implies virtual
+                            if attrib.is(MethodAttribFlag::Virtual) {
+                                panic!("Method {}.{} is marked as override and cannot be marked as virtual", class_mut, method.name);
+                            }
+                            attrib.set(MethodAttribFlag::Virtual);
+                        } else if attrib.is(MethodAttribFlag::Virtual) {
+                            // virtual implies new slot
+                            attrib.set(MethodAttribFlag::NewSlot);
+                        }
+
+                        (
+                            ast_ptr,
+                            method.name.as_str(),
+                            Some(&method.custom_attribs),
+                            attrib,
+                            Some(&method.ps),
+                            self.get_ty(&method.ret, mod_mgr, class_mut),
+                        )
+                    }
                     _ => unreachable!(),
                 }
             }

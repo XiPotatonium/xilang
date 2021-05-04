@@ -1,4 +1,4 @@
-use super::super::data::{BuiltinType, Local, Method, Param};
+use super::super::data::{BuiltinType, Local, MethodDesc, Param};
 use super::{EvalStack, Slot, SlotTag};
 
 use std::mem;
@@ -70,7 +70,7 @@ pub struct Locals<'m> {
 }
 
 impl<'m> Locals<'m> {
-    pub fn new(parent: &'m Method) -> Locals<'m> {
+    pub fn new(parent: &'m MethodDesc) -> Locals<'m> {
         let method_impl = parent.method_impl.expect_il();
         Locals {
             data: vec![0; method_impl.locals_size],
@@ -121,7 +121,7 @@ pub struct Args<'m> {
 }
 
 impl<'m> Args<'m> {
-    pub fn new(parent: &'m Method) -> Args<'m> {
+    pub fn new(parent: &'m MethodDesc) -> Args<'m> {
         Args {
             data: vec![0; parent.ps_size],
             map: &parent.ps,
@@ -133,12 +133,30 @@ impl<'m> Args<'m> {
         self.data.as_ptr()
     }
 
+    pub fn get_self(&self) -> Option<*mut u8> {
+        if self.has_self {
+            Some(unsafe { *(&self.data[0] as *const u8 as *const *mut u8) })
+        } else {
+            return None;
+        }
+    }
+
+    pub fn get_self_mut(&mut self) -> Option<&mut *mut u8> {
+        if self.has_self {
+            Some(unsafe {
+                (&mut self.data[0] as *mut u8 as *mut *mut u8)
+                    .as_mut()
+                    .unwrap()
+            })
+        } else {
+            return None;
+        }
+    }
+
     pub fn fill_args(&mut self, stack: &mut EvalStack) {
         self.fill_args_except_self(stack);
-        if self.has_self {
-            unsafe {
-                *(&mut self.data[0] as *mut u8 as *mut *mut u8) = stack.pop_with_slot().as_addr();
-            }
+        if let Some(self_mut) = self.get_self_mut() {
+            *self_mut = unsafe { stack.pop_with_slot().as_addr() };
         }
     }
 

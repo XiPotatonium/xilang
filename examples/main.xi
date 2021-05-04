@@ -18,7 +18,18 @@ class Derived: Base {
 }
 
 class Program: IOHelper::IOBase {
+    fn virt_test() {
+        let derived_ref = new Derived();
+        derived_ref.say();      // 1001
+        let base_ref = new Base();
+        base_ref.say();         // 1000
+        base_ref = derived_ref as Base;
+        base_ref.say();         // 1001
+    }
+
     fn main() {
+        Program::virt_test();
+
         let prog = new Self();
         std::IO::writeln(prog.hi_count);        // 0
         prog.hi();                              // HI

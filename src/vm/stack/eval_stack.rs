@@ -114,7 +114,7 @@ impl Slot {
                 (self.data.ptr_ as *const Type)
                     .as_ref()
                     .unwrap()
-                    .instance_field_size
+                    .basic_instance_size
             }
         } else {
             0

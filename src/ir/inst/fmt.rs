@@ -5,7 +5,7 @@ use crate::tok::fmt_tok;
 use std::fmt;
 
 impl Inst {
-    pub fn fmt(&self, f: &mut fmt::Formatter<'_>, c: &IrFile, i: usize) -> fmt::Result {
+    pub fn fmt(&self, f: &mut fmt::Formatter<'_>, ctx: &IrFile, i: usize) -> fmt::Result {
         write!(f, "IL_{:0>4X}:  ", i)?;
         match self {
             Inst::Nop => write!(f, "nop"),
@@ -50,7 +50,7 @@ impl Inst {
 
             Inst::Call(tok) => {
                 write!(f, "call ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
             }
             Inst::Ret => write!(f, "ret"),
 
@@ -81,27 +81,51 @@ impl Inst {
 
             Inst::CallVirt(tok) => {
                 write!(f, "callvirt ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
             }
             Inst::NewObj(tok) => {
                 write!(f, "newobj ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
             }
             Inst::LdFld(tok) => {
                 write!(f, "ldfld ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
             }
             Inst::StFld(tok) => {
                 write!(f, "stfld ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
             }
             Inst::LdSFld(tok) => {
                 write!(f, "ldsfld ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
             }
             Inst::StSFld(tok) => {
                 write!(f, "stsfld ")?;
-                fmt_tok(*tok, f, c)
+                fmt_tok(*tok, f, ctx)
+            }
+
+            Inst::LdStr(tok) => {
+                write!(f, "ldstr ")?;
+                fmt_tok(*tok, f, ctx)
+            }
+
+            Inst::NewArr(tok) => {
+                write!(f, "newarr ")?;
+                fmt_tok(*tok, f, ctx)
+            }
+
+            Inst::LdLen => write!(f, "ldlen"),
+
+            Inst::LdElemI4 => write!(f, "ldelem.i4"),
+            Inst::StElemI4 => write!(f, "stelem.i4"),
+
+            Inst::LdElem(tok) => {
+                write!(f, "ldelem ")?;
+                fmt_tok(*tok, f, ctx)
+            }
+            Inst::StElem(tok) => {
+                write!(f, "stelem ")?;
+                fmt_tok(*tok, f, ctx)
             }
         }
     }
