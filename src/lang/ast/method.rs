@@ -1,7 +1,7 @@
 use xir::attrib::MethodAttrib;
 
-use super::disp::ASTChildrenWrapper;
-use super::AST;
+use super::disp::BoxASTVecWrapper;
+use super::{ASTType, AST};
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -61,7 +61,7 @@ pub struct ASTMethod {
     /// ast attrib are some special built-in attribute that only work at compile time
     pub ast_attrib: ASTMethodAttrib,
     pub custom_attribs: Vec<Box<AST>>,
-    pub ret: Box<AST>,
+    pub ret: Box<ASTType>,
     pub ps: Vec<Box<AST>>,
     pub body: Box<AST>,
 }
@@ -73,9 +73,9 @@ impl fmt::Display for ASTMethod {
                 "{{\"name\":\"(method){}\",\"attrib\":\"{}\",\"custom-attribs\":{},\"ret\":{},\"ps\":{},\"body\":{}}}",
                 self.name,
                 self.attrib,
-                ASTChildrenWrapper(&self.custom_attribs),
+                BoxASTVecWrapper(&self.custom_attribs),
                 self.ret,
-                ASTChildrenWrapper(&self.ps),
+                BoxASTVecWrapper(&self.ps),
                 self.body,
             )
     }
@@ -95,17 +95,17 @@ impl fmt::Display for ASTCtor {
             f,
             "{{\"name\":\"(.ctor)\",\"attrib\":\"{}\",\"custom-attribs\":{},\"base-args\":",
             self.attrib,
-            ASTChildrenWrapper(&self.custom_attribs),
+            BoxASTVecWrapper(&self.custom_attribs),
         )?;
         if let Some(args) = &self.base_args {
-            write!(f, "{}", ASTChildrenWrapper(args))?;
+            write!(f, "{}", BoxASTVecWrapper(args))?;
         } else {
             write!(f, "[]")?;
         }
         write!(
             f,
             ",\"ps\":{},\"body\":{}}}",
-            ASTChildrenWrapper(&self.ps),
+            BoxASTVecWrapper(&self.ps),
             self.body,
         )
     }

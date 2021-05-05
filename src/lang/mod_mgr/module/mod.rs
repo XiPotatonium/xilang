@@ -1,7 +1,6 @@
 mod code_gen_pass;
 mod member_pass;
 
-use core::panic;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -12,7 +11,7 @@ use std::ptr;
 use xir::file::IrFile;
 use xir::util::path::{IModPath, ModPath};
 
-use super::super::ast::AST;
+use super::super::ast::{ASTType, AST};
 use super::super::gen::{Builder, RValType};
 use super::super::parser;
 use super::super::XicCfg;
@@ -396,21 +395,22 @@ impl Module {
         }
     }
 
-    pub fn get_ty(&self, ast: &AST, mod_mgr: &ModMgr, class: &Class) -> RValType {
+    pub fn get_ty(&self, ast: &ASTType, mod_mgr: &ModMgr, class: &Class) -> RValType {
         match ast {
-            AST::TypeI32 => RValType::I32,
-            AST::TypeF64 => RValType::F64,
-            AST::TypeBool => RValType::Bool,
-            AST::None => RValType::Void,
-            AST::TypeTuple(_) => {
+            ASTType::I32 => RValType::I32,
+            ASTType::F64 => RValType::F64,
+            ASTType::Bool => RValType::Bool,
+            ASTType::None => RValType::Void,
+            ASTType::Char => RValType::Char,
+            ASTType::String => RValType::String,
+            ASTType::Tuple(_) => {
                 unimplemented!();
             }
-            AST::Path(class_path) => {
+            ASTType::Class(class_path) => {
                 let (mod_name, class_name) = self.resolve_path(class_path, mod_mgr, Some(class));
                 RValType::Obj(mod_name, class_name)
             }
-            AST::TypeArr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, class))),
-            _ => unreachable!(),
+            ASTType::Arr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, class))),
         }
     }
 }

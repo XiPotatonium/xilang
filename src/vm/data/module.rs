@@ -64,6 +64,8 @@ pub struct ILModule {
     pub methods: Vec<Box<MethodDesc>>,
     pub fields: Vec<Box<Field>>,
     pub memberref: Vec<MemberRef>,
+
+    pub usr_str_heap: Vec<usize>,
 }
 
 impl ILModule {

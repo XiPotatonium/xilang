@@ -31,4 +31,6 @@ class Object {}
 
 class String {}
 
-class Array {}
+class Array {
+    // let len: usize;
+}

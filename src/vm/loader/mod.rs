@@ -47,7 +47,6 @@ struct Loader<'c> {
     mem: &'c mut SharedMem,
     str_map: HashMap<String, usize>,
     cctor_name: usize,
-    empty_str: usize, // ""
     cctors: Vec<*const MethodDesc>,
 }
 
@@ -58,10 +57,10 @@ impl<'c> Loader<'c> {
             cfg,
             str_map: HashMap::new(),
             cctor_name: 0,
-            empty_str: 0,
             cctors: Vec::new(),
         };
-        loader.empty_str = loader.add_const_string(String::from(""));
+        loader.mem.empty_str_idx = loader.add_const_string(String::from(""));
+        loader.mem.std_str_idx = loader.add_const_string(String::from("std"));
         loader.cctor_name = loader.add_const_string(String::from(CCTOR_NAME));
 
         loader
@@ -90,6 +89,12 @@ impl<'c> Loader<'c> {
             .iter()
             .map(|s| self.add_const_string(s.clone()))
             .collect();
+        let usr_str_heap = file
+            .usr_str_heap
+            .iter()
+            .map(|s| self.add_const_string(s.clone()))
+            .collect();
+        let this_mod_fullname_addr = str_heap[file.mod_tbl[0].name as usize];
 
         // 1. Fill classes methods and fields that defined in this file
         let mut types: Vec<Box<Type>> = Vec::new();
@@ -180,7 +185,7 @@ impl<'c> Loader<'c> {
                 let method_sig = method_str_desc_from_ir(&file, method_entry.name, ps);
                 let mut ps: Vec<Param> = (0..ps.len())
                     .into_iter()
-                    .map(|_| Param::new(self.empty_str, ParamAttrib::default()))
+                    .map(|_| Param::new(self.mem.empty_str_idx, ParamAttrib::default()))
                     .collect();
                 for p in param.iter() {
                     if p.sequence == 0 {
@@ -204,10 +209,10 @@ impl<'c> Loader<'c> {
                         if p.sequence == 0 {
                             Param::new(str_heap[p.name as usize], ParamAttrib::from(p.flag))
                         } else {
-                            Param::new(self.empty_str, ParamAttrib::default())
+                            Param::new(self.mem.empty_str_idx, ParamAttrib::default())
                         }
                     } else {
-                        Param::new(self.empty_str, ParamAttrib::default())
+                        Param::new(self.mem.empty_str_idx, ParamAttrib::default())
                     },
                     ps,
                     ps_size: 0,
@@ -257,11 +262,17 @@ impl<'c> Loader<'c> {
                 unsafe { method.as_mut().unwrap().parent = ty.as_ref() as *const Type };
             }
 
+            // link some special types
+            if self.mem.str_pool[this_mod_fullname_addr] == "std"
+                && self.mem.str_pool[ty.name] == "String"
+            {
+                self.mem.str_class = ty.as_ref() as *const Type;
+            }
+
             types.push(ty);
         }
 
-        let this_mod_fullname_addr = str_heap[file.mod_tbl[0].name as usize];
-        let this_mod_path = ModPath::from_str(self.mem.get_str(this_mod_fullname_addr));
+        let this_mod_path = ModPath::from_str(&self.mem.str_pool[this_mod_fullname_addr]);
         let mut this_mod = Box::new(Module::IL(ILModule {
             fullname: this_mod_fullname_addr,
 
@@ -269,6 +280,8 @@ impl<'c> Loader<'c> {
 
             methods,
             fields,
+
+            usr_str_heap,
 
             // fill in link stage
             memberref: vec![],
@@ -291,7 +304,7 @@ impl<'c> Loader<'c> {
                 continue;
             }
 
-            let ext_mod_fullname = self.mem.get_str(ext_mod_fullname_addr);
+            let ext_mod_fullname = &self.mem.str_pool[ext_mod_fullname_addr];
             if mask == false {
                 // some external mods is not xir mod, they are dlls
                 let candidates = self.find_mod(&ext_mod_fullname);

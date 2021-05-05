@@ -66,7 +66,10 @@ impl Slot {
             BuiltinType::UNative | BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::Class(_) | BuiltinType::ByRef(_) | BuiltinType::Array(_) => Slot {
+            BuiltinType::String
+            | BuiltinType::Class(_)
+            | BuiltinType::ByRef(_)
+            | BuiltinType::Array(_) => Slot {
                 tag: SlotTag::Ref,
                 data: SlotData {
                     ptr_: ptr::null_mut(),

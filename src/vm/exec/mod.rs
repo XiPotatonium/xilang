@@ -1,3 +1,5 @@
+mod arr;
+mod fld;
 mod op;
 
 use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl};
@@ -222,7 +224,7 @@ impl<'m> TExecutor<'m> {
                                     .as_ref()
                                     .unwrap()
                                     .expect_dll()
-                                    .call(mem.get_str(callee.name), args, ret_addr);
+                                    .call(&mem.str_pool[callee.name], args, ret_addr);
                             }
                         }
                     }
@@ -249,6 +251,7 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::INative
                         | BuiltinType::R4
                         | BuiltinType::R8
+                        | BuiltinType::String
                         | BuiltinType::Class(_)
                         | BuiltinType::ByRef(_)
                         | BuiltinType::Array(_) => {
@@ -346,7 +349,14 @@ impl<'m> TExecutor<'m> {
                     self.call(args, ret_addr, callee, callee.method_impl.expect_il());
                 }
                 // ldstr
-                0x72 => unimplemented!(),
+                0x72 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let literal_idx = cur_state.consume_u32() as usize;
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+
+                    let str_ptr = unsafe { mem.new_str_from_str(ctx.usr_str_heap[literal_idx]) };
+                    cur_state.eval_stack.push_ptr(str_ptr);
+                }
                 // newobj
                 0x73 => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -376,7 +386,7 @@ impl<'m> TExecutor<'m> {
                     let mut args = Args::new(callee);
                     unsafe {
                         assert!(!callee.parent.is_null());
-                        let instance_addr = mem.heap.new_obj(callee.parent);
+                        let instance_addr = mem.new_obj(callee.parent);
                         args.store_slot(0, Slot::new_ref(instance_addr));
                         args.fill_args_except_self(&mut cur_state.eval_stack);
                         cur_state.eval_stack.push_slot(Slot::new_ref(instance_addr));
@@ -389,192 +399,10 @@ impl<'m> TExecutor<'m> {
                         callee.method_impl.expect_il(),
                     );
                 }
-                // ldfld
-                0x7B => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
-
-                    let tok = cur_state.consume_u32();
-                    let (tag, idx) = get_tok_tag(tok);
-                    let f = match tag {
-                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_field()
-                                .as_ref()
-                                .unwrap()
-                        },
-
-                        _ => unimplemented!(),
-                    };
-
-                    let instance_addr: *mut u8 =
-                        unsafe { cur_state.eval_stack.pop_with_slot().as_addr() };
-                    let field_addr = instance_addr.wrapping_add(f.offset);
-
-                    unsafe {
-                        match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk => {
-                                unreachable!()
-                            }
-                            BuiltinType::Bool => unimplemented!(),
-                            BuiltinType::Char => unimplemented!(),
-                            BuiltinType::U1 => unimplemented!(),
-                            BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U4 => unimplemented!(),
-                            BuiltinType::I4 => {
-                                cur_state.eval_stack.push_i32(*(field_addr as *const i32));
-                            }
-                            BuiltinType::U8 => unimplemented!(),
-                            BuiltinType::I8 => unimplemented!(),
-                            BuiltinType::UNative => unimplemented!(),
-                            BuiltinType::INative => unimplemented!(),
-                            BuiltinType::R4 => unimplemented!(),
-                            BuiltinType::R8 => unimplemented!(),
-                            BuiltinType::Class(_) => unimplemented!(),
-                            BuiltinType::ByRef(_) => unimplemented!(),
-                            BuiltinType::Array(_) => unimplemented!(),
-                        }
-                    }
-                }
-                // stfld
-                0x7D => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
-
-                    let tok = cur_state.consume_u32();
-                    let (tag, idx) = get_tok_tag(tok);
-                    let f = match tag {
-                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_field()
-                                .as_ref()
-                                .unwrap()
-                        },
-                        _ => unimplemented!(),
-                    };
-
-                    let v = cur_state.eval_stack.pop_with_slot();
-
-                    let instance_addr: *mut u8 =
-                        unsafe { cur_state.eval_stack.pop_with_slot().as_addr() };
-                    let field_addr = instance_addr.wrapping_add(f.offset);
-
-                    unsafe {
-                        match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk => {
-                                unreachable!()
-                            }
-                            BuiltinType::Bool => unimplemented!(),
-                            BuiltinType::Char => unimplemented!(),
-                            BuiltinType::U1 => unimplemented!(),
-                            BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U4 => unimplemented!(),
-                            BuiltinType::I4 => {
-                                *(field_addr as *mut i32) = v.data.i32_;
-                            }
-                            BuiltinType::U8 => unimplemented!(),
-                            BuiltinType::I8 => unimplemented!(),
-                            BuiltinType::UNative => unimplemented!(),
-                            BuiltinType::INative => unimplemented!(),
-                            BuiltinType::R4 => unimplemented!(),
-                            BuiltinType::R8 => unimplemented!(),
-                            BuiltinType::Class(_) => unimplemented!(),
-                            BuiltinType::ByRef(_) => unimplemented!(),
-                            BuiltinType::Array(_) => unimplemented!(),
-                        }
-                    }
-                }
-                // ldsfld
-                0x7E => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
-
-                    let tok = cur_state.consume_u32();
-                    let (tag, idx) = get_tok_tag(tok);
-                    let f = match tag {
-                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_field()
-                                .as_ref()
-                                .unwrap()
-                        },
-                        _ => unimplemented!(),
-                    };
-
-                    unsafe {
-                        match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk => {
-                                unreachable!()
-                            }
-                            BuiltinType::Bool => unimplemented!(),
-                            BuiltinType::Char => unimplemented!(),
-                            BuiltinType::U1 => unimplemented!(),
-                            BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U4 => unimplemented!(),
-                            BuiltinType::I4 => {
-                                cur_state.eval_stack.push_i32(*(f.addr as *const i32));
-                            }
-                            BuiltinType::U8 => unimplemented!(),
-                            BuiltinType::I8 => unimplemented!(),
-                            BuiltinType::UNative => unimplemented!(),
-                            BuiltinType::INative => unimplemented!(),
-                            BuiltinType::R4 => unimplemented!(),
-                            BuiltinType::R8 => unimplemented!(),
-                            BuiltinType::Class(_) => unimplemented!(),
-                            BuiltinType::ByRef(_) => unimplemented!(),
-                            BuiltinType::Array(_) => unimplemented!(),
-                        }
-                    }
-                }
-                // stsfld
-                0x80 => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
-
-                    let tok = cur_state.consume_u32();
-
-                    let (tag, idx) = get_tok_tag(tok);
-                    let f = match tag {
-                        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-                        TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_field()
-                                .as_ref()
-                                .unwrap()
-                        },
-                        _ => unimplemented!(),
-                    };
-
-                    let v = cur_state.eval_stack.pop_with_slot();
-
-                    unsafe {
-                        match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk => {
-                                unreachable!()
-                            }
-                            BuiltinType::Bool => unimplemented!(),
-                            BuiltinType::Char => unimplemented!(),
-                            BuiltinType::U1 => unimplemented!(),
-                            BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U4 => unimplemented!(),
-                            BuiltinType::I4 => {
-                                *(f.addr as *mut i32) = v.data.i32_;
-                            }
-                            BuiltinType::U8 => unimplemented!(),
-                            BuiltinType::I8 => unimplemented!(),
-                            BuiltinType::UNative => unimplemented!(),
-                            BuiltinType::INative => unimplemented!(),
-                            BuiltinType::R4 => unimplemented!(),
-                            BuiltinType::R8 => unimplemented!(),
-                            BuiltinType::Class(_) => unimplemented!(),
-                            BuiltinType::ByRef(_) => unimplemented!(),
-                            BuiltinType::Array(_) => unimplemented!(),
-                        }
-                    }
-                }
+                0x7B => fld::ldfld(self.states.last_mut().unwrap()),
+                0x7D => fld::stfld(self.states.last_mut().unwrap()),
+                0x7E => fld::ldsfld(self.states.last_mut().unwrap()),
+                0x80 => fld::stsfld(self.states.last_mut().unwrap()),
                 // newarr
                 0x8D => unimplemented!(),
                 // ldlen

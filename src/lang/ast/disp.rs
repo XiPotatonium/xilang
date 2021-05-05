@@ -37,8 +37,8 @@ impl fmt::Display for AST {
                         .map(|m| format!("\"{}\"", m))
                         .collect::<Vec<String>>()
                         .join(","),
-                    ASTChildrenWrapper(uses),
-                    ASTChildrenWrapper(children)
+                    BoxASTVecWrapper(uses),
+                    BoxASTVecWrapper(children)
                 )
             }
             Self::Use(path, as_id) => write!(
@@ -51,7 +51,7 @@ impl fmt::Display for AST {
                 f,
                 "{{\"name\":\"(Attr){}\",\"args\":{}}}",
                 id,
-                ASTChildrenWrapper(args)
+                BoxASTVecWrapper(args)
             ),
             Self::Class(class) => class.fmt(f),
             Self::Ctor(ctor) => ctor.fmt(f),
@@ -61,7 +61,7 @@ impl fmt::Display for AST {
                 "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"attr\":{},\"type\":{}}}",
                 id,
                 flag,
-                ASTChildrenWrapper(attr),
+                BoxASTVecWrapper(attr),
                 ty
             ),
             Self::Param(id, flag, ty) => write!(
@@ -81,7 +81,7 @@ impl fmt::Display for AST {
             Self::Block(children) => write!(
                 f,
                 "{{\"name\":\"(block)\",\"children\":{}}}",
-                ASTChildrenWrapper(children)
+                BoxASTVecWrapper(children)
             ),
             Self::If(cond, then, els) => write!(
                 f,
@@ -206,35 +206,21 @@ impl fmt::Display for AST {
                 f,
                 "{{\"name\":\"(call)\",\"func\":{},\"args\":{}}}",
                 func.as_ref(),
-                ASTChildrenWrapper(ps)
+                BoxASTVecWrapper(ps)
             ),
             Self::OpNew(ty, struct_init) => write!(
                 f,
                 "{{\"name\":\"new\",\"type\":{},\"fields\":{}}}",
                 ty.as_ref(),
-                ASTChildrenWrapper(struct_init)
+                BoxASTVecWrapper(struct_init)
             ),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
             Self::TuplePattern(p) => write!(
                 f,
                 "{{\"name\":\"(TuplePattern)\",\"children\":{}}}",
-                ASTChildrenWrapper(p)
+                BoxASTVecWrapper(p)
             ),
-            Self::TypeBool => write!(f, "{{\"name\":\"(bool)\"}}"),
-            Self::TypeChar => write!(f, "{{\"name\":\"(char)\"}}"),
-            Self::TypeI32 => write!(f, "{{\"name\":\"(i32)\"}}"),
-            Self::TypeF64 => write!(f, "{{\"name\":\"(f64)\"}}"),
-            Self::TypeTuple(v) => write!(
-                f,
-                "{{\"name\":\"(TupleType)\",\"children\":{}}}",
-                ASTChildrenWrapper(v)
-            ),
-            Self::TypeArr(dtype, dim) => write!(
-                f,
-                "{{\"name\":\"(ArrType)\",\"dtype\":{},\"dim\":{}}}",
-                dtype, dim
-            ),
-            Self::Path(names) => write!(f, "{{\"name\":\"(Path){}\"}}", names.as_str()),
+            Self::Type(ty) => ty.fmt(f),
             Self::Null => write!(f, "{{\"name\":\"null\" }}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
             Self::Int(val) => write!(f, "{{\"name\":\"(int){}\"}}", val),
@@ -247,9 +233,26 @@ impl fmt::Display for AST {
     }
 }
 
-pub struct ASTChildrenWrapper<'a>(pub &'a Vec<Box<AST>>);
+pub struct BoxASTVecWrapper<'a, T: fmt::Display>(pub &'a Vec<Box<T>>);
 
-impl fmt::Display for ASTChildrenWrapper<'_> {
+pub struct ASTVecWrapper<'a, T: fmt::Display>(pub &'a Vec<T>);
+
+impl<T: fmt::Display> fmt::Display for BoxASTVecWrapper<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        let mut i = 0;
+        for ast in self.0.iter() {
+            if i != 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", ast)?;
+            i += 1;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for ASTVecWrapper<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[")?;
         let mut i = 0;

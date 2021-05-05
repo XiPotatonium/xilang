@@ -6,7 +6,7 @@ mod loop_expr;
 mod lval;
 mod op;
 
-use super::super::ast::AST;
+use super::super::ast::{ASTType, AST};
 use op::BinOp;
 // use super::interpreter::constant_folding;
 use super::{CodeGenCtx, RValType, ValType};
@@ -14,7 +14,6 @@ use super::{CodeGenCtx, RValType, ValType};
 use xir::attrib::*;
 use xir::inst::Inst;
 use xir::tok::to_tok;
-use xir::util::path::IModPath;
 use xir::CTOR_NAME;
 
 pub fn gen_base_ctor(ctx: &CodeGenCtx, args: &Vec<Box<AST>>) {
@@ -120,17 +119,10 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
             let v = lval::gen_lval(ctx, ast, false);
             gen_static_access(ctx, v)
         }
-        AST::Path(p) => {
-            if p.len() == 1 {
-                ValType::RVal(gen_id_rval(ctx, p.as_str()))
-            } else {
-                let v = lval::gen_path_lval(ctx, p, false);
-                gen_static_access(ctx, v)
-            }
-        }
         AST::Id(id) => ValType::RVal(gen_id_rval(ctx, id)),
         AST::Bool(val) => literal::gen_bool(ctx, *val),
         AST::Int(val) => literal::gen_int(ctx, *val),
+        AST::String(val) => literal::gen_string(ctx, val),
         AST::None => literal::gen_none(),
         _ => unimplemented!("{}", ast),
     }
@@ -208,14 +200,14 @@ fn gen_let(
     ctx: &CodeGenCtx,
     pattern: &Box<AST>,
     flag: &LocalAttrib,
-    ty: &Box<AST>,
-    init: &Box<AST>,
+    ty: &ASTType,
+    init: &AST,
 ) -> RValType {
     match pattern.as_ref() {
         AST::Id(id) => {
-            if let AST::None = init.as_ref() {
+            if let AST::None = init {
                 // no initialization
-                if let AST::None = ty.as_ref() {
+                if let ASTType::None = ty {
                     // invalid let stmt
                     panic!("Specify type or use initialization");
                 } else {
@@ -232,7 +224,7 @@ fn gen_let(
                     .add(id, init_ty.clone(), *flag, true);
                 ctx.method_builder.borrow_mut().add_inst_stloc(offset);
 
-                if let AST::None = ty.as_ref() {
+                if let ASTType::None = ty {
                     // no type, induce type from return value of init
                 } else {
                     // check type match

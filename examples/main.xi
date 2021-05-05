@@ -28,13 +28,15 @@ class Program: IOHelper::IOBase {
         std::IO::writeln(d.foo(4));     // 0 + 2 + 4 + 30
     }
 
+    static singleton: Program;
+
     fn virt_test() {
-        let prog = new Self();
-        std::IO::writeln(prog.hi_count);        // 0
-        prog.hi();                              // HI
-        std::IO::writeln(prog.hi_count);        // 1
-        prog.hi();                              // HI
-        std::IO::writeln(prog.hi_count);        // 2
+        Self::singleton = new Self();
+        std::IO::writeln(Self::singleton.hi_count);         // 0
+        Program::singleton.hi();                            // HI
+        std::IO::writeln(Program::singleton.hi_count);      // 1
+        Self::singleton.hi();                               // HI
+        std::IO::writeln(Self::singleton.hi_count);         // 2
 
         let derived_ref = new Derived();
         derived_ref.say();      // 1001
@@ -46,6 +48,7 @@ class Program: IOHelper::IOBase {
 
     fn str_arr_test() {
         // let arr = new int[100];
+        let s: string = "Hello world!";
     }
 
     fn main() {

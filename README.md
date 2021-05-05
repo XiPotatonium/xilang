@@ -69,6 +69,8 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * less unsafe
 * xilang project structure
   * crate
+* builtin type
+  * usize
 
 #### Ver 0.4.1
 
@@ -77,7 +79,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * bool
   * u8
   * f32/f64
-  * usize/isize
+  * isize
 * pub use
 * priv/pub flag
 

@@ -104,10 +104,7 @@ impl Inst {
                 fmt_tok(*tok, f, ctx)
             }
 
-            Inst::LdStr(tok) => {
-                write!(f, "ldstr ")?;
-                fmt_tok(*tok, f, ctx)
-            }
+            Inst::LdStr(s) => write!(f, "ldstr \"{}\"", ctx.usr_str_heap[*s as usize]),
 
             Inst::NewArr(tok) => {
                 write!(f, "newarr ")?;

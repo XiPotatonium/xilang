@@ -1,7 +1,7 @@
 use xir::attrib::TypeAttrib;
 use xir::util::path::{IModPath, ModPath};
 
-use super::disp::ASTChildrenWrapper;
+use super::disp::BoxASTVecWrapper;
 use super::AST;
 
 use std::fmt;
@@ -26,12 +26,12 @@ impl fmt::Display for ASTClass {
             "{{\"name\":\"(class){}\",\"attrib\":\"{}\",\"cus-attrib\":{},\"extends-or-impls\":[{}],\"fields\":{},\"cctor\":{},\"ctors\":{},\"methods\":{}}}",
             self.name,
             self.attrib,
-            ASTChildrenWrapper(&self.custom_attribs),
+            BoxASTVecWrapper(&self.custom_attribs),
             self.extends_or_impls.iter().map(|p| format!("\"{}\"", p.as_str())).collect::<Vec<String>>().join(","),
-            ASTChildrenWrapper(&self.fields),
+            BoxASTVecWrapper(&self.fields),
             self.cctor,
-            ASTChildrenWrapper(&self.ctors),
-            ASTChildrenWrapper(&self.methods),
+            BoxASTVecWrapper(&self.ctors),
+            BoxASTVecWrapper(&self.methods),
         )
     }
 }

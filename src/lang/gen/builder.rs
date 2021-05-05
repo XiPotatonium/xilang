@@ -273,6 +273,17 @@ impl Builder {
         }
     }
 
+    pub fn add_const_usr_str(&mut self, v: &str) -> u32 {
+        if let Some(ret) = self.usr_str_map.get(v) {
+            *ret
+        } else {
+            let ret = self.file.usr_str_heap.len() as u32;
+            self.file.usr_str_heap.push(v.to_owned());
+            self.usr_str_map.insert(v.to_owned(), ret);
+            ret
+        }
+    }
+
     fn to_param(&mut self, param: &Param) -> sig::ParamType {
         sig::ParamType {
             ty: sig::InnerParamType::Default(self.to_sig_ty(&param.ty)),
@@ -311,6 +322,7 @@ impl Builder {
                 TypeSig::Class(tok)
             }
             RValType::Array(_) => unimplemented!(),
+            RValType::String => TypeSig::String,
             RValType::Void => unreachable!(),
         }
     }

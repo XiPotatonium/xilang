@@ -32,7 +32,7 @@ Type = {
     | TupleType
     | ArrType
 }
-BasicType = _{ KwBool | KwChar | KwI32 | KwF64 }
+BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwString }
 TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
 ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
 
@@ -57,7 +57,7 @@ BreakExpr = { "break" ~ Expr? }
 ReturnExpr = { "return" ~ Expr? }
 
 GroupedExpr = { "(" ~ Expr ~ ")" }
-PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | Type }
+PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | Id | Type }
 Args = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
 ObjAccessExpr = { "." ~ Id }
 PathAccessExpr = { "::" ~ Id }
@@ -107,6 +107,7 @@ KwPub = { "pub" }
 KwPriv = { "priv" }
 KwSuper = { "super" }
 KwCrate = { "crate" }
+
 KwBool = { "bool" }
 KwChar = { "char" }
 KwU8 = { "u8" }
@@ -124,13 +125,15 @@ KwF64 = { "f64" }
 KwTrue = { "true" }
 KwFalse = { "false" }
 KwNull = { "null" }
+KwString = { "string" }
+
 KeyWord = @{ 
     "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
     | "static" | "const" | "mut" | KwPub | KwPriv | KwVirtual | KwOverride
     | KwLSelf | KwUSelf | KwBase | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
     | KwBool | KwChar | KwU8 | KwI8 | KwU16 | KwI16 | KwU32 | KwI32 | KwU64 | KwI64 | KwUSize | KwISize | KwF32 | KwF64
-    | KwFalse | KwTrue | KwNull
+    | KwFalse | KwTrue | KwNull | KwString
     | "yield" | "typeof"
 }
 

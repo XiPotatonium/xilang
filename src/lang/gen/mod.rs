@@ -9,7 +9,7 @@ pub use builder::Builder;
 pub use il_gen::{gen, gen_base_ctor};
 pub use method_builder::MethodBuilder;
 
-use super::ast::AST;
+use super::ast::ASTType;
 use super::mod_mgr::{Class, Field, Locals, Method, ModMgr, Module};
 
 use std::cell::RefCell;
@@ -40,7 +40,7 @@ pub struct CodeGenCtx<'c> {
 }
 
 impl<'mgr> CodeGenCtx<'mgr> {
-    fn get_ty(&self, ast: &AST) -> RValType {
+    fn get_ty(&self, ast: &ASTType) -> RValType {
         self.module.get_ty(ast, self.mgr, self.class)
     }
 
@@ -87,6 +87,7 @@ pub enum RValType {
     F64,
     Void,
     Never,
+    String,
     // module fullname, class name
     Obj(String, String),
     Array(Box<RValType>),
@@ -106,6 +107,7 @@ impl PartialEq for RValType {
             | (Self::Char, Self::Char)
             | (Self::I32, Self::I32)
             | (Self::F64, Self::F64)
+            | (Self::String, Self::String)
             | (Self::Void, Self::Void) => true,
             (Self::Obj(mod0, class0), Self::Obj(mod1, class1)) => mod0 == mod1 && class0 == class1,
             _ => false,
@@ -123,8 +125,9 @@ impl fmt::Display for RValType {
             Self::F64 => write!(f, "D"),
             Self::Void => write!(f, "V"),
             Self::Never => write!(f, "!"),
+            Self::String => write!(f, "Ostd/String;"),
             Self::Obj(m, s) => write!(f, "O{}/{};", m, s),
-            Self::Array(t) => write!(f, "[{}", t),
+            Self::Array(_) => unimplemented!(),
         }
     }
 }

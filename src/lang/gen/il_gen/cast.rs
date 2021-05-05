@@ -1,8 +1,8 @@
-use super::super::super::ast::AST;
+use super::super::super::ast::{ASTType, AST};
 use super::super::{CodeGenCtx, RValType, ValType};
 use super::gen;
 
-pub fn gen_cast(ctx: &CodeGenCtx, ty: &AST, val: &AST) -> ValType {
+pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
     let lhs_ty = gen(ctx, val);
     let lhs_rval_ty = lhs_ty.expect_rval_ref();
 
@@ -16,6 +16,7 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &AST, val: &AST) -> ValType {
         RValType::F64 => unimplemented!(),
         RValType::Void => panic!("Cannot cast void type"),
         RValType::Never => panic!("Cannot cast never type"),
+        RValType::String => unimplemented!(),
         RValType::Obj(mod_fullname, class_name) => {
             let lhs_class = ctx
                 .mgr
@@ -32,6 +33,7 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &AST, val: &AST) -> ValType {
                 | RValType::F64
                 | RValType::Void
                 | RValType::Never
+                | RValType::String
                 | RValType::Array(_) => {
                     panic!("cast from {} to {} is not allowed", lhs_rval_ty, to_type)
                 }

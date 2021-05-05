@@ -1,4 +1,4 @@
-use super::super::super::ast::AST;
+use super::super::super::ast::{ASTType, AST};
 use super::super::super::mod_mgr::Method;
 use super::super::{CodeGenCtx, RValType, ValType};
 use super::{gen, lval};
@@ -108,7 +108,7 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
     ret
 }
 
-pub fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
+pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.get_ty(ty);
     match &ret {
         RValType::Obj(mod_name, class_name) => {
@@ -142,6 +142,7 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
                 .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));
         }
         RValType::Array(_) => unimplemented!(),
+        RValType::String => unimplemented!("new string is not implemented"),
         _ => panic!("Invalid new expression, only new class or array is allowed"),
     }
     ret

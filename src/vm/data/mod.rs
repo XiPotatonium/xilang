@@ -36,7 +36,9 @@ pub enum BuiltinType {
     INative,
     R4,
     R8,
+    String,
     ByRef(Box<BuiltinType>),
+    /// ele_ty, rank, dim_sizes
     Array(Box<BuiltinType>),
     Class(*const Type),
     /// to be filled
@@ -87,7 +89,7 @@ impl BuiltinType {
             TypeSig::I => BuiltinType::INative,
             TypeSig::U => BuiltinType::UNative,
             TypeSig::Array(_, _) => unimplemented!(),
-            TypeSig::String => unimplemented!(),
+            TypeSig::String => BuiltinType::String,
             TypeSig::Class(tok) => {
                 // tok is TypeRef or TypeDef
                 let (tag, idx) = get_tok_tag(*tok);
@@ -116,7 +118,10 @@ impl BuiltinType {
             BuiltinType::INative => size_of::<isize>(),
             BuiltinType::R4 => size_of::<f32>(),
             BuiltinType::R8 => size_of::<f64>(),
-            BuiltinType::ByRef(_) | BuiltinType::Array(_) | BuiltinType::Class(_) => REF_SIZE,
+            BuiltinType::String
+            | BuiltinType::ByRef(_)
+            | BuiltinType::Array(_)
+            | BuiltinType::Class(_) => REF_SIZE,
             BuiltinType::Unk => unreachable!(),
         }
     }
@@ -137,6 +142,7 @@ pub fn builtin_ty_str_desc(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
         BuiltinType::INative => String::from("n"),
         BuiltinType::R4 => String::from("F"),
         BuiltinType::R8 => String::from("D"),
+        BuiltinType::String => String::from("Ostd::String"),
         BuiltinType::ByRef(inner) => format!("&{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::Array(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::Class(ty) => {

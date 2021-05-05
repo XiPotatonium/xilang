@@ -217,7 +217,7 @@ fn build_method(tree: Pair<Rule>, custom_attribs: Vec<Box<AST>>) -> Box<AST> {
     let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
         build_type(iter.next().unwrap())
     } else {
-        Box::new(AST::None)
+        Box::new(ASTType::None)
     };
 
     let body = iter.next().unwrap();
@@ -291,27 +291,28 @@ fn build_pathexpr(tree: Pair<Rule>) -> ModPath {
     ret
 }
 
-fn build_type(tree: Pair<Rule>) -> Box<AST> {
+fn build_type(tree: Pair<Rule>) -> Box<ASTType> {
     let tree = tree.into_inner().next().unwrap();
     let ret = Box::new(match tree.as_rule() {
-        Rule::KwBool => AST::TypeBool,
-        Rule::KwChar => AST::TypeChar,
-        Rule::KwI32 => AST::TypeI32,
-        Rule::KwF64 => AST::TypeF64,
-        Rule::KwUSelf => AST::Path({
+        Rule::KwBool => ASTType::Bool,
+        Rule::KwChar => ASTType::Char,
+        Rule::KwI32 => ASTType::I32,
+        Rule::KwF64 => ASTType::F64,
+        Rule::KwString => ASTType::String,
+        Rule::KwUSelf => ASTType::Class({
             let mut path = ModPath::new();
             path.push("Self");
             path
         }),
-        Rule::PathExpr => AST::Path(build_pathexpr(tree)),
-        Rule::TupleType => AST::TypeTuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
+        Rule::PathExpr => ASTType::Class(build_pathexpr(tree)),
+        Rule::TupleType => ASTType::Tuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {
             let mut iter = tree.into_inner();
             let sub_ty = build_type(iter.next().unwrap());
             if let Some(expr) = iter.next() {
-                AST::TypeArr(sub_ty, build_expr(expr))
+                ASTType::Arr(sub_ty, build_expr(expr))
             } else {
-                AST::TypeArr(sub_ty, Box::new(AST::None))
+                ASTType::Arr(sub_ty, Box::new(AST::None))
             }
         }
         _ => unreachable!(format!("Found {:?}", tree.as_rule())),
@@ -393,7 +394,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     AST::Let(
                         pattern,
                         LocalAttrib::from(0),
-                        Box::new(AST::None),
+                        Box::new(ASTType::None),
                         build_expr(iter.next().unwrap()),
                     )
                 }
@@ -402,7 +403,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     AST::Let(
                         pattern,
                         LocalAttrib::from(0),
-                        Box::new(AST::None),
+                        Box::new(ASTType::None),
                         Box::new(AST::None),
                     )
                 }
@@ -607,10 +608,11 @@ fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
 fn build_primary_expr(tree: Pair<Rule>) -> Box<AST> {
     let tree = tree.into_inner().next().unwrap();
     match tree.as_rule() {
-        Rule::Type => build_type(tree),
         Rule::GroupedExpr => build_expr(tree.into_inner().next().unwrap()),
         Rule::LiteralExpr => build_literal(tree),
         Rule::KwLSelf => Box::new(AST::Id(String::from("self"))),
+        Rule::Id => Box::new(AST::Id(build_id(tree))),
+        Rule::Type => Box::new(AST::Type(build_type(tree))),
         // Actually only expr with block
         _ => build_expr(tree),
     }

@@ -1,12 +1,14 @@
 mod class;
 mod disp;
 mod method;
+mod ty;
 
 use xir::attrib::*;
 use xir::util::path::ModPath;
 
 pub use class::ASTClass;
 pub use method::{ASTCtor, ASTMethod, ASTMethodAttrib, ASTMethodAttribFlag};
+pub use ty::ASTType;
 
 pub enum AST {
     /// mods, ext_mods, uses, classes: Vec<AST>
@@ -23,10 +25,10 @@ pub enum AST {
     Method(ASTMethod),
 
     /// id, attrib, custom-attrib, ty
-    Field(String, FieldAttrib, Vec<Box<AST>>, Box<AST>),
-    Param(String, ParamAttrib, Box<AST>),
-    /// pattern, ty, flag, init: Box<AST>
-    Let(Box<AST>, LocalAttrib, Box<AST>, Box<AST>),
+    Field(String, FieldAttrib, Vec<Box<AST>>, Box<ASTType>),
+    Param(String, ParamAttrib, Box<ASTType>),
+    /// pattern, attrib, ty, init: Box<AST>
+    Let(Box<AST>, LocalAttrib, Box<ASTType>, Box<AST>),
 
     ExprStmt(Box<AST>),
 
@@ -63,25 +65,16 @@ pub enum AST {
     OpObjAccess(Box<AST>, String),
     OpArrayAccess(Box<AST>, Box<AST>),
     /// ty, val
-    OpCast(Box<AST>, Box<AST>),
+    OpCast(Box<ASTType>, Box<AST>),
     /// f: Box<Expr>, ps: Vec<Expr>
     OpCall(Box<AST>, Vec<Box<AST>>),
     /// ty, ps: Vec<Expr>
-    OpNew(Box<AST>, Vec<Box<AST>>),
+    OpNew(Box<ASTType>, Vec<Box<AST>>),
 
     Id(String),
     TuplePattern(Vec<Box<AST>>),
 
-    /// Type
-    TypeBool,
-    TypeChar,
-    TypeI32,
-    TypeF64,
-    TypeTuple(Vec<Box<AST>>),
-    /// type, dim
-    TypeArr(Box<AST>, Box<AST>),
-    /// class names
-    Path(ModPath),
+    Type(Box<ASTType>),
 
     /// Literal
     Null,

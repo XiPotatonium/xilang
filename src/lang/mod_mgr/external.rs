@@ -48,7 +48,7 @@ fn to_rval(sig: &TypeSig, ctx: &IrFile) -> RValType {
         TypeSig::I => unimplemented!(),
         TypeSig::U => unimplemented!(),
         TypeSig::Array(_, _) => unimplemented!(),
-        TypeSig::String => unimplemented!(),
+        TypeSig::String => RValType::String,
         TypeSig::Class(tok) => {
             // tok is TypeRef or TypeDef
             let (tag, idx) = get_tok_tag(*tok);
