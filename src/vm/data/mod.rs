@@ -3,8 +3,8 @@ mod method;
 mod module;
 mod ty;
 
-use xir::blob::EleType;
 use xir::file::IrFile;
+use xir::sig::{self, TypeSig};
 use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::ResolutionScope;
 
@@ -12,8 +12,8 @@ use std::mem::size_of;
 
 pub use self::field::Field;
 pub use self::method::{
-    method_sig, method_sig_from_ir, Local, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl,
-    Param,
+    method_str_desc, method_str_desc_from_ir, Local, MethodDesc, MethodILImpl, MethodImpl,
+    MethodNativeImpl, Param,
 };
 pub use self::module::{ILModule, MemberRef, Module};
 pub use self::ty::Type;
@@ -28,8 +28,6 @@ pub enum BuiltinType {
     Char,
     U1,
     I1,
-    U2,
-    I2,
     U4,
     I4,
     U8,
@@ -46,23 +44,51 @@ pub enum BuiltinType {
 }
 
 impl BuiltinType {
-    pub fn from_ir_ele_ty(ir_ty: &EleType, ctx: &ILModule) -> BuiltinType {
-        match ir_ty {
-            EleType::Void => BuiltinType::Void,
-            EleType::Boolean => BuiltinType::Bool,
-            EleType::Char => BuiltinType::Char,
-            EleType::I1 => BuiltinType::I1,
-            EleType::U1 => BuiltinType::U1,
-            EleType::I2 => BuiltinType::I2,
-            EleType::U2 => BuiltinType::U2,
-            EleType::I4 => BuiltinType::I4,
-            EleType::U4 => BuiltinType::U4,
-            EleType::I8 => unimplemented!(),
-            EleType::U8 => unimplemented!(),
-            EleType::R4 => BuiltinType::R4,
-            EleType::R8 => BuiltinType::R8,
-            EleType::ByRef(t) => BuiltinType::ByRef(Box::new(BuiltinType::from_ir_ele_ty(t, ctx))),
-            EleType::Class(tok) => {
+    pub fn from_param(param: &sig::ParamType, ctx: &ILModule) -> BuiltinType {
+        match &param.ty {
+            sig::InnerParamType::Default(ty) => Self::from_type_sig(ty, ctx),
+            sig::InnerParamType::ByRef(ty) => {
+                BuiltinType::ByRef(Box::new(Self::from_type_sig(ty, ctx)))
+            }
+        }
+    }
+
+    pub fn from_ret(ret: &sig::RetType, ctx: &ILModule) -> BuiltinType {
+        match &ret.ty {
+            sig::InnerRetType::Default(ty) => Self::from_type_sig(ty, ctx),
+            sig::InnerRetType::ByRef(ty) => {
+                BuiltinType::ByRef(Box::new(Self::from_type_sig(ty, ctx)))
+            }
+            sig::InnerRetType::Void => BuiltinType::Void,
+        }
+    }
+
+    pub fn from_local(var: &sig::InnerLocalVarType, ctx: &ILModule) -> BuiltinType {
+        match var {
+            sig::InnerLocalVarType::Default(ty) => Self::from_type_sig(ty, ctx),
+            sig::InnerLocalVarType::ByRef(ty) => {
+                BuiltinType::ByRef(Box::new(Self::from_type_sig(ty, ctx)))
+            }
+        }
+    }
+
+    pub fn from_type_sig(ty: &TypeSig, ctx: &ILModule) -> BuiltinType {
+        match ty {
+            TypeSig::Boolean => BuiltinType::Bool,
+            TypeSig::Char => BuiltinType::Char,
+            TypeSig::I1 => BuiltinType::I1,
+            TypeSig::U1 => BuiltinType::U1,
+            TypeSig::I4 => BuiltinType::I4,
+            TypeSig::U4 => BuiltinType::U4,
+            TypeSig::I8 => unimplemented!(),
+            TypeSig::U8 => unimplemented!(),
+            TypeSig::R4 => BuiltinType::R4,
+            TypeSig::R8 => BuiltinType::R8,
+            TypeSig::I => BuiltinType::INative,
+            TypeSig::U => BuiltinType::UNative,
+            TypeSig::Array(_, _) => unimplemented!(),
+            TypeSig::String => unimplemented!(),
+            TypeSig::Class(tok) => {
                 // tok is TypeRef or TypeDef
                 let (tag, idx) = get_tok_tag(*tok);
                 let idx = idx as usize - 1;
@@ -82,8 +108,6 @@ impl BuiltinType {
             BuiltinType::Char => size_of::<u16>(),
             BuiltinType::U1 => size_of::<u8>(),
             BuiltinType::I1 => size_of::<i8>(),
-            BuiltinType::U2 => size_of::<u16>(),
-            BuiltinType::I2 => size_of::<i16>(),
             BuiltinType::U4 => size_of::<u32>(),
             BuiltinType::I4 => size_of::<i32>(),
             BuiltinType::U8 => size_of::<u64>(),
@@ -92,23 +116,19 @@ impl BuiltinType {
             BuiltinType::INative => size_of::<isize>(),
             BuiltinType::R4 => size_of::<f32>(),
             BuiltinType::R8 => size_of::<f64>(),
-            BuiltinType::ByRef(_) => REF_SIZE,
-            BuiltinType::Array(_) => unimplemented!(),
-            BuiltinType::Class(_) => unreachable!(),
+            BuiltinType::ByRef(_) | BuiltinType::Array(_) | BuiltinType::Class(_) => REF_SIZE,
             BuiltinType::Unk => unreachable!(),
         }
     }
 }
 
-pub fn builtin_ty_sig(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
+pub fn builtin_ty_str_desc(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
     match ty {
         BuiltinType::Void => String::from("V"),
         BuiltinType::Bool => String::from("Z"),
         BuiltinType::Char => String::from("C"),
         BuiltinType::U1 => String::from("B"),
         BuiltinType::I1 => String::from("b"),
-        BuiltinType::U2 => String::from("S"),
-        BuiltinType::I2 => String::from("s"),
         BuiltinType::U4 => String::from("I"),
         BuiltinType::I4 => String::from("i"),
         BuiltinType::U8 => String::from("L"),
@@ -117,30 +137,32 @@ pub fn builtin_ty_sig(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
         BuiltinType::INative => String::from("n"),
         BuiltinType::R4 => String::from("F"),
         BuiltinType::R8 => String::from("D"),
-        BuiltinType::ByRef(inner) => format!("O{};", builtin_ty_sig(inner, str_pool)),
-        BuiltinType::Array(inner) => format!("[{}", builtin_ty_sig(inner, str_pool)),
-        BuiltinType::Class(ty) => unsafe { ty.as_ref().unwrap().fullname(str_pool) },
+        BuiltinType::ByRef(inner) => format!("&{}", builtin_ty_str_desc(inner, str_pool)),
+        BuiltinType::Array(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
+        BuiltinType::Class(ty) => {
+            format!("O{};", unsafe { ty.as_ref().unwrap().fullname(str_pool) })
+        }
         BuiltinType::Unk => unreachable!(),
     }
 }
 
-pub fn ir_ty_sig(ty: &EleType, ctx: &IrFile) -> String {
+fn type_sig_str_desc(ty: &TypeSig, ctx: &IrFile) -> String {
     match ty {
-        EleType::Void => String::from("V"),
-        EleType::Boolean => String::from("Z"),
-        EleType::Char => String::from("C"),
-        EleType::I1 => String::from("b"),
-        EleType::U1 => String::from("B"),
-        EleType::I2 => String::from("s"),
-        EleType::U2 => String::from("S"),
-        EleType::I4 => String::from("i"),
-        EleType::U4 => String::from("I"),
-        EleType::I8 => String::from("l"),
-        EleType::U8 => String::from("L"),
-        EleType::R4 => String::from("F"),
-        EleType::R8 => String::from("D"),
-        EleType::ByRef(inner) => format!("O{};", ir_ty_sig(inner, ctx)),
-        EleType::Class(tok) => {
+        TypeSig::Boolean => String::from("Z"),
+        TypeSig::Char => String::from("C"),
+        TypeSig::I1 => String::from("b"),
+        TypeSig::U1 => String::from("B"),
+        TypeSig::I4 => String::from("i"),
+        TypeSig::U4 => String::from("I"),
+        TypeSig::I8 => String::from("l"),
+        TypeSig::U8 => String::from("L"),
+        TypeSig::R4 => String::from("F"),
+        TypeSig::R8 => String::from("D"),
+        TypeSig::I => String::from("n"),
+        TypeSig::U => String::from("N"),
+        TypeSig::Array(_, _) => unimplemented!(),
+        TypeSig::String => unimplemented!(),
+        TypeSig::Class(tok) => {
             let (tag, idx) = get_tok_tag(*tok);
             let idx = idx as usize - 1;
             match tag {
@@ -164,5 +186,12 @@ pub fn ir_ty_sig(ty: &EleType, ctx: &IrFile) -> String {
                 _ => unreachable!(),
             }
         }
+    }
+}
+
+pub fn param_sig_str_desc(p: &sig::ParamType, ctx: &IrFile) -> String {
+    match &p.ty {
+        sig::InnerParamType::Default(ty) => type_sig_str_desc(ty, ctx),
+        sig::InnerParamType::ByRef(ty) => format!("&{}", type_sig_str_desc(ty, ctx)),
     }
 }

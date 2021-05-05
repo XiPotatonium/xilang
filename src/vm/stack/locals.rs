@@ -9,6 +9,7 @@ pub trait ILocals {
     fn store_slot(&mut self, i: usize, slot: Slot);
 }
 
+// load from addr into stack
 unsafe fn load(ty: &BuiltinType, addr: *const u8, stack: &mut EvalStack) {
     match ty {
         BuiltinType::Void => panic!("Cannot store void"),
@@ -17,8 +18,6 @@ unsafe fn load(ty: &BuiltinType, addr: *const u8, stack: &mut EvalStack) {
         }
         BuiltinType::Char => unimplemented!(),
         BuiltinType::I1 => unimplemented!(),
-        BuiltinType::U2 => unimplemented!(),
-        BuiltinType::I2 => unimplemented!(),
         BuiltinType::U4 => unimplemented!(),
         BuiltinType::I4 => stack.push_i32(*(addr as *const i32)),
         BuiltinType::U8 => unimplemented!(),
@@ -27,16 +26,17 @@ unsafe fn load(ty: &BuiltinType, addr: *const u8, stack: &mut EvalStack) {
         BuiltinType::INative => unimplemented!(),
         BuiltinType::R4 => unimplemented!(),
         BuiltinType::R8 => unimplemented!(),
-        BuiltinType::ByRef(_) | BuiltinType::Array(_) => stack.push_ptr(*(addr as *const *mut u8)),
-        BuiltinType::Class(_) => panic!(),
+        BuiltinType::Class(_) | BuiltinType::ByRef(_) | BuiltinType::Array(_) => {
+            stack.push_ptr(*(addr as *const *mut u8))
+        }
         BuiltinType::Unk => unreachable!(),
     }
 }
 
+// store slot into addr
 unsafe fn store_slot(ty: &BuiltinType, addr: *mut u8, slot: Slot) {
     match ty {
         BuiltinType::Void => panic!("Cannot store void"),
-        BuiltinType::Class(_) => panic!("Cannot store class"),
         BuiltinType::Unk => unreachable!(),
         BuiltinType::Bool | BuiltinType::U1 => {
             slot.expect(SlotTag::I32);
@@ -44,8 +44,6 @@ unsafe fn store_slot(ty: &BuiltinType, addr: *mut u8, slot: Slot) {
         }
         BuiltinType::Char => unimplemented!(),
         BuiltinType::I1 => unimplemented!(),
-        BuiltinType::U2 => unimplemented!(),
-        BuiltinType::I2 => unimplemented!(),
         BuiltinType::U4 => unimplemented!(),
         BuiltinType::I4 => {
             slot.expect(SlotTag::I32);
@@ -57,7 +55,7 @@ unsafe fn store_slot(ty: &BuiltinType, addr: *mut u8, slot: Slot) {
         BuiltinType::INative => unimplemented!(),
         BuiltinType::R4 => unimplemented!(),
         BuiltinType::R8 => unimplemented!(),
-        BuiltinType::ByRef(_) | BuiltinType::Array(_) => {
+        BuiltinType::Class(_) | BuiltinType::ByRef(_) | BuiltinType::Array(_) => {
             *(addr as *mut *mut u8) = slot.as_addr();
         }
     }

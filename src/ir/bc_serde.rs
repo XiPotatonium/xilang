@@ -1,29 +1,31 @@
 use std::io::Read;
+use std::iter::Peekable;
 use std::mem::transmute;
 
-use super::blob::IrSig;
 use super::code::CorILMethod;
 use super::file::{IrFile, MAJOR_VERSION, MINOR_VERSION};
 use super::member::{Field, ImplMap, MemberRef, MethodDef};
 use super::module::{Mod, ModRef};
 use super::param::Param;
+use super::sig::IrSig;
 use super::stand_alone_sig::IrStandAloneSig;
 use super::ty::{TypeDef, TypeRef};
 
 pub trait IDeserializer {
+    fn peek_byte(&mut self) -> u8;
     fn take_byte(&mut self) -> u8;
     fn take_bytes2(&mut self) -> [u8; 2];
     fn take_bytes4(&mut self) -> [u8; 4];
     fn take_bytes(&mut self, n: u32) -> Vec<u8>;
 }
 
-pub struct Deserializer {
-    stream: Box<dyn Iterator<Item = u8>>,
+pub struct Deserializer<I: Iterator<Item = u8>> {
+    stream: Peekable<I>,
     pub bytes_taken: u32,
 }
 
-impl Deserializer {
-    pub fn new(stream: Box<dyn Iterator<Item = u8>>) -> Deserializer {
+impl<I: Iterator<Item = u8>> Deserializer<I> {
+    pub fn new(stream: Peekable<I>) -> Deserializer<I> {
         Deserializer {
             stream,
             bytes_taken: 0,
@@ -31,7 +33,11 @@ impl Deserializer {
     }
 }
 
-impl IDeserializer for Deserializer {
+impl<I: Iterator<Item = u8>> IDeserializer for Deserializer<I> {
+    fn peek_byte(&mut self) -> u8 {
+        *self.stream.peek().unwrap()
+    }
+
     fn take_byte(&mut self) -> u8 {
         self.bytes_taken += 1;
         (&mut self.stream).next().unwrap()
@@ -98,7 +104,7 @@ impl IrFile {
     }
 
     pub fn from_binary(stream: Box<dyn Read>) -> IrFile {
-        let mut buf = Deserializer::new(Box::new(stream.bytes().map(|r| r.unwrap())));
+        let mut buf = Deserializer::new(stream.bytes().map(|r| r.unwrap()).peekable());
 
         let major_version = u16::deserialize(&mut buf);
         let minor_version = u16::deserialize(&mut buf);

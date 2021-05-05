@@ -1,9 +1,9 @@
-use xir::blob::IrSig;
 use xir::file::IrFile;
 use xir::member::MemberRefParent;
+use xir::sig::IrSig;
 use xir::ty::{ResolutionScope, TypeDefOrRef};
 
-use super::super::data::{method_sig, BuiltinType, MemberRef, MethodImpl, Module, Type};
+use super::super::data::{method_str_desc, BuiltinType, MemberRef, MethodImpl, Module, Type};
 
 use std::collections::HashMap;
 
@@ -65,16 +65,16 @@ pub fn link_member_ref(
         match sig {
             IrSig::Method(_, ps, ret) => {
                 // this member ref is a function
-                let ret_ty = BuiltinType::from_ir_ele_ty(ret, this_mod_mut);
+                let ret_ty = BuiltinType::from_ret(ret, this_mod_mut);
 
                 match parent_tag {
                     MemberRefParent::TypeRef => {
                         let parent = unsafe { this_mod_mut.typerefs[parent_idx].as_ref().unwrap() };
                         let ps_ty: Vec<BuiltinType> = ps
                             .iter()
-                            .map(|p| BuiltinType::from_ir_ele_ty(p, this_mod_mut))
+                            .map(|p| BuiltinType::from_param(p, this_mod_mut))
                             .collect();
-                        let sig = method_sig(str_pool, name, &ps_ty);
+                        let sig = method_str_desc(str_pool, name, &ps_ty);
                         if let Some(m) = parent.ee_class.methods.get(&sig) {
                             if unsafe { &m.as_ref().unwrap().ret.ty } == &ret_ty {
                                 found = true;
@@ -90,7 +90,7 @@ pub fn link_member_ref(
             }
             IrSig::Field(f_sig) => {
                 // this member ref is a field
-                let sig = BuiltinType::from_ir_ele_ty(f_sig, this_mod_mut);
+                let sig = BuiltinType::from_type_sig(f_sig, this_mod_mut);
                 match parent_tag {
                     MemberRefParent::TypeRef => {
                         // check if parent has this field
@@ -115,7 +115,7 @@ pub fn link_member_ref(
                     _ => unreachable!(),
                 }
             }
-            IrSig::LocalVar(_) => unreachable!(),
+            _ => unreachable!(),
         }
 
         if !found {
@@ -131,7 +131,7 @@ pub fn fill_field_info(file: &IrFile, this_mod: *mut Module) {
 
     for (field, field_entry) in this_mod_mut.fields.iter_mut().zip(file.field_tbl.iter()) {
         if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
-            field.ty = BuiltinType::from_ir_ele_ty(f_sig, this_mod_ref);
+            field.ty = BuiltinType::from_type_sig(f_sig, this_mod_ref);
         } else {
             panic!();
         }
@@ -146,7 +146,7 @@ pub fn fill_method_info(file: &IrFile, this_mod: *mut Module) {
     for (method, method_entry) in this_mod_mut.methods.iter_mut().zip(file.method_tbl.iter()) {
         let sig = &file.blob_heap[method_entry.sig as usize];
         if let IrSig::Method(_, ps, ret) = sig {
-            method.ret.ty = BuiltinType::from_ir_ele_ty(ret, this_mod_ref);
+            method.ret.ty = BuiltinType::from_ret(ret, this_mod_ref);
             method.init_ps_ty(ps, this_mod_ref);
         } else {
             panic!();

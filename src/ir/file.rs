@@ -1,8 +1,8 @@
-use super::blob::IrSig;
 use super::code::CorILMethod;
 use super::member::{Field, ImplMap, MemberRef, MethodDef};
 use super::module::{Mod, ModRef};
 use super::param::Param;
+use super::sig::IrSig;
 use super::stand_alone_sig::IrStandAloneSig;
 use super::ty::{TypeDef, TypeRef};
 

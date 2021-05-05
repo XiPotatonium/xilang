@@ -1,6 +1,6 @@
 mod op;
 
-use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl, Type};
+use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl};
 use super::heap::Heap;
 use super::shared_mem::SharedMem;
 use super::stack::{ActivationRecord, Args, EvalStack, ILocals, Locals, Slot, SlotTag};
@@ -241,8 +241,6 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::Char
                         | BuiltinType::U1
                         | BuiltinType::I1
-                        | BuiltinType::U2
-                        | BuiltinType::I2
                         | BuiltinType::U4
                         | BuiltinType::I4
                         | BuiltinType::U8
@@ -251,6 +249,7 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::INative
                         | BuiltinType::R4
                         | BuiltinType::R8
+                        | BuiltinType::Class(_)
                         | BuiltinType::ByRef(_)
                         | BuiltinType::Array(_) => {
                             let ret_v = cur_state.eval_stack.pop_with_slot();
@@ -262,7 +261,6 @@ impl<'m> TExecutor<'m> {
                                 *state.ret_addr = ret_v;
                             }
                         }
-                        BuiltinType::Class(_) => unreachable!(),
                         BuiltinType::Unk => unreachable!(),
                     }
                 }
@@ -416,15 +414,13 @@ impl<'m> TExecutor<'m> {
 
                     unsafe {
                         match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                            BuiltinType::Void | BuiltinType::Unk => {
                                 unreachable!()
                             }
                             BuiltinType::Bool => unimplemented!(),
                             BuiltinType::Char => unimplemented!(),
                             BuiltinType::U1 => unimplemented!(),
                             BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U2 => unimplemented!(),
-                            BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
                                 cur_state.eval_stack.push_i32(*(field_addr as *const i32));
@@ -435,6 +431,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::INative => unimplemented!(),
                             BuiltinType::R4 => unimplemented!(),
                             BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::Class(_) => unimplemented!(),
                             BuiltinType::ByRef(_) => unimplemented!(),
                             BuiltinType::Array(_) => unimplemented!(),
                         }
@@ -466,15 +463,13 @@ impl<'m> TExecutor<'m> {
 
                     unsafe {
                         match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                            BuiltinType::Void | BuiltinType::Unk => {
                                 unreachable!()
                             }
                             BuiltinType::Bool => unimplemented!(),
                             BuiltinType::Char => unimplemented!(),
                             BuiltinType::U1 => unimplemented!(),
                             BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U2 => unimplemented!(),
-                            BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
                                 *(field_addr as *mut i32) = v.data.i32_;
@@ -485,6 +480,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::INative => unimplemented!(),
                             BuiltinType::R4 => unimplemented!(),
                             BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::Class(_) => unimplemented!(),
                             BuiltinType::ByRef(_) => unimplemented!(),
                             BuiltinType::Array(_) => unimplemented!(),
                         }
@@ -510,15 +506,13 @@ impl<'m> TExecutor<'m> {
 
                     unsafe {
                         match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                            BuiltinType::Void | BuiltinType::Unk => {
                                 unreachable!()
                             }
                             BuiltinType::Bool => unimplemented!(),
                             BuiltinType::Char => unimplemented!(),
                             BuiltinType::U1 => unimplemented!(),
                             BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U2 => unimplemented!(),
-                            BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
                                 cur_state.eval_stack.push_i32(*(f.addr as *const i32));
@@ -529,6 +523,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::INative => unimplemented!(),
                             BuiltinType::R4 => unimplemented!(),
                             BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::Class(_) => unimplemented!(),
                             BuiltinType::ByRef(_) => unimplemented!(),
                             BuiltinType::Array(_) => unimplemented!(),
                         }
@@ -557,15 +552,13 @@ impl<'m> TExecutor<'m> {
 
                     unsafe {
                         match f.ty {
-                            BuiltinType::Void | BuiltinType::Unk | BuiltinType::Class(_) => {
+                            BuiltinType::Void | BuiltinType::Unk => {
                                 unreachable!()
                             }
                             BuiltinType::Bool => unimplemented!(),
                             BuiltinType::Char => unimplemented!(),
                             BuiltinType::U1 => unimplemented!(),
                             BuiltinType::I1 => unimplemented!(),
-                            BuiltinType::U2 => unimplemented!(),
-                            BuiltinType::I2 => unimplemented!(),
                             BuiltinType::U4 => unimplemented!(),
                             BuiltinType::I4 => {
                                 *(f.addr as *mut i32) = v.data.i32_;
@@ -576,6 +569,7 @@ impl<'m> TExecutor<'m> {
                             BuiltinType::INative => unimplemented!(),
                             BuiltinType::R4 => unimplemented!(),
                             BuiltinType::R8 => unimplemented!(),
+                            BuiltinType::Class(_) => unimplemented!(),
                             BuiltinType::ByRef(_) => unimplemented!(),
                             BuiltinType::Array(_) => unimplemented!(),
                         }

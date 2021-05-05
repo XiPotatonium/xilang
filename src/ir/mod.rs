@@ -3,7 +3,7 @@ mod bc_serde;
 mod text_serde;
 
 pub mod attrib;
-pub mod blob;
+pub mod sig;
 pub mod tok;
 pub mod util;
 

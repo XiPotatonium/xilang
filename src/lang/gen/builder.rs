@@ -1,5 +1,4 @@
 use xir::attrib::*;
-use xir::blob::{EleType, IrSig, MethodSigFlag, MethodSigFlagTag};
 use xir::code::CorILMethod;
 use xir::file::IrFile;
 use xir::inst::Inst;
@@ -8,6 +7,7 @@ use xir::member::{
     MemberRefParent, MethodDef,
 };
 use xir::module::{Mod, ModRef};
+use xir::sig::{self, IrSig, MethodSigFlag, MethodSigFlagTag, TypeSig};
 use xir::stand_alone_sig::IrStandAloneSig;
 use xir::tok::{to_tok, TokTag};
 use xir::ty::{get_typeref_parent, ResolutionScope, TypeDef, TypeDefOrRef, TypeRef};
@@ -206,11 +206,12 @@ impl Builder {
             // no locals
             0
         } else {
-            let mut local_var_ty = Vec::new();
-            for var in locals.iter() {
-                local_var_ty.push(self.to_sig_ty(&var.ty));
+            // silly rust
+            let mut locals_ty = Vec::new();
+            for v in locals.iter() {
+                locals_ty.push(self.to_local_sig(v));
             }
-            self.file.blob_heap.push(IrSig::LocalVar(local_var_ty));
+            self.file.blob_heap.push(IrSig::LocalVar(locals_ty));
             self.file.stand_alone_sig_tbl.push(IrStandAloneSig {
                 sig: self.file.blob_heap.len() as u32 - 1,
             });
@@ -272,14 +273,33 @@ impl Builder {
         }
     }
 
-    fn to_sig_ty(&mut self, ty: &RValType) -> EleType {
+    fn to_param(&mut self, param: &Param) -> sig::ParamType {
+        sig::ParamType {
+            ty: sig::InnerParamType::Default(self.to_sig_ty(&param.ty)),
+        }
+    }
+
+    fn to_ret(&mut self, ret_ty: &RValType) -> sig::RetType {
+        sig::RetType {
+            ty: if let RValType::Void = ret_ty {
+                sig::InnerRetType::Void
+            } else {
+                sig::InnerRetType::Default(self.to_sig_ty(ret_ty))
+            },
+        }
+    }
+
+    fn to_local_sig(&mut self, var: &Var) -> sig::InnerLocalVarType {
+        sig::InnerLocalVarType::Default(self.to_sig_ty(&var.ty))
+    }
+
+    fn to_sig_ty(&mut self, ty: &RValType) -> TypeSig {
         match ty {
-            RValType::Bool => EleType::Boolean,
-            RValType::U8 => EleType::U1,
-            RValType::Char => EleType::Char,
-            RValType::I32 => EleType::I4,
-            RValType::F64 => EleType::R8,
-            RValType::Void => EleType::Void,
+            RValType::Bool => TypeSig::Boolean,
+            RValType::U8 => TypeSig::U1,
+            RValType::Char => TypeSig::Char,
+            RValType::I32 => TypeSig::I4,
+            RValType::F64 => TypeSig::R8,
             RValType::Never => unreachable!(),
             RValType::Obj(mod_name, name) => {
                 let (class_idx, class_tag) = self.add_const_class(mod_name, name);
@@ -288,9 +308,10 @@ impl Builder {
                     TypeDefOrRef::TypeRef => to_tok(class_idx, TokTag::TypeRef),
                     TypeDefOrRef::TypeSpec => unimplemented!(),
                 };
-                EleType::ByRef(Box::new(EleType::Class(tok)))
+                TypeSig::Class(tok)
             }
             RValType::Array(_) => unimplemented!(),
+            RValType::Void => unreachable!(),
         }
     }
 
@@ -317,8 +338,8 @@ impl Builder {
         if let Some(ret) = self.member_sig_map.get(&desc) {
             *ret
         } else {
-            let ps = ps.iter().map(|p| self.to_sig_ty(&p.ty)).collect();
-            let ret_ty = self.to_sig_ty(ret_ty);
+            let ps = ps.iter().map(|p| self.to_param(&p)).collect();
+            let ret_ty = self.to_ret(ret_ty);
             let flag = if is_instance {
                 MethodSigFlag::new(MethodSigFlagTag::HasThis)
             } else {

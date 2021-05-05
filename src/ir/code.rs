@@ -1,6 +1,7 @@
 use super::bc_serde::{IDeserializer, ISerializable};
 use super::inst::Inst;
 
+use std::iter::Peekable;
 use std::slice::Iter;
 
 /// Similar to fat format
@@ -32,20 +33,24 @@ impl ISerializable for CorILMethod {
 }
 
 struct InstDeserializer<'i> {
-    stream: Iter<'i, u8>,
+    stream: Peekable<Iter<'i, u8>>,
     bytes_taken: u32,
 }
 
 impl<'i> InstDeserializer<'i> {
     fn new(insts: &Vec<u8>) -> InstDeserializer {
         InstDeserializer {
-            stream: insts.iter(),
+            stream: insts.iter().peekable(),
             bytes_taken: 0,
         }
     }
 }
 
 impl<'i> IDeserializer for InstDeserializer<'i> {
+    fn peek_byte(&mut self) -> u8 {
+        **(self.stream.peek().unwrap())
+    }
+
     fn take_byte(&mut self) -> u8 {
         self.bytes_taken += 1;
         *(&mut self.stream).next().unwrap()

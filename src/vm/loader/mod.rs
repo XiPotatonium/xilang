@@ -6,9 +6,9 @@ use super::shared_mem::SharedMem;
 use super::VMCfg;
 
 use xir::attrib::*;
-use xir::blob::IrSig;
 use xir::file::*;
 use xir::member::MemberForwarded;
+use xir::sig::IrSig;
 use xir::util::path::{IModPath, ModPath};
 use xir::CCTOR_NAME;
 
@@ -177,7 +177,7 @@ impl<'c> Loader<'c> {
                 } else {
                     panic!();
                 };
-                let method_sig = method_sig_from_ir(&file, method_entry.name, ps);
+                let method_sig = method_str_desc_from_ir(&file, method_entry.name, ps);
                 let mut ps: Vec<Param> = (0..ps.len())
                     .into_iter()
                     .map(|_| Param::new(self.empty_str, ParamAttrib::default()))

@@ -1,9 +1,9 @@
 use super::attrib::*;
-use super::blob::{EleType, IrSig, MethodSigFlagTag};
 use super::file::IrFile;
 use super::inst::Inst;
 use super::member::MemberForwarded;
 use super::param::Param;
+use super::sig::{IrSig, MethodSigFlagTag, ParamType, RetType};
 use super::ty::TypeDefOrRef;
 
 use std::fmt;
@@ -36,7 +36,31 @@ impl IrFile {
         &self,
         f: &mut fmt::Formatter<'_>,
         p: Option<&Param>,
-        ty: &EleType,
+        ty: &ParamType,
+    ) -> fmt::Result {
+        if let Some(p) = p {
+            let name = self.get_str(p.name);
+            let flag = ParamAttrib::from(p.flag);
+
+            if name.len() != 0 {
+                write!(f, "{}: ", name)?;
+            }
+
+            if !flag.is(ParamAttribFlag::Default) {
+                // default flag will not display
+                write!(f, "{} ", flag)?;
+            }
+        }
+
+        ty.fmt(f, self)
+    }
+
+    /// who would name a return value?
+    fn write_named_ret(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        p: Option<&Param>,
+        ty: &RetType,
     ) -> fmt::Result {
         if let Some(p) = p {
             let name = self.get_str(p.name);
@@ -112,32 +136,31 @@ impl IrFile {
                 write!(f, "instance ")?;
             }
             write!(f, "(")?;
-            for (i, ty) in ps.iter().enumerate() {
+            for (i, p_ty) in ps.iter().enumerate() {
                 if i != 0 {
                     write!(f, ", ")?;
                 }
                 // pattern binding after @ ?
                 if let Some(&p) = param_iter.peek() {
                     if p.sequence - 1 == i as u16 {
-                        self.write_named_param(f, Some(p), ty)?;
+                        self.write_named_param(f, Some(p), p_ty)?;
                         param_iter.next();
                     } else {
-                        self.write_named_param(f, None, ty)?;
+                        self.write_named_param(f, None, p_ty)?;
                     }
                 } else {
-                    self.write_named_param(f, None, ty)?;
+                    self.write_named_param(f, None, p_ty)?;
                 }
             }
             write!(f, ") -> ")?;
             if let Some(p) = param.first() {
                 if p.sequence == 0 {
-                    // who would name a return value?
-                    self.write_named_param(f, Some(p), ret)?;
+                    self.write_named_ret(f, Some(p), ret)?;
                 } else {
-                    self.write_named_param(f, None, ret)?;
+                    self.write_named_ret(f, None, ret)?;
                 }
             } else {
-                self.write_named_param(f, None, ret)?;
+                self.write_named_ret(f, None, ret)?;
             }
         } else {
             unreachable!();

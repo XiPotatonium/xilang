@@ -1,8 +1,10 @@
 use xir::attrib::{MethodAttrib, MethodAttribFlag, MethodImplAttrib, PInvokeAttrib, ParamAttrib};
-use xir::blob::EleType;
 use xir::file::IrFile;
+use xir::sig;
 
-use super::{builtin_ty_sig, ir_ty_sig, BuiltinType, ILModule, Module, Type, REF_SIZE};
+use super::{
+    builtin_ty_str_desc, param_sig_str_desc, BuiltinType, ILModule, Module, Type, REF_SIZE,
+};
 
 pub struct Param {
     pub name: usize,
@@ -43,11 +45,11 @@ pub struct MethodDesc {
 }
 
 impl MethodDesc {
-    pub fn init_ps_ty(&mut self, ps_ty: &Vec<EleType>, ctx: &ILModule) {
+    pub fn init_ps_ty(&mut self, ps_ty: &Vec<sig::ParamType>, ctx: &ILModule) {
         assert_eq!(self.ps.len(), ps_ty.len());
         let mut offset = if self.is_static() { 0 } else { REF_SIZE };
         for (p, p_ty) in self.ps.iter_mut().zip(ps_ty.iter()) {
-            p.ty = BuiltinType::from_ir_ele_ty(p_ty, ctx);
+            p.ty = BuiltinType::from_param(p_ty, ctx);
             p.offset = offset;
             // no alignment
             offset += p.ty.byte_size();
@@ -60,11 +62,11 @@ impl MethodDesc {
     }
 }
 
-pub fn method_sig(str_pool: &Vec<String>, name: usize, ps: &Vec<BuiltinType>) -> String {
+pub fn method_str_desc(str_pool: &Vec<String>, name: usize, ps: &Vec<BuiltinType>) -> String {
     let mut sig = format!("{}(", str_pool[name]);
 
     for p in ps.iter() {
-        sig.push_str(&builtin_ty_sig(p, str_pool));
+        sig.push_str(&builtin_ty_str_desc(p, str_pool));
     }
 
     sig.push(')');
@@ -72,11 +74,11 @@ pub fn method_sig(str_pool: &Vec<String>, name: usize, ps: &Vec<BuiltinType>) ->
     sig
 }
 
-pub fn method_sig_from_ir(ctx: &IrFile, name: u32, ps: &Vec<EleType>) -> String {
+pub fn method_str_desc_from_ir(ctx: &IrFile, name: u32, ps: &Vec<sig::ParamType>) -> String {
     let mut sig = format!("{}(", ctx.get_str(name));
 
     for p in ps.iter() {
-        sig.push_str(&ir_ty_sig(p, ctx));
+        sig.push_str(&param_sig_str_desc(p, ctx));
     }
 
     sig.push(')');
@@ -127,12 +129,12 @@ impl MethodILImpl {
         }
     }
 
-    pub fn init_locals(&mut self, locals: &Vec<EleType>, ctx: &ILModule) {
+    pub fn init_locals(&mut self, locals: &Vec<sig::InnerLocalVarType>, ctx: &ILModule) {
         assert!(self.locals.is_empty());
         let mut offset: usize = 0;
         // no alignment
         for local_ty in locals.iter() {
-            let local_ty = BuiltinType::from_ir_ele_ty(local_ty, ctx);
+            let local_ty = BuiltinType::from_local(local_ty, ctx);
             let local_size = local_ty.byte_size();
             self.locals.push(Local {
                 ty: local_ty,

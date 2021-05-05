@@ -5,13 +5,75 @@ use std::fs;
 use std::path::Path;
 
 use xir::attrib::*;
-use xir::blob::IrSig;
 use xir::file::*;
+use xir::sig::{self, IrSig, TypeSig};
+use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::{ResolutionScope, TypeDefOrRef};
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
 use super::{Class, Field, Method, ModRef, Param};
+
+fn to_param(sig: &sig::ParamType, ctx: &IrFile) -> Param {
+    Param {
+        id: String::from(""),
+        attrib: ParamAttrib::default(),
+        ty: match &sig.ty {
+            sig::InnerParamType::Default(ty) => to_rval(ty, ctx),
+            sig::InnerParamType::ByRef(_) => unimplemented!(),
+        },
+    }
+}
+
+fn to_ret(sig: &sig::RetType, ctx: &IrFile) -> RValType {
+    match &sig.ty {
+        sig::InnerRetType::Default(ty) => to_rval(ty, ctx),
+        sig::InnerRetType::ByRef(_) => unimplemented!(),
+        sig::InnerRetType::Void => RValType::Void,
+    }
+}
+
+fn to_rval(sig: &TypeSig, ctx: &IrFile) -> RValType {
+    match sig {
+        TypeSig::Boolean => RValType::Bool,
+        TypeSig::Char => RValType::Char,
+        TypeSig::I1 => unimplemented!(),
+        TypeSig::U1 => RValType::U8,
+        TypeSig::I4 => RValType::I32,
+        TypeSig::U4 => unimplemented!(),
+        TypeSig::I8 => unimplemented!(),
+        TypeSig::U8 => unimplemented!(),
+        TypeSig::R4 => unimplemented!(),
+        TypeSig::R8 => RValType::F64,
+        TypeSig::I => unimplemented!(),
+        TypeSig::U => unimplemented!(),
+        TypeSig::Array(_, _) => unimplemented!(),
+        TypeSig::String => unimplemented!(),
+        TypeSig::Class(tok) => {
+            // tok is TypeRef or TypeDef
+            let (tag, idx) = get_tok_tag(*tok);
+            let idx = idx as usize - 1;
+            match tag {
+                TokTag::TypeDef => RValType::Obj(
+                    ctx.mod_name().to_owned(),
+                    ctx.get_str(ctx.typedef_tbl[idx].name).to_owned(),
+                ),
+                TokTag::TypeRef => {
+                    let (parent_tag, parent_idx) = ctx.typeref_tbl[idx].get_parent();
+                    match parent_tag {
+                        ResolutionScope::Mod => unreachable!(),
+                        ResolutionScope::ModRef => RValType::Obj(
+                            ctx.get_str(ctx.modref_tbl[parent_idx].name).to_owned(),
+                            ctx.get_str(ctx.typeref_tbl[idx].name).to_owned(),
+                        ),
+                        ResolutionScope::TypeRef => unreachable!(),
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+}
 
 pub struct ExtModule {
     pub mod_path: ModPath,
@@ -104,14 +166,7 @@ pub fn load_external_crate(
             let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
 
             if let IrSig::Method(_, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
-                let mut ps: Vec<Param> = ps
-                    .iter()
-                    .map(|t| Param {
-                        id: String::from(""),
-                        attrib: ParamAttrib::default(),
-                        ty: RValType::from_ir_ele_ty(t, &file),
-                    })
-                    .collect();
+                let mut ps: Vec<Param> = ps.iter().map(|t| to_param(t, &file)).collect();
                 for p in param.iter() {
                     if p.sequence == 0 {
                         // xilang has no interests about return type
@@ -125,7 +180,7 @@ pub fn load_external_crate(
                     parent: class.as_ref() as *const Class,
                     name: file.get_str(method_entry.name).to_owned(),
                     ps,
-                    ret: RValType::from_ir_ele_ty(ret, &file),
+                    ret: to_ret(ret, &file),
                     attrib: flag,
                     impl_flag,
                     ast: None, // external method has no ast
@@ -156,7 +211,7 @@ pub fn load_external_crate(
                     parent: class.as_ref() as *const Class,
                     name: file.get_str(field_entry.name).to_owned(),
                     attrib: flag,
-                    ty: RValType::from_ir_ele_ty(f_sig, &file),
+                    ty: to_rval(f_sig, &file),
                     // idx of external field will not be used
                     idx: 0,
                 });

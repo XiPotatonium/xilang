@@ -50,14 +50,11 @@ impl Slot {
         match ty {
             BuiltinType::Void => panic!("Cannot alloc void on stack"),
             BuiltinType::Unk => unreachable!(),
-            BuiltinType::Class(_) => panic!("Cannot alloc class on stack"),
             BuiltinType::Bool
             | BuiltinType::Char
             | BuiltinType::U1
-            | BuiltinType::U2
             | BuiltinType::U4
             | BuiltinType::I1
-            | BuiltinType::I2
             | BuiltinType::I4 => Slot {
                 tag: SlotTag::I32,
                 data: SlotData { i32_: 0 },
@@ -69,8 +66,12 @@ impl Slot {
             BuiltinType::UNative | BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::ByRef(_) => unimplemented!(),
-            BuiltinType::Array(_) => unimplemented!(),
+            BuiltinType::Class(_) | BuiltinType::ByRef(_) | BuiltinType::Array(_) => Slot {
+                tag: SlotTag::Ref,
+                data: SlotData {
+                    ptr_: ptr::null_mut(),
+                },
+            },
         }
     }
 
