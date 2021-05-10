@@ -153,16 +153,12 @@ impl ISerializable for Inst {
                 tok.serialize(buf);
             }
 
-            Inst::LdLen => {
-                0x8Eu8.serialize(buf);
-            }
+            Inst::LdLen => 0x8Eu8.serialize(buf),
 
-            Inst::LdElemI4 => {
-                0x94u8.serialize(buf);
-            }
-            Inst::StElemI4 => {
-                0x9Eu8.serialize(buf);
-            }
+            Inst::LdElemI4 => 0x94u8.serialize(buf),
+            Inst::LdElemRef => 0x9Au8.serialize(buf),
+            Inst::StElemI4 => 0x9Eu8.serialize(buf),
+            Inst::StElemRef => 0xA2u8.serialize(buf),
 
             Inst::LdElem(tok) => {
                 0xA3u8.serialize(buf);
@@ -248,7 +244,9 @@ impl ISerializable for Inst {
             0x8D => Inst::NewArr(u32::deserialize(buf)),
             0x8E => Inst::LdLen,
             0x94 => Inst::LdElemI4,
+            0x9A => Inst::LdElemRef,
             0x9E => Inst::StElemI4,
+            0xA2 => Inst::StElemRef,
             0xA3 => Inst::LdElem(u32::deserialize(buf)),
             0xA4 => Inst::StElem(u32::deserialize(buf)),
 

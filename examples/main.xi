@@ -17,6 +17,14 @@ class Derived: Base {
     }
 }
 
+class Int32 {
+    let val: i32;
+
+    Self(self, v: i32) {
+        self.val = v;
+    }
+}
+
 class Program: IOHelper::IOBase {
     fn logic_test() {
         let d: demo::Demo = new crate::demo::Demo(1, 24);
@@ -47,8 +55,24 @@ class Program: IOHelper::IOBase {
     }
 
     fn str_arr_test() {
-        // let arr = new int[100];
         let s: string = "Hello world!";
+        let arr: Int32[] = new Int32[10];
+        let i = 0;
+        loop {
+            if i >= arr.len {
+                break;
+            }
+            arr[i] = new Int32(i);
+            i = i + 1;
+        }
+        loop {
+            i = i - 1;
+            if i < 0 {
+                break;
+            }
+            std::IO::write(arr[i].val);
+            std::IO::putchar(std::IO::SPACE);
+        }
     }
 
     fn main() {

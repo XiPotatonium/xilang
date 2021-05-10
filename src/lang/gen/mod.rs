@@ -76,6 +76,11 @@ pub enum ValType {
     KwLSelf,
     // index into method.ps
     Arg(usize),
+
+    /// arrlen is not handled like a field
+    ArrLen,
+    /// array element type
+    ArrAcc(RValType),
 }
 
 #[derive(Clone, Eq)]
@@ -90,6 +95,7 @@ pub enum RValType {
     String,
     // module fullname, class name
     Obj(String, String),
+    /// elety
     Array(Box<RValType>),
 }
 
@@ -110,6 +116,7 @@ impl PartialEq for RValType {
             | (Self::String, Self::String)
             | (Self::Void, Self::Void) => true,
             (Self::Obj(mod0, class0), Self::Obj(mod1, class1)) => mod0 == mod1 && class0 == class1,
+            (Self::Array(ele_ty1), Self::Array(ele_ty2)) => ele_ty1 == ele_ty2,
             _ => false,
         }
     }
@@ -127,7 +134,7 @@ impl fmt::Display for RValType {
             Self::Never => write!(f, "!"),
             Self::String => write!(f, "Ostd/String;"),
             Self::Obj(m, s) => write!(f, "O{}/{};", m, s),
-            Self::Array(_) => unimplemented!(),
+            Self::Array(ty) => write!(f, "[{}", ty),
         }
     }
 }
@@ -142,8 +149,10 @@ impl fmt::Display for ValType {
             Self::Class(class) => write!(f, "(Class){}", unsafe { class.as_ref().unwrap() }),
             Self::Module(m) => write!(f, "(Mod){}", m),
             Self::Local(n) => write!(f, "(Local){}", n),
-            ValType::KwLSelf => write!(f, "(Arg)self"),
+            Self::KwLSelf => write!(f, "(Arg)self"),
             Self::Arg(n) => write!(f, "(Arg){}", n),
+            Self::ArrLen => write!(f, "(arr.len)"),
+            Self::ArrAcc(ele_ty) => write!(f, "(acc){}[]", ele_ty),
         }
     }
 }

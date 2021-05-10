@@ -14,6 +14,7 @@ const TOK_METHODDEF_TAG: u32 = 0x06;
 const TOK_PARAM_TAG: u32 = 0x08;
 const TOK_STANDALONESIG_TAG: u32 = 0x11;
 const TOK_MEMBERREF_TAG: u32 = 0x0A;
+const TOK_TYPESPEC_TAG: u32 = 0x1B;
 const TOK_IMPLMAP_TAG: u32 = 0x1C;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -22,6 +23,7 @@ pub enum TokTag {
     ModRef,
     TypeDef,
     TypeRef,
+    TypeSpec,
     Field,
     MethodDef,
     MemberRef,
@@ -37,6 +39,7 @@ impl From<TokTag> for u32 {
             TokTag::ModRef => TOK_MODREF_TAG,
             TokTag::TypeDef => TOK_TYPEDEF_TAG,
             TokTag::TypeRef => TOK_TYPEREF_TAG,
+            TokTag::TypeSpec => TOK_TYPESPEC_TAG,
             TokTag::Field => TOK_FIELD_TAG,
             TokTag::MethodDef => TOK_METHODDEF_TAG,
             TokTag::MemberRef => TOK_MEMBERREF_TAG,
@@ -60,6 +63,7 @@ pub fn get_tok_tag(tok: u32) -> (TokTag, u32) {
             TOK_MODREF_TAG => TokTag::ModRef,
             TOK_TYPEDEF_TAG => TokTag::TypeDef,
             TOK_TYPEREF_TAG => TokTag::TypeRef,
+            TOK_TYPESPEC_TAG => TokTag::TypeSpec,
             TOK_METHODDEF_TAG => TokTag::MethodDef,
             TOK_FIELD_TAG => TokTag::Field,
             TOK_MEMBERREF_TAG => TokTag::MemberRef,
@@ -84,6 +88,7 @@ pub fn fmt_tok(tok: u32, f: &mut fmt::Formatter<'_>, ctx: &IrFile) -> fmt::Resul
         TokTag::ModRef => ctx.modref_tbl[idx].fmt(f, ctx),
         TokTag::TypeDef => ctx.typedef_tbl[idx].fullname(f, ctx),
         TokTag::TypeRef => ctx.typeref_tbl[idx].fullname(f, ctx),
+        TokTag::TypeSpec => ctx.typespec_tbl[idx].fmt(f, ctx),
         TokTag::Field => {
             if ctx.typedef_tbl.len() == 0 || raw_idx < ctx.typedef_tbl[0].fields {
                 // field has no parent

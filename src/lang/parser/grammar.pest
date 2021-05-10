@@ -25,16 +25,16 @@ Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)
 Pattern = { Id | TuplePattern }
 TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
 
-Type = { 
+Type = { ArrType | NonArrType }
+BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwString }
+TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
+NonArrType = _{
     BasicType
     | KwUSelf
     | PathExpr
     | TupleType
-    | ArrType
 }
-BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwString }
-TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
-ArrType = { "[" ~ Type ~ ";" ~ Expr? ~ "]" }
+ArrType = { NonArrType ~ "[" ~ "]" }
 
 Stmt = { LetStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
 LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ (Eq ~ Expr)? ~ Semi }
@@ -63,7 +63,7 @@ ObjAccessExpr = { "." ~ Id }
 PathAccessExpr = { "::" ~ Id }
 ArrAccessExpr = { "[" ~ Expr ~ "]" }
 CallExpr = { PrimaryExpr ~ (Args | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
-NewExpr = { "new" ~ Type ~ Args | CallExpr }
+NewExpr = { "new" ~ Type ~ (Args | ArrAccessExpr) | CallExpr }
 UnaryExpr = { (Not | Plus | Minus)* ~ NewExpr }
 CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
 MulExpr = { CastExpr ~ ((Star | Slash | Percent) ~ CastExpr)* }

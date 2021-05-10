@@ -36,21 +36,26 @@ macro_rules! exec_cmp_op {
         unsafe {
             match $lhs.tag {
                 SlotTag::I32 => match $rhs.tag {
-                    SlotTag::I32 => {
-                        $lhs.data.i32_ $op $rhs.data.i32_
-                    }
+                    SlotTag::I32 => $lhs.data.i32_ $op $rhs.data.i32_,
                     SlotTag::I64 => panic!("Cannot cmp between i32 and i64"),
-                    SlotTag::INative => {
-                        ($lhs.data.i32_ as isize) $op $rhs.data.inative_
-                    }
-                    SlotTag::F32 => panic!("Cannot cmp between float and int"),
-                    SlotTag::F64 => panic!("Cannot cmp between float and int"),
+                    SlotTag::INative => ($lhs.data.i32_ as isize) $op $rhs.data.inative_,
+                    SlotTag::F32 => panic!("Cannot cmp between i32 and float"),
+                    SlotTag::F64 => panic!("Cannot cmp between i32 and double"),
                     SlotTag::Ref => panic!("Cannot cmp ref"),
                     SlotTag::Value => panic!("Cannot cmp value"),
                     SlotTag::Uninit => unreachable!(),
                 },
                 SlotTag::I64 => unimplemented!(),
-                SlotTag::INative => unimplemented!(),
+                SlotTag::INative => match $rhs.tag {
+                    SlotTag::I32 => $lhs.data.inative_ $op ($rhs.data.i32_ as isize),
+                    SlotTag::I64 => panic!("Cannot cmp between inative and i64"),
+                    SlotTag::INative => $lhs.data.inative_ $op $rhs.data.inative_,
+                    SlotTag::F32 => panic!("Cannot cmp between inative and float"),
+                    SlotTag::F64 => panic!("Cannot cmp between inative and double"),
+                    SlotTag::Ref => panic!("Cannot cmp ref"),
+                    SlotTag::Value => panic!("Cannot cmp value"),
+                    SlotTag::Uninit => unreachable!(),
+                }
                 SlotTag::F32 => unimplemented!(),
                 SlotTag::F64 => unimplemented!(),
                 SlotTag::Ref => panic!("Cannot cmp ref"),

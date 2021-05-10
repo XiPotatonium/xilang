@@ -25,11 +25,11 @@ unsafe fn do_load(addr: *const u8, ty: &BuiltinType, stack: &mut EvalStack) {
         BuiltinType::String
         | BuiltinType::Class(_)
         | BuiltinType::ByRef(_)
-        | BuiltinType::Array(_) => stack.push_ptr(*(addr as *const *mut u8)),
+        | BuiltinType::SZArray(_) => stack.push_ptr(*(addr as *const *mut u8)),
     }
 }
 
-pub fn ldfld(cur_state: &mut ActivationRecord) {
+pub fn exec_ldfld(cur_state: &mut ActivationRecord) {
     let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
     let tok = cur_state.consume_u32();
@@ -56,7 +56,7 @@ pub fn ldfld(cur_state: &mut ActivationRecord) {
     }
 }
 
-pub fn stfld(cur_state: &mut ActivationRecord) {
+pub fn exec_stfld(cur_state: &mut ActivationRecord) {
     let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
     let tok = cur_state.consume_u32();
@@ -100,7 +100,7 @@ pub fn stfld(cur_state: &mut ActivationRecord) {
             BuiltinType::String
             | BuiltinType::Class(_)
             | BuiltinType::ByRef(_)
-            | BuiltinType::Array(_) => {
+            | BuiltinType::SZArray(_) => {
                 v.expect(SlotTag::Ref);
                 *(field_addr as *mut *mut u8) = v.data.ptr_;
             }
@@ -108,7 +108,7 @@ pub fn stfld(cur_state: &mut ActivationRecord) {
     }
 }
 
-pub fn ldsfld(cur_state: &mut ActivationRecord) {
+pub fn exec_ldsfld(cur_state: &mut ActivationRecord) {
     let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
     let tok = cur_state.consume_u32();
@@ -129,7 +129,7 @@ pub fn ldsfld(cur_state: &mut ActivationRecord) {
     }
 }
 
-pub fn stsfld(cur_state: &mut ActivationRecord) {
+pub fn exec_stsfld(cur_state: &mut ActivationRecord) {
     let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
 
     let tok = cur_state.consume_u32();
@@ -172,7 +172,7 @@ pub fn stsfld(cur_state: &mut ActivationRecord) {
             BuiltinType::String
             | BuiltinType::Class(_)
             | BuiltinType::ByRef(_)
-            | BuiltinType::Array(_) => {
+            | BuiltinType::SZArray(_) => {
                 v.expect(SlotTag::Ref);
                 *(field_addr as *mut *mut u8) = v.data.ptr_;
             }

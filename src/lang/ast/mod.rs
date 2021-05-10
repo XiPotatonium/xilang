@@ -70,6 +70,8 @@ pub enum AST {
     OpCall(Box<AST>, Vec<Box<AST>>),
     /// ty, ps: Vec<Expr>
     OpNew(Box<ASTType>, Vec<Box<AST>>),
+    /// ty, dim: Expr
+    OpNewArr(Box<ASTType>, Box<AST>),
 
     Id(String),
     TuplePattern(Vec<Box<AST>>),

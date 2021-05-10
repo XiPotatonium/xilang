@@ -10,12 +10,16 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * static/non-static method/field
   * cctor
   * ctor
+  * Virtual method
+  * overload
   * inheritance:
     * all classes except std::Object are derived from std::Object
     * accessing instance fields and methods of base classes
+    * ctor of derived class call default ctor of base class automatically
 * Built-in type:
   * i32
   * bool
+  * single-dim zero-based array: only reference type array
 * expr/stmt:
   * return
   * if
@@ -46,36 +50,29 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 ### 1.2 RoadMap
 
-#### Ver 0.3.1
-
-* Array
-* String
-* OOP:
-  * Virtual method
-  * overload
-  * ctor of derived class call default ctor of base class automatically
-
 #### Ver 0.4.0
 
+* String
+* Attribute
+  * Dllimport attribute
+  * InternalCall
+* builtin type
+  * usize
+  * char
+
+#### Ver 0.5.0
+
 * Generic
-* stdlib
-  * collections
 * Refactor lang
   * DRY
   * make incremental compilation possible
   * lazy loading external class
 * Refactor vm
   * lazy type loading
-  * less unsafe
-* xilang project structure
-  * crate
-* builtin type
-  * usize
 
-#### Ver 0.4.1
+#### Ver 0.5.1
 
 * More builtin type
-  * char
   * bool
   * u8
   * f32/f64
@@ -83,29 +80,28 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * pub use
 * priv/pub flag
 
-#### Ver 0.5.0
+#### Ver 0.5.2
+
+* struct
+* Array for struct type
+* stdlib
+  * collections
+
+#### Ver 0.6.0
 
 * Interface
 * for loop
 * stdlib
   * Iterator interface
 
-#### Ver 0.5.1
-
-* match expr
-
-#### Ver 0.5.2
+#### Ver 0.6.1
 
 * enum
 * union
 
-#### Ver 0.6.0
+#### Ver 0.6.2
 
-* Attribute
-* struct
-* stdlib
-  * tuple
-  * Dllimport attribute
+* match expr
 
 #### Ver 0.1.0
 

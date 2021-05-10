@@ -263,10 +263,12 @@ impl<'c> Loader<'c> {
             }
 
             // link some special types
-            if self.mem.str_pool[this_mod_fullname_addr] == "std"
-                && self.mem.str_pool[ty.name] == "String"
-            {
-                self.mem.str_class = ty.as_ref() as *const Type;
+            if self.mem.str_pool[this_mod_fullname_addr] == "std" {
+                if self.mem.str_pool[ty.name] == "String" {
+                    self.mem.str_class = ty.as_ref() as *const Type;
+                } else if self.mem.str_pool[ty.name] == "Array" {
+                    self.mem.arr_class = ty.as_ref() as *const Type;
+                }
             }
 
             types.push(ty);

@@ -1,5 +1,7 @@
 use super::bc_serde::{IDeserializer, ISerializable};
 use super::file::IrFile;
+use super::text_serde::IrFmt;
+use super::tok::TokTag;
 
 use std::fmt;
 
@@ -99,7 +101,7 @@ const RESOLUTION_SCOPE_TAG_MASK: u32 = (0x1 << RESOLUTION_SCOPE_TAG_SIZE) - 1; /
 
 /// 2 bits tag
 pub enum ResolutionScope {
-    Mod = 0, // Impossible in xilang implementation
+    Mod = 0,
     ModRef = 1,
     // AssemblyRef = 2,
     TypeRef = 3,
@@ -162,4 +164,37 @@ pub enum TypeDefOrRef {
     TypeDef = 0,
     TypeRef = 1,
     TypeSpec = 2,
+}
+
+impl TypeDefOrRef {
+    pub fn to_tok_tag(&self) -> TokTag {
+        match self {
+            TypeDefOrRef::TypeDef => TokTag::TypeDef,
+            TypeDefOrRef::TypeRef => TokTag::TypeRef,
+            TypeDefOrRef::TypeSpec => TokTag::TypeSpec,
+        }
+    }
+}
+
+pub struct TypeSpec {
+    /// index into blob heap
+    pub sig: u32,
+}
+
+impl IrFmt for TypeSpec {
+    fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
+        ctx.blob_heap[self.sig as usize].fmt(f, ctx)
+    }
+}
+
+impl ISerializable for TypeSpec {
+    fn serialize(&self, buf: &mut Vec<u8>) {
+        self.sig.serialize(buf);
+    }
+
+    fn deserialize(buf: &mut dyn IDeserializer) -> Self {
+        TypeSpec {
+            sig: u32::deserialize(buf),
+        }
+    }
 }

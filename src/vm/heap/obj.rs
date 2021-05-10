@@ -18,6 +18,13 @@ pub struct ArrHeader {
     pub len: usize,
 }
 
+impl ArrHeader {
+    pub fn init(&mut self, class: *const Type, len: usize) {
+        self.obj_header.init(class);
+        self.len = len;
+    }
+}
+
 #[repr(C)]
 pub struct StrHeader {
     pub obj_header: ObjHeader,

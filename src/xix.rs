@@ -20,7 +20,7 @@ use vm::VMCfg;
 fn main() {
     let (entry, cfg) = {
         let matches = App::new("xix")
-            .version("0.3.0")
+            .version("0.3.1")
             .author("Xi")
             .about("Hello world! This is xix")
             .arg(

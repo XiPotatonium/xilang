@@ -3,6 +3,7 @@ use xir::inst::Inst;
 use std::mem;
 
 use super::basic_block::{BasicBlock, LLCursor, LinkedList};
+use super::RValType;
 
 pub struct MethodBuilder {
     pub bb: LinkedList<BasicBlock>,
@@ -165,5 +166,23 @@ impl MethodBuilder {
                 }
             }
         })
+    }
+
+    pub fn add_stelem(&mut self, ele_ty: &RValType) -> &mut Self {
+        match ele_ty {
+            RValType::String | RValType::Obj(_, _) | RValType::Array(_) => {
+                self.add_inst(Inst::StElemRef)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn add_ldelem(&mut self, ele_ty: &RValType) -> &mut Self {
+        match ele_ty {
+            RValType::String | RValType::Obj(_, _) | RValType::Array(_) => {
+                self.add_inst(Inst::LdElemRef)
+            }
+            _ => unimplemented!(),
+        }
     }
 }

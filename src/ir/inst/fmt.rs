@@ -108,13 +108,16 @@ impl Inst {
 
             Inst::NewArr(tok) => {
                 write!(f, "newarr ")?;
-                fmt_tok(*tok, f, ctx)
+                fmt_tok(*tok, f, ctx)?;
+                write!(f, "[]")
             }
 
             Inst::LdLen => write!(f, "ldlen"),
 
             Inst::LdElemI4 => write!(f, "ldelem.i4"),
+            Inst::LdElemRef => write!(f, "ldelem.ref"),
             Inst::StElemI4 => write!(f, "stelem.i4"),
+            Inst::StElemRef => write!(f, "stelem.ref"),
 
             Inst::LdElem(tok) => {
                 write!(f, "ldelem ")?;

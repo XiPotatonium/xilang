@@ -254,7 +254,7 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::String
                         | BuiltinType::Class(_)
                         | BuiltinType::ByRef(_)
-                        | BuiltinType::Array(_) => {
+                        | BuiltinType::SZArray(_) => {
                             let ret_v = cur_state.eval_stack.pop_with_slot();
                             let state = self.states.pop().unwrap();
                             if self.states.is_empty() {
@@ -399,18 +399,20 @@ impl<'m> TExecutor<'m> {
                         callee.method_impl.expect_il(),
                     );
                 }
-                0x7B => fld::ldfld(self.states.last_mut().unwrap()),
-                0x7D => fld::stfld(self.states.last_mut().unwrap()),
-                0x7E => fld::ldsfld(self.states.last_mut().unwrap()),
-                0x80 => fld::stsfld(self.states.last_mut().unwrap()),
-                // newarr
-                0x8D => unimplemented!(),
-                // ldlen
-                0x8E => unimplemented!(),
+                0x7B => fld::exec_ldfld(self.states.last_mut().unwrap()),
+                0x7D => fld::exec_stfld(self.states.last_mut().unwrap()),
+                0x7E => fld::exec_ldsfld(self.states.last_mut().unwrap()),
+                0x80 => fld::exec_stsfld(self.states.last_mut().unwrap()),
+                0x8D => arr::exec_newarr(self.states.last_mut().unwrap(), mem),
+                0x8E => arr::exec_ldlen(self.states.last_mut().unwrap()),
                 // ldelem.i4
                 0x94 => unimplemented!(),
+                // ldelem.ref
+                0x9A => arr::exec_ldelem_ref(self.states.last_mut().unwrap()),
                 // stelem.i4
                 0x9E => unimplemented!(),
+                // stelem.ref
+                0xA2 => arr::exec_stelem_ref(self.states.last_mut().unwrap()),
                 // ldelem
                 0xA3 => unimplemented!(),
                 // stelem

@@ -1,11 +1,11 @@
-use super::data::{Module, Type};
+use super::data::{Module, Type, REF_SIZE};
 use super::heap::Heap;
 
 use std::collections::HashMap;
 use std::ptr;
 
 pub struct SharedMem {
-    heap: Heap,
+    pub heap: Heap,
 
     /// name -> module
     pub mods: HashMap<usize, Box<Module>>,
@@ -17,6 +17,7 @@ pub struct SharedMem {
     /// index of ""
     pub empty_str_idx: usize,
     pub str_class: *const Type,
+    pub arr_class: *const Type,
 }
 
 /// default to be 1MB
@@ -32,6 +33,7 @@ impl SharedMem {
             std_str_idx: 0,
             empty_str_idx: 0,
             str_class: ptr::null(),
+            arr_class: ptr::null(),
         }
     }
 }
@@ -44,5 +46,11 @@ impl SharedMem {
     pub unsafe fn new_str_from_str(&mut self, s: usize) -> *mut u8 {
         self.heap
             .new_str_from_str(self.str_class, &self.str_pool[s])
+    }
+
+    pub unsafe fn new_arr(&mut self, _: *const Type, size: usize) -> *mut u8 {
+        // TODO: create corresponding array type, rather than using ele_ty
+        // Now only ref array is supported
+        self.heap.new_arr(self.arr_class, REF_SIZE, size)
     }
 }

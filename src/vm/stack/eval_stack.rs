@@ -69,7 +69,7 @@ impl Slot {
             BuiltinType::String
             | BuiltinType::Class(_)
             | BuiltinType::ByRef(_)
-            | BuiltinType::Array(_) => Slot {
+            | BuiltinType::SZArray(_) => Slot {
                 tag: SlotTag::Ref,
                 data: SlotData {
                     ptr_: ptr::null_mut(),
@@ -242,5 +242,14 @@ impl EvalStack {
             tag: SlotTag::I32,
             data: SlotData { i32_: v },
         });
+    }
+
+    pub fn push_usize(&mut self, v: usize) {
+        self.push_slot(Slot {
+            tag: SlotTag::INative,
+            data: SlotData {
+                inative_: unsafe { mem::transmute::<usize, isize>(v) },
+            },
+        })
     }
 }

@@ -9,7 +9,7 @@ use super::module::{Mod, ModRef};
 use super::param::Param;
 use super::sig::IrSig;
 use super::stand_alone_sig::IrStandAloneSig;
-use super::ty::{TypeDef, TypeRef};
+use super::ty::{TypeDef, TypeRef, TypeSpec};
 
 pub trait IDeserializer {
     fn peek_byte(&mut self) -> u8;
@@ -84,6 +84,7 @@ impl IrFile {
 
         self.typedef_tbl.serialize(&mut buf);
         self.typeref_tbl.serialize(&mut buf);
+        self.typespec_tbl.serialize(&mut buf);
 
         self.field_tbl.serialize(&mut buf);
         self.method_tbl.serialize(&mut buf);
@@ -119,8 +120,9 @@ impl IrFile {
         let mod_tbl = Vec::deserialize(&mut buf);
         let modref_tbl = Vec::deserialize(&mut buf);
 
-        let type_tbl = Vec::deserialize(&mut buf);
+        let typedef_tbl = Vec::deserialize(&mut buf);
         let typeref_tbl = Vec::deserialize(&mut buf);
+        let typespec_tbl = Vec::deserialize(&mut buf);
 
         let field_tbl = Vec::deserialize(&mut buf);
         let method_tbl = Vec::deserialize(&mut buf);
@@ -143,8 +145,9 @@ impl IrFile {
             mod_tbl,
             modref_tbl,
 
-            typedef_tbl: type_tbl,
+            typedef_tbl,
             typeref_tbl,
+            typespec_tbl,
 
             field_tbl,
             method_tbl,
@@ -276,6 +279,7 @@ impl_vec_serde!(Mod);
 impl_vec_serde!(ModRef);
 impl_vec_serde!(TypeDef);
 impl_vec_serde!(TypeRef);
+impl_vec_serde!(TypeSpec);
 impl_vec_serde!(Field);
 impl_vec_serde!(MethodDef);
 impl_vec_serde!(MemberRef);

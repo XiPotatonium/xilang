@@ -147,3 +147,44 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType
     }
     ret
 }
+
+pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
+    let dim_ty = gen(ctx, dim);
+    // only i32 or isize if allowed
+    match dim_ty.expect_rval_ref() {
+        RValType::I32 => {}
+        _ => panic!(
+            "Array size only support i32 or isize val, but found {}",
+            dim_ty
+        ),
+    }
+
+    let ele_ty = ctx.get_ty(ty);
+
+    let ty_tok = match &ele_ty {
+        // TODO: convert to their std class/struct type
+        RValType::Bool
+        | RValType::U8
+        | RValType::Char
+        | RValType::I32
+        | RValType::F64
+        | RValType::String => unimplemented!(),
+        RValType::Obj(mod_name, name) => {
+            let (idx, tag) = ctx
+                .module
+                .builder
+                .borrow_mut()
+                .add_const_class(mod_name, name);
+            to_tok(idx, tag.to_tok_tag())
+        }
+        _ => {
+            unimplemented!("{} array is not implemented", ele_ty)
+        }
+    };
+
+    ctx.method_builder
+        .borrow_mut()
+        .add_inst(Inst::NewArr(ty_tok));
+
+    RValType::Array(Box::new(ele_ty))
+}

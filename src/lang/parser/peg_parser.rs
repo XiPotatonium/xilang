@@ -291,9 +291,8 @@ fn build_pathexpr(tree: Pair<Rule>) -> ModPath {
     ret
 }
 
-fn build_type(tree: Pair<Rule>) -> Box<ASTType> {
-    let tree = tree.into_inner().next().unwrap();
-    let ret = Box::new(match tree.as_rule() {
+fn _build_type(tree: Pair<Rule>) -> Box<ASTType> {
+    Box::new(match tree.as_rule() {
         Rule::KwBool => ASTType::Bool,
         Rule::KwChar => ASTType::Char,
         Rule::KwI32 => ASTType::I32,
@@ -307,17 +306,17 @@ fn build_type(tree: Pair<Rule>) -> Box<ASTType> {
         Rule::PathExpr => ASTType::Class(build_pathexpr(tree)),
         Rule::TupleType => ASTType::Tuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {
-            let mut iter = tree.into_inner();
-            let sub_ty = build_type(iter.next().unwrap());
-            if let Some(expr) = iter.next() {
-                ASTType::Arr(sub_ty, build_expr(expr))
-            } else {
-                ASTType::Arr(sub_ty, Box::new(AST::None))
-            }
+            let inner = _build_type(tree.into_inner().next().unwrap());
+            ASTType::Arr(inner)
         }
         _ => unreachable!(format!("Found {:?}", tree.as_rule())),
-    });
-    ret
+    })
+}
+
+/// tree: Type
+fn build_type(tree: Pair<Rule>) -> Box<ASTType> {
+    let tree = tree.into_inner().next().unwrap();
+    _build_type(tree)
 }
 
 fn build_expr(tree: Pair<Rule>) -> Box<AST> {
@@ -570,14 +569,20 @@ fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
         Rule::CallExpr => build_call_expr(ret),
         Rule::Type => {
             let ty = build_type(ret);
-            Box::new(AST::OpNew(
-                ty,
-                iter.next()
-                    .unwrap()
-                    .into_inner()
-                    .map(|sub| build_expr(sub))
-                    .collect(),
-            ))
+            let initializer = iter.next().unwrap();
+            Box::new(match initializer.as_rule() {
+                Rule::Args => AST::OpNew(
+                    ty,
+                    initializer
+                        .into_inner()
+                        .map(|sub| build_expr(sub))
+                        .collect(),
+                ),
+                Rule::ArrAccessExpr => {
+                    AST::OpNewArr(ty, build_expr(initializer.into_inner().next().unwrap()))
+                }
+                _ => unreachable!(),
+            })
         }
         _ => unreachable!(),
     }

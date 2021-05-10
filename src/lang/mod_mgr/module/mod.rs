@@ -410,7 +410,7 @@ impl Module {
                 let (mod_name, class_name) = self.resolve_path(class_path, mod_mgr, Some(class));
                 RValType::Obj(mod_name, class_name)
             }
-            ASTType::Arr(dtype, _) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, class))),
+            ASTType::Arr(dtype) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, class))),
         }
     }
 }

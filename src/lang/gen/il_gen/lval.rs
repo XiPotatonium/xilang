@@ -100,6 +100,55 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
     }
 }
 
+fn gen_obj_access(ctx: &CodeGenCtx, lhs: RValType, rhs: &str, expect_method: bool) -> ValType {
+    if let RValType::Array(_) = lhs {
+        if rhs == "len" {
+            if expect_method {
+                panic!("arr.len is not callable");
+            } else {
+                return ValType::ArrLen;
+            }
+        }
+    }
+
+    match &lhs {
+        RValType::Obj(mod_name, name) => {
+            // Access a non-static method or non-static field in class
+            let class = ctx
+                .mgr
+                .mod_tbl
+                .get(mod_name)
+                .unwrap()
+                .get_class(&name)
+                .unwrap();
+            let class_ref = unsafe { class.as_ref().unwrap() };
+            if expect_method {
+                let ms = class_ref.query_method(rhs);
+                let ms: Vec<*const Method> = ms
+                    .into_iter()
+                    .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
+                    .map(|m| m as *const Method)
+                    .collect();
+                if ms.is_empty() {
+                    panic!("No instance method {} found in class {}", rhs, name);
+                }
+                ValType::Method(ms)
+            } else {
+                if let Some(f) = class_ref.query_field(rhs) {
+                    if f.attrib.is(FieldAttribFlag::Static) {
+                        panic!("Cannot obj access static filed {}::{}", name, rhs);
+                    } else {
+                        ValType::Field(f as *const Field)
+                    }
+                } else {
+                    panic!("No field {} found in class {}", rhs, name);
+                }
+            }
+        }
+        _ => panic!("Cannot obj access a non-obj value"),
+    }
+}
+
 pub fn gen_lval(ctx: &CodeGenCtx, ast: &AST, expect_method: bool) -> ValType {
     match ast {
         AST::Type(ty) => match ty.as_ref() {
@@ -109,7 +158,7 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &AST, expect_method: bool) -> ValType {
             ASTType::F64 => unimplemented!(),
             ASTType::String => unimplemented!(),
             ASTType::Tuple(_) => unimplemented!(),
-            ASTType::Arr(_, _) => unimplemented!(),
+            ASTType::Arr(_) => unimplemented!(),
             ASTType::Class(path) => {
                 assert!(path.len() == 1, "invalid path in lval gen \"{}\"", path);
                 match path.as_str() {
@@ -124,51 +173,26 @@ pub fn gen_lval(ctx: &CodeGenCtx, ast: &AST, expect_method: bool) -> ValType {
         },
         AST::Id(id) => gen_id_lval(ctx, id, expect_method),
         AST::OpObjAccess(lhs, rhs) => {
-            // generate lhs as lval (as the first arg in non-static method or objectref of putfield)
+            // generate lhs as lval (as the first arg in instance method or objectref of putfield)
             let lhs = gen(ctx, lhs).expect_rval();
-            match lhs {
-                RValType::Obj(mod_name, name) => {
-                    // Access a non-static method or non-static field in class
-                    let class = ctx
-                        .mgr
-                        .mod_tbl
-                        .get(&mod_name)
-                        .unwrap()
-                        .get_class(&name)
-                        .unwrap();
-                    let class_ref = unsafe { class.as_ref().unwrap() };
-                    if expect_method {
-                        let ms = class_ref.query_method(rhs);
-                        let ms: Vec<*const Method> = ms
-                            .into_iter()
-                            .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
-                            .map(|m| m as *const Method)
-                            .collect();
-                        if ms.is_empty() {
-                            panic!("No instance method {} found in class {}", rhs, name);
-                        }
-                        ValType::Method(ms)
-                    } else {
-                        if let Some(f) = class_ref.query_field(rhs) {
-                            if f.attrib.is(FieldAttribFlag::Static) {
-                                panic!("Cannot obj access static filed {}::{}", name, rhs);
-                            } else {
-                                ValType::Field(f as *const Field)
-                            }
-                        } else {
-                            panic!("No field {} found in class {}", rhs, name);
-                        }
-                    }
-                }
-                _ => panic!("Cannot obj access a non-obj value"),
-            }
+            gen_obj_access(ctx, lhs, rhs, expect_method)
         }
         AST::OpStaticAccess(lhs, rhs) => {
             let lhs = gen_lval(ctx, lhs, expect_method);
             gen_static_access(ctx, lhs, rhs, expect_method)
         }
-        AST::OpArrayAccess(_, _) => {
-            unimplemented!();
+        AST::OpArrayAccess(lhs, rhs) => {
+            let lhs = gen(ctx, lhs).expect_rval();
+            if let RValType::Array(ele_ty) = lhs {
+                let rhs = gen(ctx, rhs).expect_rval();
+                match &rhs {
+                    RValType::I32 => {}
+                    _ => panic!("Array index cannot be {}", rhs),
+                }
+                ValType::ArrAcc(ele_ty.as_ref().clone())
+            } else {
+                panic!("Cannot array access {}", lhs);
+            }
         }
         _ => unimplemented!("umimplemented ast: {}", ast),
     }

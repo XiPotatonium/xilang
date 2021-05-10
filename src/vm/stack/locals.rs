@@ -29,7 +29,7 @@ unsafe fn load(ty: &BuiltinType, addr: *const u8, stack: &mut EvalStack) {
         BuiltinType::String
         | BuiltinType::Class(_)
         | BuiltinType::ByRef(_)
-        | BuiltinType::Array(_) => stack.push_ptr(*(addr as *const *mut u8)),
+        | BuiltinType::SZArray(_) => stack.push_ptr(*(addr as *const *mut u8)),
         BuiltinType::Unk => unreachable!(),
     }
 }
@@ -59,8 +59,8 @@ unsafe fn store_slot(ty: &BuiltinType, addr: *mut u8, slot: Slot) {
         BuiltinType::String
         | BuiltinType::Class(_)
         | BuiltinType::ByRef(_)
-        | BuiltinType::Array(_) => {
-            *(addr as *mut *mut u8) = slot.as_addr();
+        | BuiltinType::SZArray(_) => {
+            *(addr as *mut *mut u8) = slot.as_addr::<u8>();
         }
     }
 }

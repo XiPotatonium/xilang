@@ -230,7 +230,7 @@ pub enum Inst {
 
     /// 0x8D, newarr ty
     ///
-    /// create arr of **size**: unative|i32 size
+    /// create arr of **size** (inative|i32 size) with **ty** (typedef|typeref|typespec) as elem ty
     ///
     /// ..., size -> ..., arr
     NewArr(u32),
@@ -242,11 +242,15 @@ pub enum Inst {
     LdLen,
     /// 0x94, ldelem.i4
     LdElemI4,
+    /// 0x9A, ldelem.ref
+    LdElemRef,
     /// 0x9E, stelem.i4
     StElemI4,
+    /// 0xA2, stelem.ref
+    StElemRef,
     /// 0xA3, ldelem ty
     ///
-    /// load elem at **idx**: i32|inative onto the stack
+    /// load elem at **idx**: i32|inative onto the stack, **ty** is typedef|typeref|typespec
     ///
     /// ..., arr, idx -> ..., val
     LdElem(u32),
@@ -324,7 +328,7 @@ impl Inst {
 
             Inst::LdLen => INST_SIZE,
 
-            Inst::LdElemI4 | Inst::StElemI4 => INST_SIZE,
+            Inst::LdElemI4 | Inst::LdElemRef | Inst::StElemI4 | Inst::StElemRef => INST_SIZE,
 
             Inst::LdElem(_) | Inst::StElem(_) => INST_SIZE + mem::size_of::<u32>(),
         }

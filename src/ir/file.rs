@@ -4,7 +4,7 @@ use super::module::{Mod, ModRef};
 use super::param::Param;
 use super::sig::IrSig;
 use super::stand_alone_sig::IrStandAloneSig;
-use super::ty::{TypeDef, TypeRef};
+use super::ty::{TypeDef, TypeRef, TypeSpec};
 
 pub const MAJOR_VERSION: u16 = 0;
 pub const MINOR_VERSION: u16 = 3;
@@ -21,6 +21,7 @@ pub struct IrFile {
     pub typedef_tbl: Vec<TypeDef>,
     /// type ref tbl in CLR
     pub typeref_tbl: Vec<TypeRef>,
+    pub typespec_tbl: Vec<TypeSpec>,
 
     pub field_tbl: Vec<Field>,
     pub method_tbl: Vec<MethodDef>,
@@ -53,6 +54,7 @@ impl IrFile {
 
             typedef_tbl: vec![],
             typeref_tbl: vec![],
+            typespec_tbl: vec![],
 
             field_tbl: vec![],
             method_tbl: vec![],

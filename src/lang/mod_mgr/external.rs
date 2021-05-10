@@ -47,7 +47,7 @@ fn to_rval(sig: &TypeSig, ctx: &IrFile) -> RValType {
         TypeSig::R8 => RValType::F64,
         TypeSig::I => unimplemented!(),
         TypeSig::U => unimplemented!(),
-        TypeSig::Array(_, _) => unimplemented!(),
+        TypeSig::SZArray(_) => unimplemented!(),
         TypeSig::String => RValType::String,
         TypeSig::Class(tok) => {
             // tok is TypeRef or TypeDef

@@ -68,6 +68,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
         AST::Continue => loop_expr::gen_continue(ctx),
         AST::OpCast(ty, val) => cast::gen_cast(ctx, ty, val),
         AST::OpNew(ty, fields) => ValType::RVal(call::gen_new(ctx, ty, fields)),
+        AST::OpNewArr(ty, dim) => ValType::RVal(call::gen_new_arr(ctx, ty, dim)),
         AST::OpCall(f, args) => ValType::RVal(call::gen_call(ctx, f, args)),
         AST::OpAssign(lhs, rhs) => ValType::RVal(gen_assign(ctx, lhs, rhs)),
         AST::OpNeg(lhs) => op::gen_neg(ctx, lhs),
@@ -112,12 +113,26 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
 
                     ValType::RVal(field_ty)
                 }
+                ValType::ArrLen => {
+                    ctx.method_builder.borrow_mut().add_inst(Inst::LdLen);
+                    ValType::RVal(RValType::I32)
+                }
                 _ => unreachable!(),
             }
         }
         AST::OpStaticAccess(_, _) => {
             let v = lval::gen_lval(ctx, ast, false);
             gen_static_access(ctx, v)
+        }
+        AST::OpArrayAccess(_, _) => {
+            let lval = lval::gen_lval(ctx, ast, false);
+            match lval {
+                ValType::ArrAcc(ele_ty) => {
+                    ctx.method_builder.borrow_mut().add_ldelem(&ele_ty);
+                    ValType::RVal(ele_ty)
+                }
+                _ => panic!("Cannot array access {}", lval),
+            }
         }
         AST::Id(id) => ValType::RVal(gen_id_rval(ctx, id)),
         AST::Bool(val) => literal::gen_bool(ctx, *val),
@@ -262,7 +277,8 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         }
         ValType::KwLSelf => {
             // lval guarentee that we are in instance method
-            ctx.method_builder.borrow_mut().add_inst_starg(0);
+            // ctx.method_builder.borrow_mut().add_inst_starg(0);
+            panic!("Cannot assign self");
         }
         ValType::Arg(idx) => {
             let arg = &ctx.method.ps[idx];
@@ -308,6 +324,12 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             };
 
             ctx.method_builder.borrow_mut().add_inst(inst);
+        }
+        ValType::ArrAcc(ele_ty) => {
+            if ele_ty != v_ty {
+                panic!("Cannot store {} into {} array", v_ty, ele_ty);
+            }
+            ctx.method_builder.borrow_mut().add_stelem(&ele_ty);
         }
         ValType::Module(_) => panic!(),
         ValType::Class(_) => panic!(),

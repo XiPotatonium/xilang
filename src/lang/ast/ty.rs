@@ -1,7 +1,6 @@
 use xir::util::path::{IModPath, ModPath};
 
 use super::disp::ASTVecWrapper;
-use super::AST;
 
 use std::fmt;
 
@@ -12,8 +11,8 @@ pub enum ASTType {
     F64,
     String,
     Tuple(Vec<Box<ASTType>>),
-    /// type, dim
-    Arr(Box<ASTType>, Box<AST>),
+    /// type
+    Arr(Box<ASTType>),
     /// class names
     Class(ModPath),
     /// void or undetermined
@@ -33,11 +32,7 @@ impl fmt::Display for ASTType {
                 "{{\"name\":\"(type)tuple\",\"children\":{}}}",
                 ASTVecWrapper(v)
             ),
-            ASTType::Arr(dtype, dim) => write!(
-                f,
-                "{{\"name\":\"(type)array\",\"dtype\":{},\"dim\":{}}}",
-                dtype, dim
-            ),
+            ASTType::Arr(dtype) => write!(f, "{{\"name\":\"(type)array\",\"dtype\":{}}}", dtype),
             ASTType::Class(names) => write!(f, "{{\"name\":\"(type){}\"}}", names.as_str()),
             ASTType::None => write!(f, "{{\"name\":\"(type)none\"}}"),
         }

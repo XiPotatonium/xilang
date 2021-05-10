@@ -28,7 +28,7 @@ enum EleType {
     String,
     ByRef,
     Class,
-    Array,
+    SZArray,
     I,
     U,
     Object,
@@ -53,7 +53,7 @@ impl TryFrom<u8> for EleType {
             ELEMENT_TYPE_STRING => Self::String,
             ELEMENT_TYPE_BYREF => Self::ByRef,
             ELEMENT_TYPE_CLASS => Self::Class,
-            ELEMENT_TYPE_ARRAY => Self::Array,
+            ELEMENT_TYPE_SZARRAY => Self::SZArray,
             ELEMENT_TYPE_I => Self::I,
             ELEMENT_TYPE_U => Self::U,
             ELEMENT_TYPE_OBJECT => Self::Object,
@@ -76,10 +76,10 @@ const ELEMENT_TYPE_R8: u8 = 0x0D;
 const ELEMENT_TYPE_STRING: u8 = 0x0E;
 const ELEMENT_TYPE_BYREF: u8 = 0x10;
 const ELEMENT_TYPE_CLASS: u8 = 0x12;
-const ELEMENT_TYPE_ARRAY: u8 = 0x14;
 const ELEMENT_TYPE_I: u8 = 0x18;
 const ELEMENT_TYPE_U: u8 = 0x19;
 const ELEMENT_TYPE_OBJECT: u8 = 0x1C;
+const ELEMENT_TYPE_SZARRAY: u8 = 0x1D;
 
 /// II.23.2.12
 pub enum TypeSig {
@@ -95,29 +95,31 @@ pub enum TypeSig {
     R8,
     I,
     U,
-    Array(Box<TypeSig>, ArrayShapeSig),
+    /// No CustomMod for now
+    SZArray(Box<TypeSig>),
     /// typedef or typeref or typespec
     Class(u32),
     String,
 }
 
 /// II.23.2.13
+/*
 pub struct ArrayShapeSig {
     pub rank: u32,
     pub sizes: Vec<u32>,
     // no lower bound, default to be 0
 }
-
+*/
 // TypeSpec:
 //  0x0F(PTR) CustomMod* (VOID|Type)
 //  | 0x1B(FNPTR) (MethodDefSig|MethodRefSig)
 //  | 0x14(ARRAY) Type ArrayShape
-//  | 0x1D(SZARRAY)
+//  | 0x1D(SZARRAY) CustomMod* Type
 //  | 0x15(GENERICINST)
 
 /// II.23.2.14
 pub enum TypeSpecSig {
-    Array(TypeSig, ArrayShapeSig),
+    SZArray(TypeSig),
 }
 
 pub enum InnerLocalVarType {
@@ -153,9 +155,9 @@ impl IrFmt for TypeSig {
             TypeSig::I => write!(f, "i"),
             TypeSig::U => write!(f, "u"),
             TypeSig::Class(t) => fmt_tok(*t, f, ctx),
-            TypeSig::Array(ty, shape) => {
+            TypeSig::SZArray(ty) => {
                 ty.fmt(f, ctx)?;
-                shape.fmt(f, ctx)
+                write!(f, "[]")
             }
             TypeSig::String => write!(f, "string"),
         }
@@ -181,10 +183,9 @@ impl ISerializable for TypeSig {
                 ELEMENT_TYPE_CLASS.serialize(buf);
                 t.serialize(buf);
             }
-            TypeSig::Array(ty, shape) => {
-                ELEMENT_TYPE_ARRAY.serialize(buf);
+            TypeSig::SZArray(ty) => {
+                ELEMENT_TYPE_SZARRAY.serialize(buf);
                 ty.serialize(buf);
-                shape.serialize(buf);
             }
             TypeSig::String => ELEMENT_TYPE_STRING.serialize(buf),
         }
@@ -206,16 +207,14 @@ impl ISerializable for TypeSig {
             ELEMENT_TYPE_I => TypeSig::I,
             ELEMENT_TYPE_U => TypeSig::U,
             ELEMENT_TYPE_CLASS => TypeSig::Class(u32::deserialize(buf)),
-            ELEMENT_TYPE_ARRAY => {
-                let ty = Box::new(TypeSig::deserialize(buf));
-                TypeSig::Array(ty, ArrayShapeSig::deserialize(buf))
-            }
+            ELEMENT_TYPE_SZARRAY => TypeSig::SZArray(Box::new(TypeSig::deserialize(buf))),
             ELEMENT_TYPE_STRING => TypeSig::String,
             _ => panic!("Cannot recognize TypeSig with code {:0X}", code),
         }
     }
 }
 
+/*
 impl IrFmt for ArrayShapeSig {
     fn fmt(&self, f: &mut fmt::Formatter, _: &IrFile) -> fmt::Result {
         write!(f, "[")?;
@@ -243,6 +242,7 @@ impl ISerializable for ArrayShapeSig {
         ArrayShapeSig { rank, sizes }
     }
 }
+*/
 
 impl IrFmt for InnerLocalVarType {
     fn fmt(&self, f: &mut fmt::Formatter, ctx: &IrFile) -> fmt::Result {
@@ -312,9 +312,9 @@ impl IrFmt for IrSig {
                 write!(f, ")")
             }
             Self::TypeSpec(spec) => match spec {
-                TypeSpecSig::Array(ty, shape) => {
+                TypeSpecSig::SZArray(ty) => {
                     ty.fmt(f, ctx)?;
-                    shape.fmt(f, ctx)
+                    write!(f, "[]")
                 }
             },
         }
@@ -342,10 +342,9 @@ impl ISerializable for IrSig {
                 vars.serialize(buf);
             }
             IrSig::TypeSpec(typespec) => match typespec {
-                TypeSpecSig::Array(ty, shape) => {
-                    ELEMENT_TYPE_ARRAY.serialize(buf);
+                TypeSpecSig::SZArray(ty) => {
+                    ELEMENT_TYPE_SZARRAY.serialize(buf);
                     ty.serialize(buf);
-                    shape.serialize(buf);
                 }
             },
         }
@@ -359,10 +358,10 @@ impl ISerializable for IrSig {
             _ => {
                 if let Ok(ele_ty) = EleType::try_from(code) {
                     match ele_ty {
-                        EleType::Array => {
-                            let ty = TypeSig::deserialize(buf);
-                            let shape = ArrayShapeSig::deserialize(buf);
-                            return IrSig::TypeSpec(TypeSpecSig::Array(ty, shape));
+                        EleType::SZArray => {
+                            return IrSig::TypeSpec(TypeSpecSig::SZArray(TypeSig::deserialize(
+                                buf,
+                            )));
                         }
                         _ => {}
                     }

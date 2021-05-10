@@ -39,7 +39,7 @@ pub enum BuiltinType {
     String,
     ByRef(Box<BuiltinType>),
     /// ele_ty, rank, dim_sizes
-    Array(Box<BuiltinType>),
+    SZArray(Box<BuiltinType>),
     Class(*const Type),
     /// to be filled
     Unk,
@@ -88,7 +88,9 @@ impl BuiltinType {
             TypeSig::R8 => BuiltinType::R8,
             TypeSig::I => BuiltinType::INative,
             TypeSig::U => BuiltinType::UNative,
-            TypeSig::Array(_, _) => unimplemented!(),
+            TypeSig::SZArray(ele_ty) => {
+                BuiltinType::SZArray(Box::new(Self::from_type_sig(ele_ty, ctx)))
+            }
             TypeSig::String => BuiltinType::String,
             TypeSig::Class(tok) => {
                 // tok is TypeRef or TypeDef
@@ -120,7 +122,7 @@ impl BuiltinType {
             BuiltinType::R8 => size_of::<f64>(),
             BuiltinType::String
             | BuiltinType::ByRef(_)
-            | BuiltinType::Array(_)
+            | BuiltinType::SZArray(_)
             | BuiltinType::Class(_) => REF_SIZE,
             BuiltinType::Unk => unreachable!(),
         }
@@ -144,7 +146,7 @@ pub fn builtin_ty_str_desc(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
         BuiltinType::R8 => String::from("D"),
         BuiltinType::String => String::from("Ostd::String"),
         BuiltinType::ByRef(inner) => format!("&{}", builtin_ty_str_desc(inner, str_pool)),
-        BuiltinType::Array(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
+        BuiltinType::SZArray(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::Class(ty) => {
             format!("O{};", unsafe { ty.as_ref().unwrap().fullname(str_pool) })
         }
@@ -166,7 +168,7 @@ fn type_sig_str_desc(ty: &TypeSig, ctx: &IrFile) -> String {
         TypeSig::R8 => String::from("D"),
         TypeSig::I => String::from("n"),
         TypeSig::U => String::from("N"),
-        TypeSig::Array(_, _) => unimplemented!(),
+        TypeSig::SZArray(_) => unimplemented!(),
         TypeSig::String => unimplemented!(),
         TypeSig::Class(tok) => {
             let (tag, idx) = get_tok_tag(*tok);

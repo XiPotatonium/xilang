@@ -314,14 +314,9 @@ impl Builder {
             RValType::Never => unreachable!(),
             RValType::Obj(mod_name, name) => {
                 let (class_idx, class_tag) = self.add_const_class(mod_name, name);
-                let tok = match class_tag {
-                    TypeDefOrRef::TypeDef => to_tok(class_idx, TokTag::TypeDef),
-                    TypeDefOrRef::TypeRef => to_tok(class_idx, TokTag::TypeRef),
-                    TypeDefOrRef::TypeSpec => unimplemented!(),
-                };
-                TypeSig::Class(tok)
+                TypeSig::Class(to_tok(class_idx, class_tag.to_tok_tag()))
             }
-            RValType::Array(_) => unimplemented!(),
+            RValType::Array(ele_ty) => TypeSig::SZArray(Box::new(self.to_sig_ty(ele_ty))),
             RValType::String => TypeSig::String,
             RValType::Void => unreachable!(),
         }

@@ -13,10 +13,7 @@
 typedef enum SlotTag {
     I32,
     I64,
-    U32,
-    U64,
     INative,
-    UNative,
     F32,
     F64,
     Ref,
@@ -27,10 +24,7 @@ typedef enum SlotTag {
 typedef union SlotData {
     int32_t i32_;
     int64_t i64_;
-    uint32_t u32_;
-    uint64_t u64_;
     int inative_;
-    unsigned int unative_;
     float f32_;
     double f64_;
     uint8_t *ptr_;

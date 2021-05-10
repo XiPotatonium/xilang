@@ -208,11 +208,17 @@ impl fmt::Display for AST {
                 func.as_ref(),
                 BoxASTVecWrapper(ps)
             ),
-            Self::OpNew(ty, struct_init) => write!(
+            Self::OpNew(ty, args) => write!(
                 f,
-                "{{\"name\":\"new\",\"type\":{},\"fields\":{}}}",
+                "{{\"name\":\"new\",\"type\":{},\"args\":{}}}",
                 ty.as_ref(),
-                BoxASTVecWrapper(struct_init)
+                BoxASTVecWrapper(args)
+            ),
+            Self::OpNewArr(ty, dim) => write!(
+                f,
+                "{{\"name\":\"newarr\",\"type\":{},\"dim\":{}}}",
+                ty.as_ref(),
+                dim,
             ),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
             Self::TuplePattern(p) => write!(
