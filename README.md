@@ -111,6 +111,9 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 For examples see [demo.ps1](demo.ps1)
 
+For linux users, see [demo.sh](demo.sh). 
+Remember to modify Dllimport attriubte as specified in shell script.
+
 ```
 USAGE:
     xic.exe [FLAGS] [OPTIONS] <root>

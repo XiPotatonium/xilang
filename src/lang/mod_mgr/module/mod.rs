@@ -136,7 +136,8 @@ impl Module {
                 // input_root/sub_mod_rel_dir/sub_mod_name.xi
                 let sub_mod_fpath = sub_mod_input_dir.join(format!("{}.xi", sub_mod_name));
                 // input_root/sub_mod_rel_dir/sub_mod_name/mod.xi
-                let sub_mod_dpath = sub_mod_input_dir.join(format!("{}\\mod.xi", &sub_mod_name));
+                let mut sub_mod_dpath = sub_mod_input_dir.join(format!("{}", &sub_mod_name));
+                sub_mod_dpath.push("mod.xi");
 
                 if sub_mod_fpath.is_file() && sub_mod_dpath.is_file() {
                     panic!(
