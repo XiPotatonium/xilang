@@ -15,6 +15,14 @@ class IO {
     #[Dllimport("xtd.dll")]
     fn puti32(i: i32);
 
+    #[InternalCall]
+    fn write(s: string);
+
+    fn writeln(s: string) {
+        Self::write(s);
+        Self::putchar(Self::NEW_LINE);
+    }
+
     fn write(i: i32) {
         Self::puti32(i);
     }
@@ -26,10 +34,17 @@ class IO {
 }
 
 // Root of all classes
-class Object {}
+class Object {
+    virtual fn repr() -> string {
+        "std::Object"
+    }
+}
 
 
-class String {}
+class String {
+    #[InternalCall]
+    fn len(self) -> i32;
+}
 
 class Array {
     // let len: usize;

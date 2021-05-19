@@ -9,7 +9,7 @@ pub use field::{FieldAttrib, FieldAttribFlag};
 pub use local::LocalAttrib;
 pub use method::{
     MethodAttrib, MethodAttribFlag, MethodImplAttrib, MethodImplAttribCodeTypeFlag,
-    MethodImplAttribManagedFlag,
+    MethodImplAttribManagedFlag, MethodImplInfoFlag,
 };
 pub use param::{ParamAttrib, ParamAttribFlag};
 pub use pinvoke::{PInvokeAttrib, PInvokeAttribCallConvFlag, PInvokeAttribCharsetFlag};

@@ -99,7 +99,7 @@ impl IrFile {
 
         write!(f, "\n{}.method {} ", " ".repeat(indent * 4), flag)?;
 
-        if method.body == 0 {
+        if impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::Native) {
             // this is an external method
             // See ECMA-335 II.15.5.2
 

@@ -2,7 +2,7 @@ mod obj;
 
 use std::mem::size_of;
 
-use obj::{ArrHeader, ObjHeader, StrHeader};
+use obj::{ArrHeader, ObjHeader, StrCharsIter, StrCharsIterMut, StrHeader};
 
 use super::data::Type;
 
@@ -47,6 +47,10 @@ impl Heap {
         self_ptr.wrapping_sub(size_of::<ObjHeader>()) as *const T
     }
 
+    pub fn get_chars(self_ptr: *mut u8) -> StrCharsIter {
+        StrCharsIter::new(self_ptr)
+    }
+
     /// New obj
     ///
     /// [ObjHeader] [content...]
@@ -69,7 +73,7 @@ impl Heap {
         ret
     }
 
-    /// [StrHeader] [elements...]
+    /// [StrHeader] [chars...]
     ///
     /// str_class must point to std::String
     pub unsafe fn new_str_from_str(&mut self, str_class: *const Type, s: &str) -> *mut u8 {
@@ -87,6 +91,10 @@ impl Heap {
             .init(str_class, char_count);
         let ret = &mut self.data[self.next_obj_offset + size_of::<ObjHeader>()] as *mut u8;
         self.next_obj_offset = offset_after_alloc;
+        let chars = StrCharsIterMut::new(ret);
+        for (ch_target, ch_src) in chars.zip(s.chars()) {
+            *ch_target = ch_src;
+        }
         ret
     }
 

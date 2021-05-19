@@ -164,6 +164,7 @@ pub fn fill_method_info(file: &IrFile, this_mod: *mut Module) {
                 }
             }
             MethodImpl::Native(_) => {}
+            MethodImpl::Runtime(_) => {}
         }
     }
 }

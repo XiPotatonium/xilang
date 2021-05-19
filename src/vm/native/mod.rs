@@ -49,4 +49,8 @@ impl VMDll {
             }
         }
     }
+
+    pub fn fullname(&self) -> &str {
+        self.dll.get_name()
+    }
 }

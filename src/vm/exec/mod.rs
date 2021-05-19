@@ -1,5 +1,6 @@
 mod arr;
 mod fld;
+pub mod internal_calls;
 mod op;
 
 use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl};
@@ -10,6 +11,7 @@ use super::stack::{ActivationRecord, Args, EvalStack, ILocals, Locals, Slot, Slo
 use xir::attrib::MethodAttribFlag;
 use xir::tok::{get_tok_tag, TokTag};
 
+use core::panic;
 use std::ptr;
 
 pub struct TExecutor<'m> {
@@ -227,6 +229,9 @@ impl<'m> TExecutor<'m> {
                                     .call(&mem.str_pool[callee.name], args, ret_addr);
                             }
                         }
+                        MethodImpl::Runtime(runtime_impl) => {
+                            runtime_impl.func.call(args, ret_addr, mem);
+                        }
                     }
                 }
                 // ret
@@ -346,7 +351,15 @@ impl<'m> TExecutor<'m> {
                     }
                     let ret_addr = cur_state.eval_stack.alloc_ret(&callee.ret.ty);
 
-                    self.call(args, ret_addr, callee, callee.method_impl.expect_il());
+                    match &callee.method_impl {
+                        MethodImpl::IL(il_impl) => {
+                            self.call(args, ret_addr, callee, il_impl);
+                        }
+                        MethodImpl::Native(_) => panic!(),
+                        MethodImpl::Runtime(runtime_impl) => {
+                            runtime_impl.func.call(args, ret_addr, mem);
+                        }
+                    }
                 }
                 // ldstr
                 0x72 => {

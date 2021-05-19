@@ -13,7 +13,7 @@ use std::mem::size_of;
 pub use self::field::Field;
 pub use self::method::{
     method_str_desc, method_str_desc_from_ir, Local, MethodDesc, MethodILImpl, MethodImpl,
-    MethodNativeImpl, Param,
+    MethodNativeImpl, MethodRuntimeImpl, Param,
 };
 pub use self::module::{ILModule, MemberRef, Module};
 pub use self::ty::Type;
@@ -144,7 +144,7 @@ pub fn builtin_ty_str_desc(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
         BuiltinType::INative => String::from("n"),
         BuiltinType::R4 => String::from("F"),
         BuiltinType::R8 => String::from("D"),
-        BuiltinType::String => String::from("Ostd::String"),
+        BuiltinType::String => String::from("Ostd/String"),
         BuiltinType::ByRef(inner) => format!("&{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::SZArray(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::Class(ty) => {
@@ -169,7 +169,7 @@ fn type_sig_str_desc(ty: &TypeSig, ctx: &IrFile) -> String {
         TypeSig::I => String::from("n"),
         TypeSig::U => String::from("N"),
         TypeSig::SZArray(_) => unimplemented!(),
-        TypeSig::String => unimplemented!(),
+        TypeSig::String => String::from("Ostd/String"),
         TypeSig::Class(tok) => {
             let (tag, idx) = get_tok_tag(*tok);
             let idx = idx as usize - 1;

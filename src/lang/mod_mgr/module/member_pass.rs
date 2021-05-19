@@ -5,7 +5,7 @@ use super::Module;
 
 use xir::attrib::{
     MethodAttrib, MethodAttribFlag, MethodImplAttrib, MethodImplAttribCodeTypeFlag,
-    MethodImplAttribManagedFlag, PInvokeAttrib, PInvokeAttribCallConvFlag,
+    MethodImplAttribManagedFlag, MethodImplInfoFlag, PInvokeAttrib, PInvokeAttribCallConvFlag,
     PInvokeAttribCharsetFlag,
 };
 use xir::{CCTOR_NAME, CTOR_NAME};
@@ -116,6 +116,10 @@ impl Module {
                         } else {
                             panic!("Invalid arg for Dllimport attribute");
                         }
+                    } else if id == "InternalCall" {
+                        assert_eq!(args.len(), 0, "Invalid arg for InternalCall attribute");
+                        impl_flag.set_impl_info(MethodImplInfoFlag::InternalCall);
+                        impl_flag.set_code_ty(MethodImplAttribCodeTypeFlag::Runtime);
                     } else {
                         panic!("Unrecognizable custom attribute {}", id);
                     }
@@ -189,6 +193,7 @@ impl Module {
                     } else {
                         unreachable!();
                     }
+                } else if attr_name == "InternalCall" {
                 } else {
                     unreachable!();
                 }

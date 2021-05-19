@@ -18,7 +18,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
     * ctor of derived class call default ctor of base class automatically
 * Built-in type:
   * i32
-  * bool
   * single-dim zero-based array: only reference type array
 * expr/stmt:
   * return
@@ -53,12 +52,9 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 #### Ver 0.4.0
 
 * String
-* Attribute
-  * Dllimport attribute
-  * InternalCall
-* builtin type
-  * usize
-  * char
+* InternalCall
+* struct
+* Array for struct type
 
 #### Ver 0.5.0
 
@@ -69,23 +65,20 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * lazy loading external class
 * Refactor vm
   * lazy type loading
+* stdlib
+  * collections
 
 #### Ver 0.5.1
 
+* cast expr
 * More builtin type
   * bool
   * u8
+  * char
   * f32/f64
-  * isize
+  * isize/usize
 * pub use
 * priv/pub flag
-
-#### Ver 0.5.2
-
-* struct
-* Array for struct type
-* stdlib
-  * collections
 
 #### Ver 0.6.0
 

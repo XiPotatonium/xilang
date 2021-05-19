@@ -157,7 +157,7 @@ impl Type {
 
     pub fn fullname(&self, str_pool: &Vec<String>) -> String {
         format!(
-            "{}::{}",
+            "{}/{}",
             unsafe { self.module.as_ref().unwrap().fullname(str_pool) },
             &str_pool[self.name]
         )

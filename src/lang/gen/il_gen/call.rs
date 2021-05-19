@@ -72,7 +72,19 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
                     (module_ref.fullname(), &class_ref.name, m_ref)
                 }
             } else {
-                panic!("Cannot find method");
+                panic!(
+                    "No matched method with param ({}), candidates are: {}",
+                    args_ty
+                        .iter()
+                        .map(|t| t.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                    candidates
+                        .iter()
+                        .map(|m| unsafe { m.as_ref().unwrap().to_string() })
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
             };
 
             // Add to class file

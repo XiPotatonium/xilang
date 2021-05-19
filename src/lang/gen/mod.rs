@@ -115,6 +115,10 @@ impl PartialEq for RValType {
             | (Self::F64, Self::F64)
             | (Self::String, Self::String)
             | (Self::Void, Self::Void) => true,
+            (Self::Obj(mod_name, class_name), Self::String)
+            | (Self::String, Self::Obj(mod_name, class_name)) => {
+                mod_name == "std" && class_name == "String"
+            }
             (Self::Obj(mod0, class0), Self::Obj(mod1, class1)) => mod0 == mod1 && class0 == class1,
             (Self::Array(ele_ty1), Self::Array(ele_ty2)) => ele_ty1 == ele_ty2,
             _ => false,

@@ -1,6 +1,7 @@
 mod linker;
 
 use super::data::*;
+use super::exec::internal_calls::register_internal_calls;
 use super::native::VMDll;
 use super::shared_mem::SharedMem;
 use super::VMCfg;
@@ -35,6 +36,7 @@ pub fn load(
     // load
     let root = loader.load(f, entry.parent().unwrap());
 
+    register_internal_calls(loader.mem);
     (
         loader.cctors,
         mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref()
@@ -164,6 +166,11 @@ impl<'c> Loader<'c> {
                             scope: impl_map.scope as usize - 1,
                             name: str_heap[impl_map.name as usize],
                             flag: PInvokeAttrib::from(impl_map.flag),
+                        })
+                    }
+                    MethodImplAttribCodeTypeFlag::Runtime => {
+                        MethodImpl::Runtime(MethodRuntimeImpl {
+                            func: Default::default(),
                         })
                     }
                 };

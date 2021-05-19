@@ -2,6 +2,7 @@ use super::super::super::ast::{ASTType, AST};
 use super::super::{Class, CodeGenCtx, Field, Method, RValType, ValType};
 use super::gen;
 
+use winapi::um::cfgmgr32::mMD_Prefetchable;
 use xir::attrib::*;
 use xir::util::path::IModPath;
 
@@ -100,6 +101,46 @@ fn gen_static_access(ctx: &CodeGenCtx, lhs: ValType, rhs: &str, expect_method: b
     }
 }
 
+fn _gen_obj_access(
+    mod_name: &str,
+    name: &str,
+    ctx: &CodeGenCtx,
+    rhs: &str,
+    expect_method: bool,
+) -> ValType {
+    // Access a non-static method or non-static field in class
+    let class = ctx
+        .mgr
+        .mod_tbl
+        .get(mod_name)
+        .unwrap()
+        .get_class(&name)
+        .unwrap();
+    let class_ref = unsafe { class.as_ref().unwrap() };
+    if expect_method {
+        let ms = class_ref.query_method(rhs);
+        let ms: Vec<*const Method> = ms
+            .into_iter()
+            .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
+            .map(|m| m as *const Method)
+            .collect();
+        if ms.is_empty() {
+            panic!("No instance method {} found in class {}", rhs, name);
+        }
+        ValType::Method(ms)
+    } else {
+        if let Some(f) = class_ref.query_field(rhs) {
+            if f.attrib.is(FieldAttribFlag::Static) {
+                panic!("Cannot obj access static filed {}::{}", name, rhs);
+            } else {
+                ValType::Field(f as *const Field)
+            }
+        } else {
+            panic!("No field {} found in class {}", rhs, name);
+        }
+    }
+}
+
 fn gen_obj_access(ctx: &CodeGenCtx, lhs: RValType, rhs: &str, expect_method: bool) -> ValType {
     if let RValType::Array(_) = lhs {
         if rhs == "len" {
@@ -112,39 +153,8 @@ fn gen_obj_access(ctx: &CodeGenCtx, lhs: RValType, rhs: &str, expect_method: boo
     }
 
     match &lhs {
-        RValType::Obj(mod_name, name) => {
-            // Access a non-static method or non-static field in class
-            let class = ctx
-                .mgr
-                .mod_tbl
-                .get(mod_name)
-                .unwrap()
-                .get_class(&name)
-                .unwrap();
-            let class_ref = unsafe { class.as_ref().unwrap() };
-            if expect_method {
-                let ms = class_ref.query_method(rhs);
-                let ms: Vec<*const Method> = ms
-                    .into_iter()
-                    .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
-                    .map(|m| m as *const Method)
-                    .collect();
-                if ms.is_empty() {
-                    panic!("No instance method {} found in class {}", rhs, name);
-                }
-                ValType::Method(ms)
-            } else {
-                if let Some(f) = class_ref.query_field(rhs) {
-                    if f.attrib.is(FieldAttribFlag::Static) {
-                        panic!("Cannot obj access static filed {}::{}", name, rhs);
-                    } else {
-                        ValType::Field(f as *const Field)
-                    }
-                } else {
-                    panic!("No field {} found in class {}", rhs, name);
-                }
-            }
-        }
+        RValType::Obj(mod_name, name) => _gen_obj_access(mod_name, name, ctx, rhs, expect_method),
+        RValType::String => _gen_obj_access("std", "String", ctx, rhs, expect_method),
         _ => panic!("Cannot obj access a non-obj value"),
     }
 }
