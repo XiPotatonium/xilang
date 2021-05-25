@@ -1,7 +1,7 @@
 use super::super::super::ast::{ASTMethodAttribFlag, AST};
 use super::super::super::gen::RValType;
-use super::super::{Class, Field, Method, ModMgr, ModRef, Param};
-use super::Module;
+use super::super::{Class, Crate, Field, Method, Param};
+use super::ModuleBuildCtx;
 
 use xir::attrib::{
     MethodAttrib, MethodAttribFlag, MethodImplAttrib, MethodImplAttribCodeTypeFlag,
@@ -11,9 +11,9 @@ use xir::attrib::{
 use xir::{CCTOR_NAME, CTOR_NAME};
 
 // member pass
-impl Module {
+impl ModuleBuildCtx {
     /// declare method according to ast
-    fn declare_method(&self, mod_mgr: &ModMgr, class_mut: &mut Class, ast: Option<&Box<AST>>) {
+    fn declare_method(&self, mod_mgr: &Crate, class_mut: &mut Class, ast: Option<&Box<AST>>) {
         let (ast, name, custom_attribs, attrib, ps, ret) = match ast {
             Some(ast) => {
                 let ast_ptr = Some(ast.as_ref() as *const AST);
@@ -201,80 +201,85 @@ impl Module {
         }
     }
 
-    pub fn member_pass(&self, mod_mgr: &ModMgr) {
+    pub fn member_pass(&self, mod_mgr: &Crate) {
         for class in self.class_asts.iter() {
-            if let AST::Class(class) = class.as_ref() {
-                let mut class_mut = self.classes.get(&class.name).unwrap().borrow_mut();
-                class_mut.parent =
-                    mod_mgr.mod_tbl.get(self.fullname()).unwrap().as_ref() as *const ModRef;
-                class_mut.idx = self
-                    .builder
-                    .borrow_mut()
-                    .add_class(&class.name, &class.attrib);
+            match class.as_ref() {
+                AST::Class(class) | AST::Struct(class) => {
+                    let mut class_mut = self
+                        .get_module_mut()
+                        .classes
+                        .get_mut(&class.name)
+                        .unwrap()
+                        .as_mut();
+                    class_mut.idx = self
+                        .builder
+                        .borrow_mut()
+                        .add_class(&class.name, &class.attrib);
 
-                for field in class.fields.iter() {
-                    if let AST::Field(id, flag, _, ty) = field.as_ref() {
-                        // Field will have default initialization
-                        let ty = self.get_ty(ty, mod_mgr, &class_mut);
+                    for field in class.fields.iter() {
+                        if let AST::Field(id, flag, _, ty) = field.as_ref() {
+                            // Field will have default initialization
+                            let ty = self.get_ty(ty, mod_mgr, &class_mut);
 
-                        // Build Field in class file
-                        let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
+                            // Build Field in class file
+                            let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
 
-                        let field = Box::new(Field {
-                            parent: &class_mut as &Class as *const Class,
-                            name: id.clone(),
-                            attrib: *flag,
-                            ty,
-                            idx,
-                        });
+                            let field = Box::new(Field {
+                                parent: &class_mut as &Class as *const Class,
+                                name: id.clone(),
+                                attrib: *flag,
+                                ty,
+                                idx,
+                            });
 
-                        if let Some(_) = class_mut.fields.insert(id.to_owned(), field) {
-                            // TODO: use expect_none once it becomes stable
-                            panic!("Dulicated field {} in class {}", id, class_mut.name);
+                            if let Some(_) = class_mut.fields.insert(id.to_owned(), field) {
+                                // TODO: use expect_none once it becomes stable
+                                panic!("Dulicated field {} in class {}", id, class_mut.name);
+                            }
                         }
                     }
-                }
 
-                // Add static init
-                match class.cctor.as_ref() {
-                    AST::Block(_) => {
-                        self.declare_method(mod_mgr, &mut class_mut, Some(&class.cctor));
+                    // Add static init
+                    match class.cctor.as_ref() {
+                        AST::Block(_) => {
+                            self.declare_method(mod_mgr, &mut class_mut, Some(&class.cctor));
+                        }
+                        AST::None => (),
+                        _ => unreachable!("Parser error"),
+                    };
+
+                    if class.ctors.is_empty() {
+                        // Add default object creator
+                        self.declare_method(mod_mgr, &mut class_mut, None);
+                    } else {
+                        for ctor_ast in class.ctors.iter() {
+                            self.declare_method(mod_mgr, &mut class_mut, Some(ctor_ast));
+                        }
                     }
-                    AST::None => (),
-                    _ => unreachable!("Parser error"),
-                };
 
-                if class.ctors.is_empty() {
-                    // Add default object creator
-                    self.declare_method(mod_mgr, &mut class_mut, None);
-                } else {
-                    for ctor_ast in class.ctors.iter() {
-                        self.declare_method(mod_mgr, &mut class_mut, Some(ctor_ast));
+                    for method_ast in class.methods.iter() {
+                        self.declare_method(mod_mgr, &mut class_mut, Some(method_ast));
                     }
-                }
 
-                for method_ast in class.methods.iter() {
-                    self.declare_method(mod_mgr, &mut class_mut, Some(method_ast));
-                }
-
-                if self.is_root() && class.name == "Program" {
-                    if let Some(ms) = class_mut.methods.get("main") {
-                        for m in ms.iter() {
-                            if let RValType::Void = m.ret {
-                                if m.ps.len() == 0
-                                    && m.attrib.is(MethodAttribFlag::Pub)
-                                    && m.attrib.is(MethodAttribFlag::Static)
-                                {
-                                    // pub Program::main()
-                                    self.builder.borrow_mut().file.mod_tbl[0].entrypoint = m.idx;
-                                    break;
+                    if self.get_module().is_root() && class.name == "Program" {
+                        if let Some(ms) = class_mut.methods.get("main") {
+                            for m in ms.iter() {
+                                if let RValType::Void = m.ret {
+                                    if m.ps.len() == 0
+                                        && m.attrib.is(MethodAttribFlag::Pub)
+                                        && m.attrib.is(MethodAttribFlag::Static)
+                                    {
+                                        // pub Program::main()
+                                        self.builder.borrow_mut().file.mod_tbl[0].entrypoint =
+                                            m.idx;
+                                        break;
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                unreachable!();
+                _ => unreachable!(),
             }
         }
     }

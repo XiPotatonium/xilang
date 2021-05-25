@@ -29,52 +29,66 @@ unsafe fn do_load(addr: *const u8, ty: &BuiltinType, stack: &mut EvalStack) {
     }
 }
 
-pub fn exec_ldfld(cur_state: &mut ActivationRecord) {
-    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+pub fn exec_ldfld(cur_ar: &mut ActivationRecord) {
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
 
-    let tok = cur_state.consume_u32();
+    let tok = cur_ar.consume_u32();
     let (tag, idx) = get_tok_tag(tok);
     let f = match tag {
         TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-        TokTag::MemberRef => unsafe {
-            ctx.memberref[idx as usize - 1]
-                .expect_field()
-                .as_ref()
-                .unwrap()
-        },
+        TokTag::MemberRef => unsafe { ctx.memberref[idx as usize - 1].expect_field().as_ref() },
 
         _ => unimplemented!(),
     };
 
-    let instance_addr: *mut u8 = unsafe { cur_state.eval_stack.pop_with_slot().as_addr() };
+    let instance_addr: *mut u8 = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref_or_ptr() };
+
     unsafe {
         do_load(
             instance_addr.wrapping_add(f.offset),
             &f.ty,
-            &mut cur_state.eval_stack,
+            &mut cur_ar.eval_stack,
         );
     }
 }
 
-pub fn exec_stfld(cur_state: &mut ActivationRecord) {
-    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+pub fn exec_ldflda(cur_ar: &mut ActivationRecord) {
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
 
-    let tok = cur_state.consume_u32();
+    let tok = cur_ar.consume_u32();
     let (tag, idx) = get_tok_tag(tok);
     let f = match tag {
         TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-        TokTag::MemberRef => unsafe {
-            ctx.memberref[idx as usize - 1]
-                .expect_field()
-                .as_ref()
-                .unwrap()
-        },
+        TokTag::MemberRef => unsafe { ctx.memberref[idx as usize - 1].expect_field().as_ref() },
+
         _ => unimplemented!(),
     };
 
-    let v = cur_state.eval_stack.pop_with_slot();
+    let instance_addr_slot = cur_ar.eval_stack.pop_with_slot();
+    let instance_addr: *mut u8 = unsafe { instance_addr_slot.expect_ref_or_ptr() };
+    let fld_addr = instance_addr.wrapping_add(f.offset);
 
-    let instance_addr: *mut u8 = unsafe { cur_state.eval_stack.pop_with_slot().as_addr() };
+    if let SlotTag::INative = instance_addr_slot.tag {
+        unimplemented!();
+    } else {
+        cur_ar.eval_stack.push_managed(fld_addr);
+    }
+}
+
+pub fn exec_stfld(cur_ar: &mut ActivationRecord) {
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
+
+    let tok = cur_ar.consume_u32();
+    let (tag, idx) = get_tok_tag(tok);
+    let f = match tag {
+        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
+        TokTag::MemberRef => unsafe { ctx.memberref[idx as usize - 1].expect_field().as_ref() },
+        _ => unimplemented!(),
+    };
+
+    let v = cur_ar.eval_stack.pop_with_slot();
+
+    let instance_addr: *mut u8 = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
     let field_addr = instance_addr.wrapping_add(f.offset);
 
     unsafe {
@@ -108,45 +122,49 @@ pub fn exec_stfld(cur_state: &mut ActivationRecord) {
     }
 }
 
-pub fn exec_ldsfld(cur_state: &mut ActivationRecord) {
-    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+pub fn exec_ldsfld(cur_ar: &mut ActivationRecord) {
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
 
-    let tok = cur_state.consume_u32();
+    let tok = cur_ar.consume_u32();
     let (tag, idx) = get_tok_tag(tok);
     let f = match tag {
         TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-        TokTag::MemberRef => unsafe {
-            ctx.memberref[idx as usize - 1]
-                .expect_field()
-                .as_ref()
-                .unwrap()
-        },
+        TokTag::MemberRef => unsafe { ctx.memberref[idx as usize - 1].expect_field().as_ref() },
         _ => unimplemented!(),
     };
 
     unsafe {
-        do_load(f.addr, &f.ty, &mut cur_state.eval_stack);
+        do_load(f.addr, &f.ty, &mut cur_ar.eval_stack);
     }
 }
 
-pub fn exec_stsfld(cur_state: &mut ActivationRecord) {
-    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+pub fn exec_ldsflda(cur_ar: &mut ActivationRecord) {
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
 
-    let tok = cur_state.consume_u32();
+    let tok = cur_ar.consume_u32();
+    let (tag, idx) = get_tok_tag(tok);
+    let f = match tag {
+        TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
+        TokTag::MemberRef => unsafe { ctx.memberref[idx as usize - 1].expect_field().as_ref() },
+        _ => unimplemented!(),
+    };
+
+    cur_ar.eval_stack.push_managed(f.addr);
+}
+
+pub fn exec_stsfld(cur_ar: &mut ActivationRecord) {
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
+
+    let tok = cur_ar.consume_u32();
 
     let (tag, idx) = get_tok_tag(tok);
     let f = match tag {
         TokTag::Field => ctx.fields[idx as usize - 1].as_ref(),
-        TokTag::MemberRef => unsafe {
-            ctx.memberref[idx as usize - 1]
-                .expect_field()
-                .as_ref()
-                .unwrap()
-        },
+        TokTag::MemberRef => unsafe { ctx.memberref[idx as usize - 1].expect_field().as_ref() },
         _ => unimplemented!(),
     };
 
-    let v = cur_state.eval_stack.pop_with_slot();
+    let v = cur_ar.eval_stack.pop_with_slot();
     let field_addr = f.addr;
 
     unsafe {

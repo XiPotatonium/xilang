@@ -10,11 +10,12 @@ pub use il_gen::{gen, gen_base_ctor};
 pub use method_builder::MethodBuilder;
 
 use super::ast::ASTType;
-use super::mod_mgr::{Class, Field, Locals, Method, ModMgr, Module};
+use super::mod_mgr::{Class, Crate, Field, Locals, Method, ModuleBuildCtx};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::ptr::NonNull;
 
 pub enum LoopType {
     Loop(RValType),
@@ -28,8 +29,8 @@ pub struct LoopCtx {
 }
 
 pub struct CodeGenCtx<'c> {
-    pub mgr: &'c ModMgr,
-    pub module: &'c Module,
+    pub mgr: &'c Crate,
+    pub module: &'c ModuleBuildCtx,
     pub class: &'c Class,
     pub method: &'c Method,
     /// map from ps name to ps idx
@@ -44,7 +45,7 @@ impl<'mgr> CodeGenCtx<'mgr> {
         self.module.get_ty(ast, self.mgr, self.class)
     }
 
-    pub fn done(&self) {
+    pub fn done(&self, optim_level: usize) {
         let local_mut = self.locals.borrow();
         assert_eq!(
             local_mut.sym_tbl.len(),
@@ -56,18 +57,45 @@ impl<'mgr> CodeGenCtx<'mgr> {
             &mut self.method_builder.borrow_mut(),
             self.method.idx,
             &local_mut.locals,
-            self.mgr.cfg.optim >= 1,
+            optim_level >= 1,
         );
     }
 }
 
 pub enum ValType {
     RVal(RValType),
+    Sym(SymType),
     Ret(RValType),
+}
 
-    Method(Vec<*const Method>),
-    Field(*const Field),
-    Class(*const Class),
+#[derive(Clone, Copy)]
+pub enum SymUsage {
+    Callee,
+    Assignee,
+}
+
+impl SymUsage {
+    pub fn is_callee(&self) -> bool {
+        if let SymUsage::Callee = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_assignee(&self) -> bool {
+        if let SymUsage::Assignee = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+pub enum SymType {
+    Method(Vec<NonNull<Method>>),
+    Field(NonNull<Field>),
+    Class(NonNull<Class>),
     // mod fullname
     Module(String),
     // index into locals
@@ -76,7 +104,6 @@ pub enum ValType {
     KwLSelf,
     // index into method.ps
     Arg(usize),
-
     /// arrlen is not handled like a field
     ArrLen,
     /// array element type
@@ -147,10 +174,18 @@ impl fmt::Display for ValType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RVal(rval) => write!(f, "(RVal){}", rval),
+            Self::Sym(sym) => sym.fmt(f),
             Self::Ret(retv) => write!(f, "(Ret){}", retv),
-            Self::Method(method) => write!(f, "(Method){}", unsafe { method[0].as_ref().unwrap() }),
-            Self::Field(field) => write!(f, "(Field){}", unsafe { field.as_ref().unwrap() }),
-            Self::Class(class) => write!(f, "(Class){}", unsafe { class.as_ref().unwrap() }),
+        }
+    }
+}
+
+impl fmt::Display for SymType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Method(method) => write!(f, "(Method){}", unsafe { method[0].as_ref() }),
+            Self::Field(field) => write!(f, "(Field){}", unsafe { field.as_ref() }),
+            Self::Class(class) => write!(f, "(Class){}", unsafe { class.as_ref() }),
             Self::Module(m) => write!(f, "(Mod){}", m),
             Self::Local(n) => write!(f, "(Local){}", n),
             Self::KwLSelf => write!(f, "(Arg)self"),
@@ -164,17 +199,25 @@ impl fmt::Display for ValType {
 impl ValType {
     pub fn expect_rval(self) -> RValType {
         match self {
-            Self::Ret(_) => panic!("Expect rval but found return value"),
-            Self::RVal(val) => val,
-            _ => panic!("Expect rval but found lval"),
+            ValType::RVal(val) => val,
+            ValType::Sym(_) => panic!("Expect rval but found sym value"),
+            ValType::Ret(_) => panic!("Expect rval but found return value"),
         }
     }
 
     pub fn expect_rval_ref(&self) -> &RValType {
         match self {
-            Self::Ret(_) => panic!("Expect rval but found return value"),
-            Self::RVal(val) => val,
-            _ => panic!("Expect rval but found lval"),
+            ValType::RVal(val) => val,
+            ValType::Sym(_) => panic!("Expect rval but found sym value"),
+            ValType::Ret(_) => panic!("Expect rval but found return value"),
+        }
+    }
+
+    pub fn expect_sym_ref(&self) -> &SymType {
+        match self {
+            ValType::RVal(_) => panic!("Expect rval but found rval value"),
+            ValType::Sym(val) => val,
+            ValType::Ret(_) => panic!("Expect rval but found return value"),
         }
     }
 }

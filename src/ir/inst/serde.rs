@@ -1,6 +1,7 @@
 use super::super::bc_serde::{IDeserializer, ISerializable};
 use super::Inst;
 
+/// III.1.2.1 Opcode encodings
 impl ISerializable for Inst {
     fn serialize(&self, buf: &mut Vec<u8>) {
         match self {
@@ -23,6 +24,10 @@ impl ISerializable for Inst {
                 0x0Eu8.serialize(buf);
                 idx.serialize(buf);
             }
+            Inst::LdArgAS(idx) => {
+                0x0Fu8.serialize(buf);
+                idx.serialize(buf);
+            }
             Inst::StArgS(idx) => {
                 0x10u8.serialize(buf);
                 idx.serialize(buf);
@@ -31,8 +36,16 @@ impl ISerializable for Inst {
                 0x11u8.serialize(buf);
                 idx.serialize(buf);
             }
+            Inst::LdLocAS(idx) => {
+                0x12u8.serialize(buf);
+                idx.serialize(buf);
+            }
             Inst::LdLoc(idx) => {
                 0xFE0Cu16.serialize(buf);
+                idx.serialize(buf);
+            }
+            Inst::LdLocA(idx) => {
+                0xFE0Du16.serialize(buf);
                 idx.serialize(buf);
             }
             Inst::StLocS(idx) => {
@@ -122,29 +135,40 @@ impl ISerializable for Inst {
                 0x6Fu8.serialize(buf);
                 idx.serialize(buf);
             }
-            Inst::NewObj(idx) => {
-                0x73u8.serialize(buf);
-                idx.serialize(buf);
+            Inst::CpObj(tok) => {
+                0x70u8.serialize(buf);
+                tok.serialize(buf);
             }
-            Inst::LdFld(idx) => {
-                0x7Bu8.serialize(buf);
-                idx.serialize(buf);
-            }
-            Inst::StFld(idx) => {
-                0x7Du8.serialize(buf);
-                idx.serialize(buf);
-            }
-            Inst::LdSFld(idx) => {
-                0x7Eu8.serialize(buf);
-                idx.serialize(buf);
-            }
-            Inst::StSFld(idx) => {
-                0x80u8.serialize(buf);
-                idx.serialize(buf);
-            }
-
             Inst::LdStr(tok) => {
                 0x72u8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::NewObj(tok) => {
+                0x73u8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::LdFld(tok) => {
+                0x7Bu8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::LdFldA(tok) => {
+                0x7Cu8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::StFld(tok) => {
+                0x7Du8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::LdSFld(tok) => {
+                0x7Eu8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::LdSFldA(tok) => {
+                0x7Fu8.serialize(buf);
+                tok.serialize(buf);
+            }
+            Inst::StSFld(tok) => {
+                0x80u8.serialize(buf);
                 tok.serialize(buf);
             }
 
@@ -164,8 +188,17 @@ impl ISerializable for Inst {
                 0xA3u8.serialize(buf);
                 tok.serialize(buf);
             }
+            Inst::LdElemA(tok) => {
+                0x8Fu8.serialize(buf);
+                tok.serialize(buf);
+            }
             Inst::StElem(tok) => {
                 0xA4u8.serialize(buf);
+                tok.serialize(buf);
+            }
+
+            Inst::InitObj(tok) => {
+                0xFE15u16.serialize(buf);
                 tok.serialize(buf);
             }
         }
@@ -191,8 +224,10 @@ impl ISerializable for Inst {
             0x0D => Inst::StLoc3,
 
             0x0E => Inst::LdArgS(u8::deserialize(buf)),
+            0x0F => Inst::LdArgAS(u8::deserialize(buf)),
             0x10 => Inst::StArgS(u8::deserialize(buf)),
             0x11 => Inst::LdLocS(u8::deserialize(buf)),
+            0x12 => Inst::LdLocAS(u8::deserialize(buf)),
             0x13 => Inst::StLocS(u8::deserialize(buf)),
 
             0x14 => Inst::LdNull,
@@ -234,15 +269,19 @@ impl ISerializable for Inst {
             0x65 => Inst::Neg,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
+            0x70 => Inst::CpObj(u32::deserialize(buf)),
             0x72 => Inst::LdStr(u32::deserialize(buf)),
             0x73 => Inst::NewObj(u32::deserialize(buf)),
             0x7B => Inst::LdFld(u32::deserialize(buf)),
+            0x7C => Inst::LdFldA(u32::deserialize(buf)),
             0x7D => Inst::StFld(u32::deserialize(buf)),
             0x7E => Inst::LdSFld(u32::deserialize(buf)),
+            0x7F => Inst::LdSFldA(u32::deserialize(buf)),
             0x80 => Inst::StSFld(u32::deserialize(buf)),
 
             0x8D => Inst::NewArr(u32::deserialize(buf)),
             0x8E => Inst::LdLen,
+            0x8F => Inst::LdElemA(u32::deserialize(buf)),
             0x94 => Inst::LdElemI4,
             0x9A => Inst::LdElemRef,
             0x9E => Inst::StElemI4,
@@ -257,7 +296,9 @@ impl ISerializable for Inst {
                     0x02 => Inst::CGt,
                     0x04 => Inst::CLt,
                     0x0C => Inst::LdLoc(u16::deserialize(buf)),
+                    0x0D => Inst::LdLocA(u16::deserialize(buf)),
                     0x0E => Inst::StLoc(u16::deserialize(buf)),
+                    0x15 => Inst::InitObj(u32::deserialize(buf)),
                     _ => panic!("Unknown inst 0xFE{:X}", inner_code),
                 }
             }

@@ -3,7 +3,7 @@ mod fld;
 pub mod internal_calls;
 mod op;
 
-use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl};
+use super::data::{BuiltinType, MethodDesc, MethodILImpl, MethodImpl, MethodNativeImpl, REF_SIZE};
 use super::heap::Heap;
 use super::shared_mem::SharedMem;
 use super::stack::{ActivationRecord, Args, EvalStack, ILocals, Locals, Slot, SlotTag};
@@ -11,7 +11,6 @@ use super::stack::{ActivationRecord, Args, EvalStack, ILocals, Locals, Slot, Slo
 use xir::attrib::MethodAttribFlag;
 use xir::tok::{get_tok_tag, TokTag};
 
-use core::panic;
 use std::ptr;
 
 pub struct TExecutor<'m> {
@@ -124,6 +123,14 @@ impl<'m> TExecutor<'m> {
                     let idx = cur_state.consume_u8();
                     cur_state.args.load(idx as usize, &mut cur_state.eval_stack);
                 }
+                // ldarga.s
+                0x0F => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u8();
+                    cur_state
+                        .args
+                        .loada(idx as usize, &mut cur_state.eval_stack);
+                }
                 // starg.s
                 0x10 => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -139,6 +146,14 @@ impl<'m> TExecutor<'m> {
                     cur_state
                         .locals
                         .load(idx as usize, &mut cur_state.eval_stack);
+                }
+                // ldloca.s
+                0x12 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let idx = cur_state.consume_u8();
+                    cur_state
+                        .locals
+                        .loada(idx as usize, &mut cur_state.eval_stack);
                 }
                 // stloc.s
                 0x13 => {
@@ -196,17 +211,14 @@ impl<'m> TExecutor<'m> {
                 0x28 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
 
                     let (tag, idx) = get_tok_tag(tok);
 
                     let callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
                         TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_method()
-                                .as_ref()
-                                .unwrap()
+                            ctx.memberref[idx as usize - 1].expect_method().as_ref()
                         },
                         _ => unimplemented!(),
                     };
@@ -221,12 +233,12 @@ impl<'m> TExecutor<'m> {
                         MethodImpl::Native(MethodNativeImpl { scope, .. }) => {
                             // currently there is no multi-slot user defined type
                             unsafe {
-                                let callee_ctx = callee.ctx.as_ref().unwrap().expect_il();
-                                callee_ctx.modrefs[*scope]
-                                    .as_ref()
-                                    .unwrap()
-                                    .expect_dll()
-                                    .call(&mem.str_pool[callee.name], args, ret_addr);
+                                let callee_ctx = callee.ctx.as_ref().expect_il();
+                                callee_ctx.modrefs[*scope].as_ref().expect_dll().call(
+                                    &mem.str_pool[callee.name],
+                                    args,
+                                    ret_addr,
+                                );
                             }
                         }
                         MethodImpl::Runtime(runtime_impl) => {
@@ -319,17 +331,14 @@ impl<'m> TExecutor<'m> {
                 0x6F => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
 
                     let (tag, idx) = get_tok_tag(tok);
 
                     let mut callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
                         TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_method()
-                                .as_ref()
-                                .unwrap()
+                            ctx.memberref[idx as usize - 1].expect_method().as_ref()
                         },
                         _ => unimplemented!(),
                     };
@@ -342,11 +351,8 @@ impl<'m> TExecutor<'m> {
                         // If calle is virtual, use dynamic dispatching
                         if callee.attrib.is(MethodAttribFlag::Virtual) {
                             let callee_ptr = Heap::get_vtbl_ptr(self_ptr);
-                            callee = unsafe {
-                                callee_ptr.as_ref().unwrap().vtbl[callee.slot]
-                                    .as_ref()
-                                    .unwrap()
-                            };
+                            callee =
+                                unsafe { callee_ptr.as_ref().unwrap().vtbl[callee.slot].as_ref() };
                         }
                     }
                     let ret_addr = cur_state.eval_stack.alloc_ret(&callee.ret.ty);
@@ -361,11 +367,42 @@ impl<'m> TExecutor<'m> {
                         }
                     }
                 }
+                // cpobj
+                0x70 => {
+                    let cur_state = self.states.last_mut().unwrap();
+                    let tok = cur_state.consume_u32();
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
+
+                    let (tag, idx) = get_tok_tag(tok);
+
+                    let ty = match tag {
+                        TokTag::TypeDef => ctx.types[idx as usize - 1].as_ref(),
+                        TokTag::TypeRef => unsafe { ctx.typerefs[idx as usize - 1].as_ref() },
+                        TokTag::TypeSpec => unimplemented!(),
+                        _ => unimplemented!(),
+                    };
+
+                    let src = unsafe { cur_state.eval_stack.pop_with_slot().expect_ptr() };
+                    let dest = unsafe { cur_state.eval_stack.pop_with_slot().expect_ptr() };
+
+                    unsafe {
+                        // copy value if ty is value type, else copy ref
+                        ptr::copy(
+                            src,
+                            dest,
+                            if ty.ee_class.is_value {
+                                ty.basic_instance_size
+                            } else {
+                                REF_SIZE
+                            },
+                        );
+                    }
+                }
                 // ldstr
                 0x72 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let literal_idx = cur_state.consume_u32() as usize;
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
 
                     let str_ptr = unsafe { mem.new_str_from_str(ctx.usr_str_heap[literal_idx]) };
                     cur_state.eval_stack.push_ptr(str_ptr);
@@ -374,17 +411,14 @@ impl<'m> TExecutor<'m> {
                 0x73 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let tok = cur_state.consume_u32();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().unwrap().expect_il() };
+                    let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
 
                     let (tag, idx) = get_tok_tag(tok);
 
                     let callee = match tag {
                         TokTag::MethodDef => ctx.methods[idx as usize - 1].as_ref(),
                         TokTag::MemberRef => unsafe {
-                            ctx.memberref[idx as usize - 1]
-                                .expect_method()
-                                .as_ref()
-                                .unwrap()
+                            ctx.memberref[idx as usize - 1].expect_method().as_ref()
                         },
                         _ => unimplemented!(),
                     };
@@ -413,11 +447,15 @@ impl<'m> TExecutor<'m> {
                     );
                 }
                 0x7B => fld::exec_ldfld(self.states.last_mut().unwrap()),
+                0x7C => fld::exec_ldflda(self.states.last_mut().unwrap()),
                 0x7D => fld::exec_stfld(self.states.last_mut().unwrap()),
                 0x7E => fld::exec_ldsfld(self.states.last_mut().unwrap()),
+                0x7F => fld::exec_ldsflda(self.states.last_mut().unwrap()),
                 0x80 => fld::exec_stsfld(self.states.last_mut().unwrap()),
                 0x8D => arr::exec_newarr(self.states.last_mut().unwrap(), mem),
                 0x8E => arr::exec_ldlen(self.states.last_mut().unwrap()),
+                // ldelema
+                0x8F => arr::exec_ldelema(self.states.last_mut().unwrap()),
                 // ldelem.i4
                 0x94 => unimplemented!(),
                 // ldelem.ref
@@ -445,6 +483,14 @@ impl<'m> TExecutor<'m> {
                                 .locals
                                 .load(idx as usize, &mut cur_state.eval_stack);
                         }
+                        // ldloca
+                        0x0D => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let idx = cur_state.consume_u16();
+                            cur_state
+                                .locals
+                                .loada(idx as usize, &mut cur_state.eval_stack);
+                        }
                         // stloc
                         0x0E => {
                             let cur_state = self.states.last_mut().unwrap();
@@ -452,6 +498,36 @@ impl<'m> TExecutor<'m> {
                             cur_state
                                 .locals
                                 .store(idx as usize, &mut cur_state.eval_stack);
+                        }
+                        // initobj
+                        0x15 => {
+                            let cur_state = self.states.last_mut().unwrap();
+                            let tok = cur_state.consume_u32();
+                            let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
+
+                            let (tag, idx) = get_tok_tag(tok);
+
+                            let ty = match tag {
+                                TokTag::TypeDef => ctx.types[idx as usize - 1].as_ref(),
+                                TokTag::TypeRef => unsafe {
+                                    ctx.typerefs[idx as usize - 1].as_ref()
+                                },
+                                TokTag::TypeSpec => unimplemented!(),
+                                _ => unimplemented!(),
+                            };
+                            let dest = unsafe { cur_state.eval_stack.pop_with_slot().expect_ptr() };
+                            unsafe {
+                                // init value with all 0 if ty is value type else ldnull followed by stind.ref
+                                ptr::write_bytes(
+                                    dest,
+                                    0,
+                                    if ty.ee_class.is_value {
+                                        ty.basic_instance_size
+                                    } else {
+                                        REF_SIZE
+                                    },
+                                )
+                            }
                         }
                         _ => panic!("Unknown inst 0xFE{:X}", inner_code),
                     }

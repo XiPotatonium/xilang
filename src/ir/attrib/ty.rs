@@ -2,14 +2,15 @@ use std::convert::TryFrom;
 use std::fmt;
 
 const TYPE_ATTRIB_VIS_MASK: u32 = 0x00000007;
-
 const TYPE_ATTRIB_PRIV_FLAG: u32 = 0x000000000;
 const TYPE_ATTRIB_PUB_FLAG: u32 = 0x000000001;
 
 const TYPE_ATTRIB_SEM_MASK: u32 = 0x00000020;
-
 const TYPE_ATTRIB_CLASS_FLAG: u32 = 0x00000000;
 const TYPE_ATTRIB_INTERFACE_FLAG: u32 = 0x00000020;
+
+const TYPE_ATTRIB_ABSTRACT_FLAG: u32 = 0x00000080;
+const TYPE_ATTRIB_SEALED_FLAG: u32 = 0x00000100;
 
 pub enum TypeAttribVisFlag {
     Priv,
@@ -63,6 +64,32 @@ impl From<TypeAttribSemFlag> for u32 {
     }
 }
 
+pub enum TypeAttribFlag {
+    Abstract,
+    Sealed,
+}
+
+impl TryFrom<u32> for TypeAttribFlag {
+    type Error = &'static str;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            TYPE_ATTRIB_ABSTRACT_FLAG => Ok(Self::Abstract),
+            TYPE_ATTRIB_SEALED_FLAG => Ok(Self::Sealed),
+            _ => Err("Invalid value for TypeAttribFlag"),
+        }
+    }
+}
+
+impl From<TypeAttribFlag> for u32 {
+    fn from(value: TypeAttribFlag) -> Self {
+        match value {
+            TypeAttribFlag::Abstract => TYPE_ATTRIB_ABSTRACT_FLAG,
+            TypeAttribFlag::Sealed => TYPE_ATTRIB_SEALED_FLAG,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct TypeAttrib {
     pub attrib: u32,
@@ -77,6 +104,14 @@ impl TypeAttrib {
         TypeAttrib {
             attrib: (attrib & !TYPE_ATTRIB_SEM_MASK) | TYPE_ATTRIB_CLASS_FLAG,
         }
+    }
+
+    pub fn set(&mut self, flag: TypeAttribFlag) {
+        self.attrib |= u32::from(flag);
+    }
+
+    pub fn is(&self, flag: TypeAttribFlag) -> bool {
+        self.attrib & u32::from(flag) != 0
     }
 
     pub fn set_vis(&mut self, flag: TypeAttribVisFlag) {
@@ -108,6 +143,14 @@ impl fmt::Display for TypeAttrib {
             TYPE_ATTRIB_CLASS_FLAG => write!(f, " class")?,
             TYPE_ATTRIB_INTERFACE_FLAG => write!(f, " interface")?,
             _ => unreachable!(),
+        }
+
+        if (self.attrib & TYPE_ATTRIB_SEALED_FLAG) != 0 {
+            write!(f, " sealed")?;
+        }
+
+        if (self.attrib & TYPE_ATTRIB_ABSTRACT_FLAG) != 0 {
+            write!(f, " abstract")?;
         }
 
         Ok(())

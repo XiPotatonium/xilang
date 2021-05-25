@@ -3,6 +3,7 @@ use xir::file::IrFile;
 use xir::sig;
 
 use super::super::exec::internal_calls::InternalCallWrapper;
+use super::super::util::ptr::NonNull;
 use super::{
     builtin_ty_str_desc, param_sig_str_desc, BuiltinType, ILModule, Module, Type, REF_SIZE,
 };
@@ -27,7 +28,7 @@ impl Param {
 
 pub struct MethodDesc {
     /// module where method is declared
-    pub ctx: *const Module,
+    pub ctx: NonNull<Module>,
 
     pub parent: *const Type,
     pub slot: usize,
@@ -64,14 +65,7 @@ impl MethodDesc {
 
     // FIX: instance or not?
     pub fn str_desc_with_fullname(&self, str_pool: &Vec<String>) -> String {
-        let mut sig = unsafe {
-            self.ctx
-                .as_ref()
-                .unwrap()
-                .expect_il()
-                .fullname(str_pool)
-                .to_owned()
-        };
+        let mut sig = unsafe { self.ctx.as_ref().expect_il().fullname(str_pool).to_owned() };
         if let Some(ty) = unsafe { self.parent.as_ref() } {
             sig.push_str("/");
             sig.push_str(&str_pool[ty.name]);

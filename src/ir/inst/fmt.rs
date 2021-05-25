@@ -15,6 +15,7 @@ impl Inst {
             Inst::LdArg2 => write!(f, "ldarg.2"),
             Inst::LdArg3 => write!(f, "ldarg.3"),
             Inst::LdArgS(idx) => write!(f, "ldarg.s {}", idx),
+            Inst::LdArgAS(idx) => write!(f, "ldarga.s {}", idx),
 
             Inst::StArgS(idx) => write!(f, "starg.s {}", idx),
 
@@ -23,7 +24,9 @@ impl Inst {
             Inst::LdLoc2 => write!(f, "ldloc.2"),
             Inst::LdLoc3 => write!(f, "ldloc.3"),
             Inst::LdLocS(idx) => write!(f, "ldloc.s {}", idx),
+            Inst::LdLocAS(idx) => write!(f, "ldloca.s {}", idx),
             Inst::LdLoc(idx) => write!(f, "ldloc {}", idx),
+            Inst::LdLocA(idx) => write!(f, "ldloca {}", idx),
             Inst::StLoc0 => write!(f, "stloc.0"),
             Inst::StLoc1 => write!(f, "stloc.1"),
             Inst::StLoc2 => write!(f, "stloc.2"),
@@ -83,6 +86,14 @@ impl Inst {
                 write!(f, "callvirt ")?;
                 fmt_tok(*tok, f, ctx)
             }
+            Inst::InitObj(tok) => {
+                write!(f, "initobj ")?;
+                fmt_tok(*tok, f, ctx)
+            }
+            Inst::CpObj(tok) => {
+                write!(f, "cpobj ")?;
+                fmt_tok(*tok, f, ctx)
+            }
             Inst::NewObj(tok) => {
                 write!(f, "newobj ")?;
                 fmt_tok(*tok, f, ctx)
@@ -91,12 +102,20 @@ impl Inst {
                 write!(f, "ldfld ")?;
                 fmt_tok(*tok, f, ctx)
             }
+            Inst::LdFldA(tok) => {
+                write!(f, "ldflda ")?;
+                fmt_tok(*tok, f, ctx)
+            }
             Inst::StFld(tok) => {
                 write!(f, "stfld ")?;
                 fmt_tok(*tok, f, ctx)
             }
             Inst::LdSFld(tok) => {
                 write!(f, "ldsfld ")?;
+                fmt_tok(*tok, f, ctx)
+            }
+            Inst::LdSFldA(tok) => {
+                write!(f, "ldsflda ")?;
                 fmt_tok(*tok, f, ctx)
             }
             Inst::StSFld(tok) => {
@@ -121,6 +140,10 @@ impl Inst {
 
             Inst::LdElem(tok) => {
                 write!(f, "ldelem ")?;
+                fmt_tok(*tok, f, ctx)
+            }
+            Inst::LdElemA(tok) => {
+                write!(f, "ldelema ")?;
                 fmt_tok(*tok, f, ctx)
             }
             Inst::StElem(tok) => {

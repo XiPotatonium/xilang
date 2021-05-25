@@ -1,7 +1,8 @@
+use super::super::super::super::XicCfg;
 use super::super::super::ast::{ASTClass, ASTMethodAttribFlag, AST};
 use super::super::super::gen::{gen, gen_base_ctor, CodeGenCtx, MethodBuilder, RValType, ValType};
-use super::super::{Class, Locals, Method, ModMgr};
-use super::Module;
+use super::super::{Class, Crate, Locals, Method};
+use super::ModuleBuildCtx;
 
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, MethodImplAttribCodeTypeFlag};
 use xir::{Inst, CCTOR_NAME, CTOR_NAME};
@@ -9,8 +10,8 @@ use xir::{Inst, CCTOR_NAME, CTOR_NAME};
 use std::cell::RefCell;
 
 // code gen
-impl Module {
-    fn code_gen_method(&self, c: &ModMgr, class: &Class, m: &Method) {
+impl ModuleBuildCtx {
+    fn code_gen_method(&self, c: &Crate, class: &Class, m: &Method, optim_level: usize) {
         let ctx = CodeGenCtx {
             mgr: c,
             module: self,
@@ -33,7 +34,7 @@ impl Module {
                 match ast {
                     AST::Block(_) => gen(&ctx, ast), // cctor
                     AST::Ctor(ctor) => {
-                        if class.extends.is_some() {
+                        if !class.extends.is_null() {
                             // has base class, call base ctor for each ctor
                             if let Some(base_args) = &ctor.base_args {
                                 gen_base_ctor(&ctx, base_args);
@@ -57,7 +58,7 @@ impl Module {
             }
             None => {
                 // default ctor
-                if class.extends.is_some() {
+                if !class.extends.is_null() {
                     let base_args = Vec::new();
                     gen_base_ctor(&ctx, &base_args);
                 }
@@ -82,51 +83,54 @@ impl Module {
             _ => unreachable!(),
         }
 
-        ctx.done();
+        ctx.done(optim_level);
     }
 
     /// class extends is set in code gen pass because TypeDef in IrFile may not be set in member pass
-    pub fn set_class_extends(&self, mod_mgr: &ModMgr, class: &ASTClass) {
+    pub fn set_class_extends(&self, mod_mgr: &Crate, class: &ASTClass) {
         let mut builder = self.builder.borrow_mut();
-        let mut class_mut = self.classes.get(&class.name).unwrap().borrow_mut();
+        let mut class_mut = self
+            .get_module_mut()
+            .classes
+            .get_mut(&class.name)
+            .unwrap()
+            .as_mut();
         for p in class.extends_or_impls.iter() {
             // find base class
             let (mod_name, class_name) = self.resolve_path(p, mod_mgr, None);
 
             let (extends_idx, extends_idx_tag) = builder.add_const_class(&mod_name, &class_name);
-            if let Some(_) = class_mut.extends {
+            if !class_mut.extends.is_null() {
                 panic!("Multiple inheritance for class {}", class.name);
             }
-            class_mut.extends = Some(
-                mod_mgr
-                    .mod_tbl
-                    .get(&mod_name)
-                    .unwrap()
-                    .get_class(&class_name)
-                    .unwrap(),
-            );
+            class_mut.extends = mod_mgr
+                .mod_tbl
+                .get(&mod_name)
+                .unwrap()
+                .classes
+                .get(&class_name)
+                .unwrap()
+                .as_ref() as *const Class;
             builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
         }
 
-        if let None = class_mut.extends {
+        if class_mut.extends.is_null() {
             // no explicitly designated base class
             // implicitly derived from std::Object
             let class_fullname = format!("{}", class_mut);
             if class_fullname != "std::Object" {
-                class_mut.extends = Some(
-                    mod_mgr
-                        .mod_tbl
-                        .get("std")
-                        .unwrap()
-                        .get_class("Object")
-                        .unwrap(),
-                );
+                class_mut.extends = mod_mgr
+                    .mod_tbl
+                    .get("std")
+                    .unwrap()
+                    .classes
+                    .get("Object")
+                    .unwrap()
+                    .as_ref() as *const Class;
                 let (extends_idx, extends_idx_tag) = builder.add_const_class("std", "Object");
                 builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
             }
-        }
-
-        if class_mut.extends.is_some() {
+        } else {
             // has base class, check extends
             for (field_name, _) in class_mut
                 .fields
@@ -134,9 +138,7 @@ impl Module {
                 .filter(|(_, f)| !f.attrib.is(FieldAttribFlag::Static))
             {
                 let mut base = class_mut.extends;
-                while let Some(base_ptr) = base {
-                    let base_ref = unsafe { base_ptr.as_ref().unwrap() };
-
+                while let Some(base_ref) = unsafe { base.as_ref() } {
                     if base_ref.fields.contains_key(field_name) {
                         println!("Warning: {} has an instance field {} that override field of base type {}", class_mut, field_name, base_ref);
                         break;
@@ -164,9 +166,7 @@ impl Module {
                     };
                     let mut has_override = false;
                     let mut base = class_mut.extends;
-                    while let Some(base_ptr) = base {
-                        let base_ref = unsafe { base_ptr.as_ref().unwrap() };
-
+                    while let Some(base_ref) = unsafe { base.as_ref() } {
                         if let Some(base_method_grp) = base_ref.methods.get(method_name) {
                             for base_method in base_method_grp.iter() {
                                 if method.sig_match(base_method) {
@@ -193,47 +193,106 @@ impl Module {
         }
     }
 
-    pub fn code_gen(&self, mod_mgr: &ModMgr) {
+    pub fn code_gen(&self, mod_mgr: &Crate, cfg: &XicCfg) {
         for class in self.class_asts.iter() {
-            if let AST::Class(class) = class.as_ref() {
-                self.set_class_extends(mod_mgr, class);
+            match class.as_ref() {
+                AST::Class(class) => {
+                    self.set_class_extends(mod_mgr, class);
 
-                let class_ref = self.classes.get(&class.name).unwrap().borrow();
-                // gen static init
-                match class.cctor.as_ref() {
-                    AST::Block(_) => {
-                        let ms = class_ref.methods.get(CCTOR_NAME).unwrap();
-                        // only 1 cctor
-                        self.code_gen_method(mod_mgr, &class_ref, &ms[0]);
+                    let class_ref = self.get_module().classes.get(&class.name).unwrap().as_ref();
+                    // gen static init
+                    match class.cctor.as_ref() {
+                        AST::Block(_) => {
+                            let ms = class_ref.methods.get(CCTOR_NAME).unwrap();
+                            // only 1 cctor
+                            self.code_gen_method(mod_mgr, &class_ref, &ms[0], cfg.optim);
+                        }
+                        AST::None => (),
+                        _ => unreachable!("Parser error"),
+                    };
+
+                    let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
+                    if class.ctors.is_empty() {
+                        // gen default ctor
+                        assert_eq!(ctors.len(), 1);
+                        self.code_gen_method(mod_mgr, &class_ref, &ctors[0], cfg.optim);
+                    } else {
+                        for ctor in ctors.iter() {
+                            if ctor.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
+                                // only code gen IL method
+                                self.code_gen_method(mod_mgr, &class_ref, ctor, cfg.optim);
+                            }
+                        }
                     }
-                    AST::None => (),
-                    _ => unreachable!("Parser error"),
-                };
 
-                let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
-                if class.ctors.is_empty() {
-                    // gen default ctor
-                    assert_eq!(ctors.len(), 1);
-                    self.code_gen_method(mod_mgr, &class_ref, &ctors[0]);
-                } else {
-                    for ctor in ctors.iter() {
-                        if ctor.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
-                            // only code gen IL method
-                            self.code_gen_method(mod_mgr, &class_ref, ctor);
+                    for ms in class_ref.methods.values() {
+                        for m in ms.iter() {
+                            if m.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
+                                // only code gen IL method
+                                self.code_gen_method(mod_mgr, &class_ref, m, cfg.optim);
+                            }
                         }
                     }
                 }
+                AST::Struct(class) => {
+                    {
+                        let class_mut = self
+                            .get_module_mut()
+                            .classes
+                            .get_mut(&class.name)
+                            .unwrap()
+                            .as_mut();
+                        class_mut.extends = mod_mgr
+                            .mod_tbl
+                            .get("std")
+                            .unwrap()
+                            .classes
+                            .get("ValueType")
+                            .unwrap()
+                            .as_ref() as *const Class;
+                        let mut builder = self.builder.borrow_mut();
+                        let (extends_idx, extends_idx_tag) =
+                            builder.add_const_class("std", "ValueType");
+                        builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
+                    }
 
-                for ms in class_ref.methods.values() {
-                    for m in ms.iter() {
-                        if m.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
-                            // only code gen IL method
-                            self.code_gen_method(mod_mgr, &class_ref, m);
+                    // Same as class
+                    let class_ref = self.get_module().classes.get(&class.name).unwrap().as_ref();
+                    // gen static init
+                    match class.cctor.as_ref() {
+                        AST::Block(_) => {
+                            let ms = class_ref.methods.get(CCTOR_NAME).unwrap();
+                            // only 1 cctor
+                            self.code_gen_method(mod_mgr, &class_ref, &ms[0], cfg.optim);
+                        }
+                        AST::None => (),
+                        _ => unreachable!("Parser error"),
+                    };
+
+                    let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
+                    if class.ctors.is_empty() {
+                        // gen default ctor
+                        assert_eq!(ctors.len(), 1);
+                        self.code_gen_method(mod_mgr, &class_ref, &ctors[0], cfg.optim);
+                    } else {
+                        for ctor in ctors.iter() {
+                            if ctor.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
+                                // only code gen IL method
+                                self.code_gen_method(mod_mgr, &class_ref, ctor, cfg.optim);
+                            }
+                        }
+                    }
+
+                    for ms in class_ref.methods.values() {
+                        for m in ms.iter() {
+                            if m.impl_flag.is_code_ty(MethodImplAttribCodeTypeFlag::IL) {
+                                // only code gen IL method
+                                self.code_gen_method(mod_mgr, &class_ref, m, cfg.optim);
+                            }
                         }
                     }
                 }
-            } else {
-                unreachable!();
+                _ => unreachable!(),
             }
         }
     }

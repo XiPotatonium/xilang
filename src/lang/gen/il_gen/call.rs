@@ -1,18 +1,20 @@
 use super::super::super::ast::{ASTType, AST};
 use super::super::super::mod_mgr::Method;
-use super::super::{CodeGenCtx, RValType, ValType};
-use super::{gen, lval};
+use super::super::{CodeGenCtx, RValType, SymType, SymUsage};
+use super::{gen, sym};
 
 use xir::attrib::MethodAttribFlag;
 use xir::tok::to_tok;
 use xir::{Inst, CTOR_NAME};
 
+use std::ptr::{self, NonNull};
+
 pub fn pick_method_from_ptrs(
-    candidates: &Vec<*const Method>,
+    candidates: &Vec<NonNull<Method>>,
     args_ty: &Vec<RValType>,
-) -> Option<*const Method> {
+) -> *const Method {
     for candidate in candidates.iter() {
-        let candidate_ref = unsafe { candidate.as_ref().unwrap() };
+        let candidate_ref = unsafe { candidate.as_ref() };
         if candidate_ref.ps.len() == args_ty.len() {
             let mut is_match = true;
             for (param, arg_ty) in candidate_ref.ps.iter().zip(args_ty.iter()) {
@@ -22,11 +24,11 @@ pub fn pick_method_from_ptrs(
                 }
             }
             if is_match {
-                return Some(*candidate);
+                return candidate.clone().as_ptr();
             }
         }
     }
-    None
+    ptr::null()
 }
 
 pub fn pick_method_from_refs<'m>(
@@ -51,9 +53,9 @@ pub fn pick_method_from_refs<'m>(
 }
 
 pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
-    let lval = lval::gen_lval(ctx, f, true);
+    let lval = sym::gen_sym(ctx, f, SymUsage::Callee);
     let (inst, ret) = match &lval {
-        ValType::Method(candidates) => {
+        SymType::Method(candidates) => {
             // build args
             let args_ty: Vec<RValType> =
                 args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
@@ -64,9 +66,8 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
 
             // Pick method
             let m_ref = pick_method_from_ptrs(candidates, &args_ty);
-            let (mod_name, class_name, m_ref) = if let Some(m_ref) = m_ref {
+            let (mod_name, class_name, m_ref) = if let Some(m_ref) = unsafe { m_ref.as_ref() } {
                 unsafe {
-                    let m_ref = m_ref.as_ref().unwrap();
                     let class_ref = m_ref.parent.as_ref().unwrap();
                     let module_ref = class_ref.parent.as_ref().unwrap();
                     (module_ref.fullname(), &class_ref.name, m_ref)
@@ -81,7 +82,7 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
                         .join(", "),
                     candidates
                         .iter()
-                        .map(|m| unsafe { m.as_ref().unwrap().to_string() })
+                        .map(|m| unsafe { m.as_ref().to_string() })
                         .collect::<Vec<String>>()
                         .join(", ")
                 )
@@ -110,8 +111,8 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
                 m_ref.ret.clone(),
             )
         }
-        ValType::Module(_) => panic!(),
-        ValType::Class(_) => panic!(),
+        SymType::Module(_) => panic!(),
+        SymType::Class(_) => panic!(),
         _ => unreachable!(),
     };
 
@@ -127,14 +128,15 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType
             let args_ty: Vec<RValType> =
                 args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
 
-            let class = ctx
+            let class_ref = ctx
                 .mgr
                 .mod_tbl
                 .get(mod_name)
                 .unwrap()
-                .get_class(class_name)
-                .unwrap();
-            let class_ref = unsafe { class.as_ref().unwrap() };
+                .classes
+                .get(class_name)
+                .unwrap()
+                .as_ref();
             let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
 
             let ctor = pick_method_from_refs(ctors, &args_ty);

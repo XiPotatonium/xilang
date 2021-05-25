@@ -4,6 +4,7 @@ use xir::sig::IrSig;
 use xir::ty::{ResolutionScope, TypeDefOrRef};
 
 use super::super::data::{method_str_desc, BuiltinType, MemberRef, MethodImpl, Module, Type};
+use super::super::util::ptr::NonNull;
 
 use std::collections::HashMap;
 
@@ -18,7 +19,7 @@ pub fn link_modref(
         let name = str_heap[modref.name as usize];
         this_mod_mut
             .modrefs
-            .push(mods.get_mut(&name).unwrap().as_mut() as *mut Module);
+            .push(NonNull::new(mods.get_mut(&name).unwrap().as_mut() as *mut Module).unwrap());
     }
 }
 
@@ -30,14 +31,16 @@ pub fn link_typeref(file: &IrFile, this_mod: *mut Module, str_heap: &Vec<usize>)
         match parent_tag {
             ResolutionScope::Mod => unimplemented!(), // this is ok
             ResolutionScope::ModRef => {
-                let parent = unsafe { this_mod_mut.modrefs[parent_idx].as_mut().unwrap() };
+                let parent = unsafe { this_mod_mut.modrefs[parent_idx].as_mut() };
                 let ty = parent
                     .expect_il_mut()
                     .types
                     .iter_mut()
                     .find(|c| c.as_ref().name == name);
                 if let Some(ty) = ty {
-                    this_mod_mut.typerefs.push(ty.as_mut() as *mut Type);
+                    this_mod_mut
+                        .typerefs
+                        .push(NonNull::new(ty.as_mut() as *mut Type).unwrap());
                 } else {
                     panic!("External symbol not found");
                 }
@@ -69,14 +72,14 @@ pub fn link_member_ref(
 
                 match parent_tag {
                     MemberRefParent::TypeRef => {
-                        let parent = unsafe { this_mod_mut.typerefs[parent_idx].as_ref().unwrap() };
+                        let parent = unsafe { this_mod_mut.typerefs[parent_idx].as_ref() };
                         let ps_ty: Vec<BuiltinType> = ps
                             .iter()
                             .map(|p| BuiltinType::from_param(p, this_mod_mut))
                             .collect();
                         let sig = method_str_desc(str_pool, name, &ps_ty);
                         if let Some(m) = parent.ee_class.methods.get(&sig) {
-                            if unsafe { &m.as_ref().unwrap().ret.ty } == &ret_ty {
+                            if unsafe { &m.as_ref().ret.ty } == &ret_ty {
                                 found = true;
                                 this_mod_mut.memberref.push(MemberRef::Method(*m));
                             }
@@ -97,12 +100,11 @@ pub fn link_member_ref(
                         if let Some(f) = unsafe {
                             this_mod_mut.typerefs[parent_idx]
                                 .as_ref()
-                                .unwrap()
                                 .ee_class
                                 .fields
                                 .get(&name)
                         } {
-                            if &sig == unsafe { &f.as_ref().unwrap().ty } {
+                            if &sig == unsafe { &f.as_ref().ty } {
                                 // field found
                                 this_mod_mut.memberref.push(MemberRef::Field(*f));
                                 found = true;
@@ -179,7 +181,7 @@ pub fn link_class_extends(file: &IrFile, this_mod: *mut Module) {
         if let Some((parent_tag, parent_idx)) = type_entry.get_extends() {
             ty.extends = match parent_tag {
                 TypeDefOrRef::TypeDef => this_mod_mut1.types[parent_idx].as_mut() as *mut Type,
-                TypeDefOrRef::TypeRef => this_mod_ref.typerefs[parent_idx],
+                TypeDefOrRef::TypeRef => this_mod_ref.typerefs[parent_idx].as_ptr(),
                 TypeDefOrRef::TypeSpec => unimplemented!(),
             };
         }

@@ -16,6 +16,7 @@ typedef enum SlotTag {
     INative,
     F32,
     F64,
+    Managed,
     Ref,
     Value,
     Uninit,

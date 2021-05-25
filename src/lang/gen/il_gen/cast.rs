@@ -1,4 +1,5 @@
 use super::super::super::ast::{ASTType, AST};
+use super::super::super::mod_mgr::Class;
 use super::super::{CodeGenCtx, RValType, ValType};
 use super::gen;
 
@@ -23,8 +24,10 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
                 .mod_tbl
                 .get(mod_fullname)
                 .unwrap()
-                .get_class(class_name)
-                .unwrap();
+                .classes
+                .get(class_name)
+                .unwrap()
+                .as_ref();
             match &to_type {
                 RValType::Bool
                 | RValType::U8
@@ -43,19 +46,20 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
                         .mod_tbl
                         .get(mod_fullname)
                         .unwrap()
-                        .get_class(class_name)
-                        .unwrap();
-                    let rhs_class = unsafe { rhs_class.as_ref().unwrap() };
+                        .classes
+                        .get(class_name)
+                        .unwrap()
+                        .as_ref();
 
-                    if lhs_class != rhs_class {
-                        let mut base = unsafe { lhs_class.as_ref().unwrap().extends };
+                    if lhs_class as *const Class != rhs_class {
+                        let mut base = lhs_class.extends;
                         let mut castable = false;
-                        while let Some(base_ptr) = base {
-                            if base_ptr == rhs_class {
+                        while let Some(base_ref) = unsafe { base.as_ref() } {
+                            if base == rhs_class {
                                 castable = true;
                                 break;
                             }
-                            base = unsafe { base_ptr.as_ref().unwrap().extends };
+                            base = base_ref;
                         }
 
                         if !castable {

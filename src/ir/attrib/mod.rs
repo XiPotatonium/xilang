@@ -13,4 +13,4 @@ pub use method::{
 };
 pub use param::{ParamAttrib, ParamAttribFlag};
 pub use pinvoke::{PInvokeAttrib, PInvokeAttribCallConvFlag, PInvokeAttribCharsetFlag};
-pub use ty::{TypeAttrib, TypeAttribSemFlag, TypeAttribVisFlag};
+pub use ty::{TypeAttrib, TypeAttribFlag, TypeAttribSemFlag, TypeAttribVisFlag};

@@ -8,13 +8,14 @@ extern crate xir;
 
 mod lang;
 
-use lang::mod_mgr::ModMgr;
+use lang::mod_mgr::Crate;
 use lang::XicCfg;
 
 use clap::{App, Arg};
 use lazy_static::lazy_static;
 
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -25,7 +26,7 @@ lazy_static! {
 }
 
 fn main() {
-    let cfg = {
+    let mut cfg = {
         let matches = App::new("xic")
             .version("0.3.1")
             .author("Xi")
@@ -111,14 +112,29 @@ fn main() {
         }
     };
 
+    if cfg.crate_name == "std" {
+        println!("Info: Compiling stdlib ...");
+    } else {
+        let mut std_path = env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned();
+        std_path.push("std/std.xibc");
+        // TODO: what if std is already present in the ext_paths?
+        cfg.ext_paths.push(std_path.canonicalize().unwrap());
+    }
+
     println!("External modules: ");
     for p in cfg.ext_paths.iter() {
         println!("* {}", p.display());
     }
 
     let start_time = SystemTime::now();
-    let mut module_mgr = ModMgr::new(cfg);
-    if module_mgr.cfg.verbose >= 1 {
+    let mut module_mgr = Crate::new(&cfg);
+    if cfg.verbose >= 1 {
         println!(
             "Parsing finished in {} seconds",
             SystemTime::now()
@@ -129,8 +145,8 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    module_mgr.build();
-    if module_mgr.cfg.verbose >= 1 {
+    module_mgr.build(&cfg);
+    if cfg.verbose >= 1 {
         println!(
             "Build finished in {} seconds",
             SystemTime::now()
@@ -142,7 +158,7 @@ fn main() {
 
     let start_time = SystemTime::now();
     module_mgr.dump();
-    if module_mgr.cfg.verbose >= 1 {
+    if cfg.verbose >= 1 {
         println!(
             "Dump finished in {} seconds",
             SystemTime::now()

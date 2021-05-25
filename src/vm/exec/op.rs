@@ -1,5 +1,6 @@
 use super::super::stack::{ActivationRecord, SlotTag};
 
+// III.1.5 Table III.2
 macro_rules! exec_numeric_op {
     ($op: tt, $lhs: ident, $rhs: ident) => {
         unsafe {
@@ -15,6 +16,7 @@ macro_rules! exec_numeric_op {
                     }
                     SlotTag::F32 => panic!("Cannot add between float and int"),
                     SlotTag::F64 => panic!("Cannot add between float and int"),
+                    SlotTag::Managed => unimplemented!(),
                     SlotTag::Ref => panic!("Cannot add ref"),
                     SlotTag::Value => panic!("Cannot cmp value"),
                     SlotTag::Uninit => unreachable!(),
@@ -23,6 +25,7 @@ macro_rules! exec_numeric_op {
                 SlotTag::INative => unimplemented!(),
                 SlotTag::F32 => unimplemented!(),
                 SlotTag::F64 => unimplemented!(),
+                SlotTag::Managed => unimplemented!(),
                 SlotTag::Ref => panic!("Cannot add ref"),
                 SlotTag::Value => panic!("Cannot add value"),
                 SlotTag::Uninit => unreachable!(),
@@ -31,6 +34,7 @@ macro_rules! exec_numeric_op {
     };
 }
 
+/// Table III.4
 macro_rules! exec_cmp_op {
     ($op: tt, $lhs: ident, $rhs: ident) => {
         unsafe {
@@ -41,6 +45,7 @@ macro_rules! exec_cmp_op {
                     SlotTag::INative => ($lhs.data.i32_ as isize) $op $rhs.data.inative_,
                     SlotTag::F32 => panic!("Cannot cmp between i32 and float"),
                     SlotTag::F64 => panic!("Cannot cmp between i32 and double"),
+                    SlotTag::Managed => panic!("Cannot cmp between i32 and &"),
                     SlotTag::Ref => panic!("Cannot cmp ref"),
                     SlotTag::Value => panic!("Cannot cmp value"),
                     SlotTag::Uninit => unreachable!(),
@@ -52,12 +57,14 @@ macro_rules! exec_cmp_op {
                     SlotTag::INative => $lhs.data.inative_ $op $rhs.data.inative_,
                     SlotTag::F32 => panic!("Cannot cmp between inative and float"),
                     SlotTag::F64 => panic!("Cannot cmp between inative and double"),
+                    SlotTag::Managed => unimplemented!(),
                     SlotTag::Ref => panic!("Cannot cmp ref"),
                     SlotTag::Value => panic!("Cannot cmp value"),
                     SlotTag::Uninit => unreachable!(),
                 }
                 SlotTag::F32 => unimplemented!(),
                 SlotTag::F64 => unimplemented!(),
+                SlotTag::Managed => unimplemented!(),
                 SlotTag::Ref => panic!("Cannot cmp ref"),
                 SlotTag::Value => panic!("Cannot cmp value"),
                 SlotTag::Uninit => unreachable!(),
@@ -172,6 +179,7 @@ pub fn exec_rem(cur_state: &mut ActivationRecord) {
 
 pub fn exec_neg(cur_state: &mut ActivationRecord) {
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
+    // Table III.3
     unsafe {
         match lhs.tag {
             SlotTag::I32 => {
@@ -190,6 +198,7 @@ pub fn exec_neg(cur_state: &mut ActivationRecord) {
                 lhs.data.f64_ = -lhs.data.f64_;
             }
             SlotTag::Value => unimplemented!("Neg value type is not implemented"),
+            SlotTag::Managed => panic!("Cannot neg &"),
             SlotTag::Ref => panic!("Cannot neg ref type"),
             SlotTag::Uninit => unreachable!(),
         }

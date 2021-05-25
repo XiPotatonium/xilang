@@ -8,6 +8,8 @@ use xir::sig::{self, TypeSig};
 use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::ResolutionScope;
 
+use super::util::ptr::NonNull;
+
 use std::mem::size_of;
 
 pub use self::field::Field;
@@ -40,7 +42,7 @@ pub enum BuiltinType {
     ByRef(Box<BuiltinType>),
     /// ele_ty, rank, dim_sizes
     SZArray(Box<BuiltinType>),
-    Class(*const Type),
+    Class(NonNull<Type>),
     /// to be filled
     Unk,
 }
@@ -97,7 +99,9 @@ impl BuiltinType {
                 let (tag, idx) = get_tok_tag(*tok);
                 let idx = idx as usize - 1;
                 BuiltinType::Class(match tag {
-                    TokTag::TypeDef => ctx.types[idx].as_ref() as *const Type,
+                    TokTag::TypeDef => {
+                        NonNull::new(ctx.types[idx].as_ref() as *const Type as *mut Type).unwrap()
+                    }
                     TokTag::TypeRef => ctx.typerefs[idx],
                     _ => unreachable!(),
                 })
@@ -148,7 +152,7 @@ pub fn builtin_ty_str_desc(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
         BuiltinType::ByRef(inner) => format!("&{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::SZArray(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::Class(ty) => {
-            format!("O{};", unsafe { ty.as_ref().unwrap().fullname(str_pool) })
+            format!("O{};", unsafe { ty.as_ref().fullname(str_pool) })
         }
         BuiltinType::Unk => unreachable!(),
     }

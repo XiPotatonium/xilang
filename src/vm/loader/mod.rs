@@ -4,6 +4,7 @@ use super::data::*;
 use super::exec::internal_calls::register_internal_calls;
 use super::native::VMDll;
 use super::shared_mem::SharedMem;
+use super::util::ptr::NonNull;
 use super::VMCfg;
 
 use xir::attrib::*;
@@ -133,8 +134,8 @@ impl<'c> Loader<'c> {
 
             let type_attrib = TypeAttrib::from(typedef_entry.flag);
             let type_name = str_heap[typedef_entry.name as usize];
-            let mut type_methods: HashMap<String, *mut MethodDesc> = HashMap::new();
-            let mut type_fields: HashMap<usize, *mut Field> = HashMap::new();
+            let mut type_methods: HashMap<String, NonNull<MethodDesc>> = HashMap::new();
+            let mut type_fields: HashMap<usize, NonNull<Field>> = HashMap::new();
 
             while method_i < method_lim {
                 let method_entry = &file.method_tbl[method_i];
@@ -204,7 +205,7 @@ impl<'c> Loader<'c> {
                 }
 
                 let mut method = Box::new(MethodDesc {
-                    ctx: ptr::null(),
+                    ctx: unsafe { NonNull::new_null() },
                     name,
                     slot: 0,
                     attrib: method_attrib,
@@ -230,7 +231,10 @@ impl<'c> Loader<'c> {
                     self.cctors.push(method.as_ref() as *const MethodDesc);
                 }
 
-                type_methods.insert(method_sig, method.as_mut() as *mut MethodDesc);
+                type_methods.insert(
+                    method_sig,
+                    NonNull::new(method.as_mut() as *mut MethodDesc).unwrap(),
+                );
                 methods.push(method);
 
                 method_i += 1;
@@ -249,7 +253,10 @@ impl<'c> Loader<'c> {
                     offset: 0,
                     addr: ptr::null_mut(),
                 });
-                if let Some(_) = type_fields.insert(field.name, field.as_mut() as *mut Field) {
+                if let Some(_) = type_fields.insert(
+                    field.name,
+                    NonNull::new(field.as_mut() as *mut Field).unwrap(),
+                ) {
                     panic!("Duplicate field name");
                 }
                 fields.push(field);
@@ -258,7 +265,7 @@ impl<'c> Loader<'c> {
             }
 
             let ty = Box::new(Type::new(
-                ptr::null(),
+                unsafe { NonNull::new_null() },
                 type_name,
                 type_attrib,
                 type_fields,
@@ -266,7 +273,7 @@ impl<'c> Loader<'c> {
             ));
 
             for method in ty.ee_class.methods.values() {
-                unsafe { method.as_mut().unwrap().parent = ty.as_ref() as *const Type };
+                unsafe { method.as_mut().parent = ty.as_ref() as *const Type };
             }
 
             // link some special types
@@ -297,7 +304,7 @@ impl<'c> Loader<'c> {
             modrefs: vec![],
             typerefs: vec![],
         }));
-        let this_mod_ptr = this_mod.as_ref() as *const Module;
+        let this_mod_ptr = NonNull::new(this_mod.as_mut() as *mut Module).unwrap();
         for method in this_mod.expect_il_mut().methods.iter_mut() {
             method.ctx = this_mod_ptr;
         }

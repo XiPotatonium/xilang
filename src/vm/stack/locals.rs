@@ -5,6 +5,7 @@ use std::mem;
 
 pub trait ILocals {
     fn load(&self, i: usize, stack: &mut EvalStack);
+    fn loada(&self, i: usize, stack: &mut EvalStack);
     fn store(&mut self, i: usize, stack: &mut EvalStack);
     fn store_slot(&mut self, i: usize, slot: Slot);
 }
@@ -60,7 +61,7 @@ unsafe fn store_slot(ty: &BuiltinType, addr: *mut u8, slot: Slot) {
         | BuiltinType::Class(_)
         | BuiltinType::ByRef(_)
         | BuiltinType::SZArray(_) => {
-            *(addr as *mut *mut u8) = slot.as_addr::<u8>();
+            *(addr as *mut *mut u8) = slot.expect_ref();
         }
     }
 }
@@ -91,6 +92,11 @@ impl<'m> ILocals for Locals<'m> {
                 stack,
             )
         };
+    }
+
+    fn loada(&self, i: usize, stack: &mut EvalStack) {
+        assert!(i < self.map.len());
+        stack.push_managed(&self.data[self.map[i].offset] as *const u8 as *mut u8);
     }
 
     fn store(&mut self, i: usize, stack: &mut EvalStack) {
@@ -158,7 +164,7 @@ impl<'m> Args<'m> {
     pub fn fill_args(&mut self, stack: &mut EvalStack) {
         self.fill_args_except_self(stack);
         if let Some(self_mut) = self.get_self_mut() {
-            *self_mut = unsafe { stack.pop_with_slot().as_addr() };
+            *self_mut = unsafe { stack.pop_with_slot().expect_ref() };
         }
     }
 
@@ -193,6 +199,21 @@ impl<'m> ILocals for Args<'m> {
         };
     }
 
+    fn loada(&self, i: usize, stack: &mut EvalStack) {
+        let i = if self.has_self {
+            if i == 0 {
+                // load self
+                stack.push_ptr(unsafe { *(self.data.as_ptr() as *const *mut u8) });
+                return;
+            }
+            i - 1
+        } else {
+            i
+        };
+        assert!(i < self.map.len());
+        stack.push_managed(&self.data[self.map[i].offset] as *const u8 as *mut u8);
+    }
+
     /// if has self ptr, i == 0 means store self ptr
     fn store(&mut self, i: usize, stack: &mut EvalStack) {
         // same as Locals.store()
@@ -213,7 +234,7 @@ impl<'m> ILocals for Args<'m> {
             if i == 0 {
                 // store self
                 unsafe {
-                    *(&mut self.data[0] as *mut u8 as *mut *mut u8) = slot.as_addr();
+                    *(&mut self.data[0] as *mut u8 as *mut *mut u8) = slot.expect_ref();
                 }
                 return;
             }

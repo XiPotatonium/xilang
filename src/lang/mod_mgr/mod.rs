@@ -6,76 +6,29 @@ mod var;
 
 pub use self::class::Class;
 pub use self::member::{Field, Method, Param};
-pub use self::module::Module;
+use self::module::new_module;
+pub use self::module::{Module, ModuleBuildCtx};
 pub use self::var::{Locals, Var};
-use external::ExtModule;
 
 use super::super::XicCfg;
 
 use xir::util::path::ModPath;
 
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-pub enum ModRef {
-    Mod(Module),
-    ExtMod(ExtModule),
-}
-
-impl ModRef {
-    pub fn expect_mod(&self) -> &Module {
-        if let ModRef::Mod(m) = self {
-            m
-        } else {
-            panic!();
-        }
-    }
-
-    pub fn fullname(&self) -> &str {
-        match self {
-            ModRef::Mod(m) => m.fullname(),
-            ModRef::ExtMod(m) => m.fullname(),
-        }
-    }
-
-    pub fn get_class(&self, name: &str) -> Option<*const Class> {
-        match self {
-            ModRef::Mod(m) => {
-                if let Some(c) = m.classes.get(name) {
-                    Some(c.as_ptr())
-                } else {
-                    None
-                }
-            }
-            ModRef::ExtMod(m) => {
-                if let Some(c) = m.classes.get(name) {
-                    Some(c.as_ref() as *const Class)
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    pub fn contains_sub_mod(&self, mod_name: &str) -> bool {
-        match self {
-            ModRef::Mod(m) => m.sub_mods.contains(mod_name),
-            ModRef::ExtMod(m) => m.sub_mods.contains(mod_name),
-        }
-    }
-}
-
-pub struct ModMgr {
-    pub cfg: XicCfg,
+pub struct Crate {
+    pub crate_name: String,
 
     /// key: mod_fullname
-    pub mod_tbl: HashMap<String, Box<ModRef>>,
+    pub mod_tbl: HashMap<String, Box<Module>>,
+
+    pub mod_build_ctx: Vec<ModuleBuildCtx>,
 }
 
-impl ModMgr {
-    pub fn new(cfg: XicCfg) -> ModMgr {
+impl Crate {
+    pub fn new(cfg: &XicCfg) -> Crate {
         let mut mod_path: ModPath = ModPath::new();
         mod_path.push(&cfg.crate_name);
 
@@ -91,65 +44,39 @@ impl ModMgr {
             fs::create_dir_all(&cfg.out_dir).unwrap();
         }
 
-        let cfg = if cfg.crate_name == "std" {
-            println!("Info: Compiling stdlib ...");
-            cfg
-        } else {
-            let mut cfg = cfg;
-            let mut std_path = env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .to_owned();
-            std_path.push("std/std.xibc");
-            // TODO: what if std is already present in the ext_paths?
-            cfg.ext_paths.push(std_path.canonicalize().unwrap());
-            cfg
+        let mut mgr = Crate {
+            crate_name: cfg.crate_name.clone(),
+            mod_tbl: HashMap::new(),
+            mod_build_ctx: Vec::new(),
         };
 
-        let mut mod_tbl = HashMap::new();
-        Module::new(
+        new_module(
             mod_path,
             &PathBuf::from(""),
             &cfg.root_path,
             false,
-            &mut mod_tbl,
+            &mut mgr,
             &cfg,
         );
-
-        ModMgr { cfg, mod_tbl }
+        mgr
     }
 
-    pub fn build(&mut self) {
+    pub fn build(&mut self, cfg: &XicCfg) {
         // 1. member pass
-        for gen_mod in self.mod_tbl.values() {
-            match gen_mod.as_ref() {
-                ModRef::Mod(m) => {
-                    m.member_pass(self);
-                }
-                ModRef::ExtMod(_) => {}
-            }
+        for ctx in self.mod_build_ctx.iter() {
+            ctx.member_pass(self);
         }
 
         // 2. code gen
-        for gen_mod in self.mod_tbl.values() {
-            match gen_mod.as_ref() {
-                ModRef::Mod(m) => {
-                    m.code_gen(self);
-                }
-                ModRef::ExtMod(_) => {}
-            }
+        for ctx in self.mod_build_ctx.iter() {
+            ctx.code_gen(self, cfg);
         }
     }
 
     /// dump is done recursively
     pub fn dump(&self) {
-        self.mod_tbl
-            .get(&self.cfg.crate_name)
-            .unwrap()
-            .expect_mod()
-            .dump(self, &self.cfg.out_dir);
+        for ctx in self.mod_build_ctx.iter() {
+            ctx.dump();
+        }
     }
 }

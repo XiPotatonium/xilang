@@ -1,3 +1,4 @@
+use std::fmt;
 use std::mem;
 use std::ptr;
 
@@ -19,9 +20,26 @@ pub enum SlotTag {
     INative,
     F32,
     F64,
+    Managed,
     Ref,
     Value,
     Uninit,
+}
+
+impl fmt::Display for SlotTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SlotTag::I32 => write!(f, "i32"),
+            SlotTag::I64 => write!(f, "i64"),
+            SlotTag::INative => write!(f, "inative"),
+            SlotTag::F32 => write!(f, "f32"),
+            SlotTag::F64 => write!(f, "f64"),
+            SlotTag::Managed => write!(f, "&"),
+            SlotTag::Ref => write!(f, "O"),
+            SlotTag::Value => write!(f, "val"),
+            SlotTag::Uninit => write!(f, "UINIT"),
+        }
+    }
 }
 
 /// Not CLI standard, see I.12.1
@@ -100,14 +118,28 @@ impl Slot {
         }
     }
 
-    /// interpret as ptr and map into relative address
-    ///
-    ///
-    pub unsafe fn as_addr<T>(&self) -> *mut T {
+    pub unsafe fn expect_ref(&self) -> *mut u8 {
         if let SlotTag::Ref = self.tag {
-            self.data.ptr_ as *mut T
+            self.data.ptr_ as *mut u8
         } else {
-            panic!("Slot is not ptr");
+            panic!("Expect O but found {}", self.tag);
+        }
+    }
+
+    pub unsafe fn expect_ref_or_ptr(&self) -> *mut u8 {
+        match self.tag {
+            SlotTag::INative => mem::transmute::<isize, *mut u8>(self.data.inative_),
+            SlotTag::Managed | SlotTag::Ref => self.data.ptr_,
+            _ => panic!("Expect O or ptr but found {}", self.tag),
+        }
+    }
+
+    /// managed or unmanaged
+    pub unsafe fn expect_ptr(&self) -> *mut u8 {
+        match self.tag {
+            SlotTag::INative => mem::transmute::<isize, *mut u8>(self.data.inative_),
+            SlotTag::Managed => self.data.ptr_,
+            _ => panic!("Expect ptr but found {}", self.tag),
         }
     }
 
@@ -233,6 +265,13 @@ impl EvalStack {
     pub fn push_ptr(&mut self, v: *mut u8) {
         self.push_slot(Slot {
             tag: SlotTag::Ref,
+            data: SlotData { ptr_: v },
+        })
+    }
+
+    pub fn push_managed(&mut self, v: *mut u8) {
+        self.push_slot(Slot {
+            tag: SlotTag::Managed,
             data: SlotData { ptr_: v },
         })
     }

@@ -26,7 +26,7 @@ pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
     for sub in file.into_inner() {
         match sub.as_rule() {
             Rule::EOI => break,
-            Rule::Class => classes.push(build_class(sub)),
+            Rule::Class => classes.push(build_custom_type(sub)),
             Rule::Modules => mods.push(build_id(sub.into_inner().next().unwrap())),
             Rule::ExternMod => exts.push(build_id(sub.into_inner().next().unwrap())),
             Rule::UseDeclarations => {
@@ -65,9 +65,10 @@ fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
     ret
 }
 
-fn build_class(tree: Pair<Rule>) -> Box<AST> {
+fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let custom_attribs = build_attributes(&mut iter);
+    let sem = iter.next().unwrap().as_rule();
     let name = build_id(iter.next().unwrap());
     let mut extends_or_impls: Vec<ModPath> = Vec::new();
 
@@ -103,7 +104,7 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
         }
     }
 
-    Box::new(AST::Class(ASTClass {
+    let mut ret = ASTClass {
         name,
         attrib: TypeAttrib::new_class(TypeAttribVisFlag::Pub.into()),
         custom_attribs,
@@ -116,7 +117,19 @@ fn build_class(tree: Pair<Rule>) -> Box<AST> {
             Box::new(AST::None)
         },
         ctors,
-    }))
+    };
+    Box::new(match sem {
+        Rule::KwClass => AST::Class(ret),
+        Rule::KwStruct => {
+            // struct is default to be sealed
+            ret.attrib.set(TypeAttribFlag::Sealed);
+            AST::Struct(ret)
+        }
+        Rule::KwInterface => {
+            unimplemented!()
+        }
+        _ => unreachable!(),
+    })
 }
 
 fn build_field(tree: Pair<Rule>, is_static: bool, attr: Vec<Box<AST>>) -> Box<AST> {

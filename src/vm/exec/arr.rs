@@ -19,10 +19,10 @@ pub fn exec_newarr(cur_ar: &mut ActivationRecord, mem: &mut SharedMem) {
     let ty_tok = cur_ar.consume_u32();
     let (tok_tag, tok_idx) = get_tok_tag(ty_tok);
     let tok_idx = tok_idx as usize - 1;
-    let ctx = unsafe { cur_ar.method.ctx.as_ref().unwrap().expect_il() };
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
     let ele_ty = match tok_tag {
         TokTag::TypeDef => ctx.types[tok_idx].as_ref() as *const Type,
-        TokTag::TypeRef => ctx.typerefs[tok_idx],
+        TokTag::TypeRef => ctx.typerefs[tok_idx].as_ptr() as *const Type,
         TokTag::TypeSpec => {
             unimplemented!()
         }
@@ -37,25 +37,50 @@ pub fn exec_newarr(cur_ar: &mut ActivationRecord, mem: &mut SharedMem) {
 
 pub fn exec_ldlen(cur_ar: &mut ActivationRecord) {
     let arr = cur_ar.eval_stack.pop_with_slot();
-    let arr = unsafe { arr.as_addr::<u8>() };
+    let arr = unsafe { arr.expect_ref() };
 
     let len = Heap::get_arr_len(arr);
     cur_ar.eval_stack.push_usize(len);
 }
 
+pub fn exec_ldelema(cur_ar: &mut ActivationRecord) {
+    let ty_tok = cur_ar.consume_u32();
+    let (tok_tag, tok_idx) = get_tok_tag(ty_tok);
+    let tok_idx = tok_idx as usize - 1;
+    let ctx = unsafe { cur_ar.method.ctx.as_ref().expect_il() };
+    let ele_ty = match tok_tag {
+        TokTag::TypeDef => ctx.types[tok_idx].as_ref(),
+        TokTag::TypeRef => unsafe { ctx.typerefs[tok_idx].as_ref() },
+        TokTag::TypeSpec => {
+            unimplemented!()
+        }
+        _ => unreachable!(),
+    };
+
+    let idx = to_arr_size(cur_ar.eval_stack.pop_with_slot());
+    let arr = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
+    if ele_ty.ee_class.is_value {
+        let addr = Heap::get_arr_offset(arr, ele_ty.basic_instance_size, idx as usize);
+        cur_ar.eval_stack.push_managed(addr);
+    } else {
+        // TODO: what if ele_ty is a reference type?
+        unimplemented!();
+    }
+}
+
 pub fn exec_ldelem_ref(cur_ar: &mut ActivationRecord) {
     let idx = to_arr_size(cur_ar.eval_stack.pop_with_slot());
-    let addr = unsafe { cur_ar.eval_stack.pop_with_slot().as_addr::<u8>() };
-    let addr = Heap::get_arr_offset(addr, REF_SIZE, idx as usize);
+    let arr = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
+    let addr = Heap::get_arr_offset(arr, REF_SIZE, idx as usize);
     cur_ar
         .eval_stack
         .push_ptr(unsafe { *(addr as *const *mut u8) });
 }
 
 pub fn exec_stelem_ref(cur_ar: &mut ActivationRecord) {
-    let val = unsafe { cur_ar.eval_stack.pop_with_slot().as_addr::<u8>() };
+    let val = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
     let idx = to_arr_size(cur_ar.eval_stack.pop_with_slot());
-    let addr = unsafe { cur_ar.eval_stack.pop_with_slot().as_addr::<u8>() };
+    let addr = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
     let addr = Heap::get_arr_offset(addr, REF_SIZE, idx as usize);
     unsafe {
         *(addr as *mut *mut u8) = val;

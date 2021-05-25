@@ -5,6 +5,7 @@ pub mod loader;
 mod native;
 pub mod shared_mem;
 mod stack;
+mod util;
 
 use std::path::PathBuf;
 

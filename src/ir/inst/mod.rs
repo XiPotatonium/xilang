@@ -22,6 +22,12 @@ pub enum Inst {
     LdArg3,
     /// 0x0E, ldarg.s idx
     LdArgS(u8),
+    /// 0x0F, ldarga.s idx
+    ///
+    /// load addr of arg (managed pointer)
+    ///
+    /// `..., -> ..., addr`
+    LdArgAS(u8),
 
     /// 0x10, starg.s idx
     ///
@@ -44,8 +50,12 @@ pub enum Inst {
     LdLoc3,
     /// 0x11, ldloc.s idx
     LdLocS(u8),
+    // 0x12, ldloca.s idx
+    LdLocAS(u8),
     /// 0xFE0C, ldloc idx
     LdLoc(u16),
+    /// 0xFE0D, ldloca idx
+    LdLocA(u16),
 
     /// 0x0A, stloc.0
     ///
@@ -189,18 +199,37 @@ pub enum Inst {
     ///
     /// `..., obj, arg1, ..., argN -> ..., retVal`
     CallVirt(u32),
+
+    /// 0x70, cpobj ty
+    ///
+    /// copy value from **src**: managed or unmanaged ptr to **dest**: managed or unmanaged ptr.
+    ///
+    /// `..., dest, src -> ...,`
+    CpObj(u32),
+    /// 0x72, ldstr literal
+    ///
+    /// load **str**: std::String from with **literal**: idx into usr str heap.
+    /// String interning will be used to eliminate duplication
+    ///
+    /// ..., -> ..., str
+    LdStr(u32),
     /// 0x73, new ctor
     ///
     /// Call a creator, return obj addr
     ///
     /// `..., arg0, ..., argN -> ..., obj`
     NewObj(u32),
+
     /// 0x7B, ldfld field
     ///
     /// Load a field onto the stack, **field** is Field/MemberRef token
     ///
     /// `..., obj -> ..., val`
     LdFld(u32),
+    /// 0x7C, ldflda fld
+    ///
+    /// `..., obj -> ..., addr`
+    LdFldA(u32),
     /// 0x7D, stfld field
     ///
     /// Store a value to field
@@ -213,6 +242,10 @@ pub enum Inst {
     ///
     /// `..., -> ..., val`
     LdSFld(u32),
+    /// 0x7F, ldsflda fld
+    ///
+    /// `..., -> ..., addr`
+    LdSFldA(u32),
     /// 0x80, stsfld field
     ///
     /// Store a value to field
@@ -220,20 +253,18 @@ pub enum Inst {
     /// `..., val -> ...,`
     StSFld(u32),
 
-    /// 0x72, ldstr literal
-    ///
-    /// load **str**: std::String from with **literal**: idx into usr str heap.
-    /// String interning will be used to eliminate duplication
-    ///
-    /// ..., -> ..., str
-    LdStr(u32),
-
     /// 0x8D, newarr ty
     ///
     /// create arr of **size** (inative|i32 size) with **ty** (typedef|typeref|typespec) as elem ty
     ///
     /// ..., size -> ..., arr
     NewArr(u32),
+
+    /// 0x8F, ldelema ty
+    ///
+    /// `..., arr, idx -> ..., addr`
+    LdElemA(u32),
+
     /// 0x8E, ldlen
     ///
     /// load the **len**: unative of the **arr**: O
@@ -258,6 +289,14 @@ pub enum Inst {
     ///
     /// ..., arr, idx, val -> ...
     StElem(u32),
+
+    /// 0xFE15, initobj ty
+    ///
+    /// init value at addr **dset**: unmanaged ptr (native int) or managed ptr (&).
+    /// **ty** is typedef|typeref|typespec
+    ///
+    /// `..., dset -> ...,`
+    InitObj(u32),
 }
 
 const INST_SIZE: usize = 1;
@@ -270,11 +309,13 @@ impl Inst {
             Inst::Nop => INST_SIZE,
 
             Inst::LdArg0 | Inst::LdArg1 | Inst::LdArg2 | Inst::LdArg3 => INST_SIZE,
-            Inst::LdArgS(_) | Inst::StArgS(_) => INST_SIZE + mem::size_of::<u8>(),
+            Inst::LdArgS(_) | Inst::LdArgAS(_) | Inst::StArgS(_) => {
+                INST_SIZE + mem::size_of::<u8>()
+            }
 
             Inst::LdLoc0 | Inst::LdLoc1 | Inst::LdLoc2 | Inst::LdLoc3 => INST_SIZE,
-            Inst::LdLocS(_) => INST_SIZE + mem::size_of::<u8>(),
-            Inst::LdLoc(_) => FAT_INST_SIZE + mem::size_of::<u16>(),
+            Inst::LdLocS(_) | Inst::LdLocAS(_) => INST_SIZE + mem::size_of::<u8>(),
+            Inst::LdLoc(_) | Inst::LdLocA(_) => FAT_INST_SIZE + mem::size_of::<u16>(),
 
             Inst::StLoc0 | Inst::StLoc1 | Inst::StLoc2 | Inst::StLoc3 => INST_SIZE,
             Inst::StLocS(_) => INST_SIZE + mem::size_of::<u8>(),
@@ -317,9 +358,13 @@ impl Inst {
 
             Inst::CallVirt(_)
             | Inst::NewObj(_)
+            | Inst::InitObj(_)
+            | Inst::CpObj(_)
             | Inst::LdFld(_)
+            | Inst::LdFldA(_)
             | Inst::StFld(_)
             | Inst::LdSFld(_)
+            | Inst::LdSFldA(_)
             | Inst::StSFld(_) => INST_SIZE + mem::size_of::<u32>(),
 
             Inst::LdStr(_) => INST_SIZE + mem::size_of::<u32>(),
@@ -330,7 +375,9 @@ impl Inst {
 
             Inst::LdElemI4 | Inst::LdElemRef | Inst::StElemI4 | Inst::StElemRef => INST_SIZE,
 
-            Inst::LdElem(_) | Inst::StElem(_) => INST_SIZE + mem::size_of::<u32>(),
+            Inst::LdElem(_) | Inst::LdElemA(_) | Inst::StElem(_) => {
+                INST_SIZE + mem::size_of::<u32>()
+            }
         }
     }
 }

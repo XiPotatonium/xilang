@@ -19,11 +19,12 @@ pub struct ASTClass {
     pub ctors: Vec<Box<AST>>,
 }
 
-impl fmt::Display for ASTClass {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ASTClass {
+    pub fn ast_fmt(&self, f: &mut fmt::Formatter<'_>, is_struct: bool) -> fmt::Result {
         write!(
             f,
-            "{{\"name\":\"(class){}\",\"attrib\":\"{}\",\"cus-attrib\":{},\"extends-or-impls\":[{}],\"fields\":{},\"cctor\":{},\"ctors\":{},\"methods\":{}}}",
+            "{{\"name\":\"({}){}\",\"attrib\":\"{}\",\"cus-attrib\":{},\"extends-or-impls\":[{}],\"fields\":{},\"cctor\":{},\"ctors\":{},\"methods\":{}}}",
+            if is_struct { "struct" } else { "class" },
             self.name,
             self.attrib,
             BoxASTVecWrapper(&self.custom_attribs),

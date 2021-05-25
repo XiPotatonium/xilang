@@ -53,7 +53,8 @@ impl fmt::Display for AST {
                 id,
                 BoxASTVecWrapper(args)
             ),
-            Self::Class(class) => class.fmt(f),
+            Self::Class(class) => class.ast_fmt(f, false),
+            Self::Struct(class) => class.ast_fmt(f, true),
             Self::Ctor(ctor) => ctor.fmt(f),
             Self::Method(method) => method.fmt(f),
             Self::Field(id, flag, attr, ty) => write!(

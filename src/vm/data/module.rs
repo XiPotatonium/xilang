@@ -1,13 +1,14 @@
 use super::super::native::VMDll;
+use super::super::util::ptr::NonNull;
 use super::{Field, MethodDesc, Type};
 
 pub enum MemberRef {
-    Field(*const Field),
-    Method(*const MethodDesc),
+    Field(NonNull<Field>),
+    Method(NonNull<MethodDesc>),
 }
 
 impl MemberRef {
-    pub fn expect_field(&self) -> *const Field {
+    pub fn expect_field(&self) -> NonNull<Field> {
         if let Self::Field(f) = self {
             *f
         } else {
@@ -15,7 +16,7 @@ impl MemberRef {
         }
     }
 
-    pub fn expect_method(&self) -> *const MethodDesc {
+    pub fn expect_method(&self) -> NonNull<MethodDesc> {
         if let Self::Method(m) = self {
             *m
         } else {
@@ -55,11 +56,11 @@ impl Module {
 pub struct ILModule {
     pub fullname: usize,
 
-    pub modrefs: Vec<*mut Module>,
+    pub modrefs: Vec<NonNull<Module>>,
 
     /// name -> Type idx
     pub types: Vec<Box<Type>>,
-    pub typerefs: Vec<*mut Type>,
+    pub typerefs: Vec<NonNull<Type>>,
 
     pub methods: Vec<Box<MethodDesc>>,
     pub fields: Vec<Box<Field>>,

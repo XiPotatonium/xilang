@@ -7,13 +7,13 @@ mod IOHelper;
 
 class Base {
     virtual fn say(self) {
-        std::IO::writeln(1000);
+        std::IO::writeln("Say from Base class");
     }
 }
 
 class Derived: Base {
     override fn say(self) {
-        std::IO::writeln(1001);
+        std::IO::writeln("Say from Derived class");
     }
 }
 
@@ -66,22 +66,22 @@ class Program: IOHelper::IOBase {
     fn virt_test() {
         Self::singleton = new Self();
         std::IO::writeln(Self::singleton.hi_count);         // 0
-        Program::singleton.hi();                            // HI
-        std::IO::writeln(Program::singleton.hi_count);      // 1
+        Self::singleton.hi();                               // HI
+        std::IO::writeln(Self::singleton.hi_count);         // 1
         Self::singleton.hi();                               // HI
         std::IO::writeln(Self::singleton.hi_count);         // 2
 
         let derived_ref = new Derived();
-        derived_ref.say();      // 1001
+        derived_ref.say();      // derived
         let base_ref = new Base();
-        base_ref.say();         // 1000
+        base_ref.say();         // base
         base_ref = derived_ref as Base;
-        base_ref.say();         // 1001
+        base_ref.say();         // derived
     }
 
     fn main() {
         Self::logic_test();
-        Program::virt_test();
-        Program::str_arr_test();
+        Self::virt_test();
+        Self::str_arr_test();
     }
 }

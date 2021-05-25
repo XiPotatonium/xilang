@@ -3,10 +3,10 @@ use std::fmt;
 
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, TypeAttrib};
 
-use super::{Field, Method, ModRef};
+use super::{Field, Method, Module};
 
 pub struct Class {
-    pub parent: *const ModRef,
+    pub parent: *const Module,
 
     pub name: String,
 
@@ -19,7 +19,7 @@ pub struct Class {
 
     pub attrib: TypeAttrib,
 
-    pub extends: Option<*const Class>,
+    pub extends: *const Class,
 
     /// index into typedef tbl
     pub idx: u32,
@@ -37,6 +37,12 @@ impl fmt::Display for Class {
 }
 
 impl Class {
+    pub fn is_struct(&self) -> bool {
+        let base = self.extends;
+        while let Some(b) = unsafe { base.as_ref() } {}
+        false
+    }
+
     pub fn query_method(&self, name: &str) -> Vec<&Method> {
         // TODO: check access flag
         let mut ret = Vec::new();
@@ -55,11 +61,9 @@ impl Class {
                 }
                 break;
             }
-            if let Some(base) = c.extends {
+            if let Some(base) = unsafe { c.extends.as_ref() } {
                 is_self = false;
-                unsafe {
-                    c = base.as_ref().unwrap();
-                }
+                c = base;
             } else {
                 break;
             }
@@ -78,11 +82,9 @@ impl Class {
                     return Some(f.as_ref());
                 }
             }
-            if let Some(base) = c.extends {
+            if let Some(base) = unsafe { c.extends.as_ref() } {
                 is_self = false;
-                unsafe {
-                    c = base.as_ref().unwrap();
-                }
+                c = base;
             } else {
                 break;
             }

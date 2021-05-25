@@ -40,6 +40,15 @@ class Object {
     }
 }
 
+// Root of all value types
+class ValueType {
+
+}
+
+struct I32 {
+   let value: i32;
+}
+
 
 class String {
     #[InternalCall]

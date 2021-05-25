@@ -3,13 +3,13 @@ mod call;
 mod cast;
 mod literal;
 mod loop_expr;
-mod lval;
 mod op;
+mod sym;
 
 use super::super::ast::{ASTType, AST};
 use op::BinOp;
 // use super::interpreter::constant_folding;
-use super::{CodeGenCtx, RValType, ValType};
+use super::{CodeGenCtx, RValType, SymType, SymUsage, ValType};
 
 use xir::attrib::*;
 use xir::inst::Inst;
@@ -17,7 +17,7 @@ use xir::tok::to_tok;
 use xir::CTOR_NAME;
 
 pub fn gen_base_ctor(ctx: &CodeGenCtx, args: &Vec<Box<AST>>) {
-    let base = unsafe { ctx.class.extends.unwrap().as_ref().unwrap() };
+    let base = unsafe { ctx.class.extends.as_ref().unwrap() };
 
     // similar to gen_new
     let ctors = base.methods.get(CTOR_NAME).unwrap();
@@ -87,11 +87,11 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
         AST::OpLe(lhs, rhs) => ValType::RVal(op::gen_cmp(ctx, BinOp::Le, lhs, rhs)),
         AST::OpLt(lhs, rhs) => ValType::RVal(op::gen_cmp(ctx, BinOp::Lt, lhs, rhs)),
         AST::OpObjAccess(_, _) => {
-            let lval = lval::gen_lval(ctx, ast, false);
+            let lval = sym::gen_sym(ctx, ast, SymUsage::Assignee);
             match &lval {
-                ValType::Field(f) => {
+                SymType::Field(f) => {
                     let (mod_name, class_name, field_name, field_ty) = unsafe {
-                        let f_ref = f.as_ref().unwrap();
+                        let f_ref = f.as_ref();
                         let class_ref = f_ref.parent.as_ref().unwrap();
                         let module_ref = class_ref.parent.as_ref().unwrap();
                         (
@@ -113,7 +113,7 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
 
                     ValType::RVal(field_ty)
                 }
-                ValType::ArrLen => {
+                SymType::ArrLen => {
                     ctx.method_builder.borrow_mut().add_inst(Inst::LdLen);
                     ValType::RVal(RValType::I32)
                 }
@@ -121,13 +121,13 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
             }
         }
         AST::OpStaticAccess(_, _) => {
-            let v = lval::gen_lval(ctx, ast, false);
+            let v = sym::gen_sym(ctx, ast, SymUsage::Assignee);
             gen_static_access(ctx, v)
         }
         AST::OpArrayAccess(_, _) => {
-            let lval = lval::gen_lval(ctx, ast, false);
+            let lval = sym::gen_sym(ctx, ast, SymUsage::Assignee);
             match lval {
-                ValType::ArrAcc(ele_ty) => {
+                SymType::ArrAcc(ele_ty) => {
                     ctx.method_builder.borrow_mut().add_ldelem(&ele_ty);
                     ValType::RVal(ele_ty)
                 }
@@ -144,11 +144,11 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
 }
 
 /// Access a static field
-fn gen_static_access(ctx: &CodeGenCtx, v: ValType) -> ValType {
+fn gen_static_access(ctx: &CodeGenCtx, v: SymType) -> ValType {
     match &v {
-        ValType::Field(f) => {
+        SymType::Field(f) => {
             let (mod_name, class_name, field_name, field_ty) = unsafe {
-                let f_ref = f.as_ref().unwrap();
+                let f_ref = f.as_ref();
                 let class_ref = f_ref.parent.as_ref().unwrap();
                 let module_ref = class_ref.parent.as_ref().unwrap();
                 (
@@ -260,11 +260,11 @@ fn gen_let(
 }
 
 fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
-    let lval = lval::gen_lval(ctx, lhs, false);
+    let lval = sym::gen_sym(ctx, lhs, SymUsage::Assignee);
     let v_ty = gen(ctx, rhs).expect_rval();
 
     match lval {
-        ValType::Local(idx) => {
+        SymType::Local(idx) => {
             let locals = ctx.locals.borrow();
             let local = &locals.locals[idx];
             let local_ty = local.ty.clone();
@@ -275,12 +275,12 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
 
             ctx.method_builder.borrow_mut().add_inst_stloc(local.idx);
         }
-        ValType::KwLSelf => {
+        SymType::KwLSelf => {
             // lval guarentee that we are in instance method
             // ctx.method_builder.borrow_mut().add_inst_starg(0);
             panic!("Cannot assign self");
         }
-        ValType::Arg(idx) => {
+        SymType::Arg(idx) => {
             let arg = &ctx.method.ps[idx];
 
             if arg.ty != v_ty {
@@ -297,10 +297,10 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 idx + 1
             } as u16);
         }
-        ValType::Field(f) => {
+        SymType::Field(f) => {
             // TODO private and public
             let (mod_name, class_name, f_ref) = unsafe {
-                let f_ref = f.as_ref().unwrap();
+                let f_ref = f.as_ref();
                 let class_ref = f_ref.parent.as_ref().unwrap();
                 let module_ref = class_ref.parent.as_ref().unwrap();
                 (module_ref.fullname(), &class_ref.name, f_ref)
@@ -325,14 +325,14 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
 
             ctx.method_builder.borrow_mut().add_inst(inst);
         }
-        ValType::ArrAcc(ele_ty) => {
+        SymType::ArrAcc(ele_ty) => {
             if ele_ty != v_ty {
                 panic!("Cannot store {} into {} array", v_ty, ele_ty);
             }
             ctx.method_builder.borrow_mut().add_stelem(&ele_ty);
         }
-        ValType::Module(_) => panic!(),
-        ValType::Class(_) => panic!(),
+        SymType::Module(_) => panic!(),
+        SymType::Class(_) => panic!(),
         _ => unreachable!(),
     }
 
@@ -349,7 +349,10 @@ fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {
             if is_instance_method {
                 // first argument
                 ctx.method_builder.borrow_mut().add_inst_ldarg(0);
-                return RValType::Obj(ctx.module.fullname().to_owned(), ctx.class.name.clone());
+                return RValType::Obj(
+                    ctx.module.get_module().fullname().to_owned(),
+                    ctx.class.name.clone(),
+                );
             } else {
                 panic!("Invalid self keyword in static method");
             }

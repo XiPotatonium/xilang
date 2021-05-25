@@ -8,7 +8,7 @@ AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
 Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
 
 Class = { 
-    AttributeLst* ~ "class" ~ Id ~ ExtendsOrImpls? ~
+    AttributeLst* ~ (KwClass | KwStruct | KwInterface) ~ Id ~ ExtendsOrImpls? ~
     "{" ~ (AttributeLst* ~ (CCtor | Ctor | Method | StaticField | NonStaticField))* ~ "}" 
 }
 
@@ -98,6 +98,9 @@ Id = @{
     | !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* 
 }
 
+KwClass = { "class" }
+KwStruct = { "struct" }
+KwInterface = { "interface" }
 KwBase = { "base" }
 KwLSelf = { "self" }
 KwUSelf = { "Self" }
@@ -128,7 +131,7 @@ KwNull = { "null" }
 KwString = { "string" }
 
 KeyWord = @{ 
-    "class" | "struct" | "enum" | "union" | "interface" | "fn" | "let" | "where" | "new"
+    KwClass | KwStruct | KwInterface | "enum" | "union" | "fn" | "let" | "where" | "new"
     | "static" | "const" | "mut" | KwPub | KwPriv | KwVirtual | KwOverride
     | KwLSelf | KwUSelf | KwBase | KwSuper | KwCrate | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"

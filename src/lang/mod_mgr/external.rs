@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::ptr;
 
 use xir::attrib::*;
 use xir::file::*;
@@ -12,7 +13,7 @@ use xir::ty::{ResolutionScope, TypeDefOrRef};
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
-use super::{Class, Field, Method, ModRef, Param};
+use super::{Class, Field, Method, Module, Param};
 
 fn to_param(sig: &sig::ParamType, ctx: &IrFile) -> Param {
     Param {
@@ -75,22 +76,8 @@ fn to_rval(sig: &TypeSig, ctx: &IrFile) -> RValType {
     }
 }
 
-pub struct ExtModule {
-    pub mod_path: ModPath,
-    /// key: mod_name
-    pub sub_mods: HashSet<String>,
-    /// key: class_name
-    pub classes: HashMap<String, Box<Class>>,
-}
-
-impl ExtModule {
-    pub fn fullname(&self) -> &str {
-        self.mod_path.as_str()
-    }
-}
-
 pub fn load_external_crate(
-    mod_tbl: &mut HashMap<String, Box<ModRef>>,
+    mod_tbl: &mut HashMap<String, Box<Module>>,
     ext_crate_dir: &Path,
     file: IrFile,
 ) {
@@ -100,15 +87,12 @@ pub fn load_external_crate(
     }
 
     let this_mod_path = ModPath::from_str(file.mod_name());
-    let mut this_mod = Box::new(ModRef::ExtMod(ExtModule {
+    let mut this_mod = Box::new(Module {
         sub_mods: HashSet::new(),
         mod_path: this_mod_path.clone(),
         classes: HashMap::new(),
-    }));
-    let this_mod_ptr = match this_mod.as_mut() {
-        ModRef::Mod(_) => unreachable!(),
-        ModRef::ExtMod(m) => m as *mut ExtModule,
-    };
+    });
+    let this_mod_ptr = this_mod.as_mut() as *mut Module;
 
     // 1. Fill classes methods and fields that defined in this file
     let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
@@ -142,12 +126,12 @@ pub fn load_external_crate(
         let flag = TypeAttrib::from(class_entry.flag);
         let name = file.get_str(class_entry.name);
         let mut class = Box::new(Class {
-            parent: this_mod.as_ref() as *const ModRef,
+            parent: this_mod.as_ref() as *const Module,
             name: name.to_owned(),
             methods: HashMap::new(),
             fields: HashMap::new(),
             attrib: flag,
-            extends: None,
+            extends: ptr::null(),
             // idx of external class will not be used
             idx: 0,
         });
@@ -321,12 +305,15 @@ pub fn load_external_crate(
                     .get_mut(file.get_str(class_entry.name))
                     .unwrap();
                 if let Some((tag, idx)) = class_entry.get_extends() {
-                    class_mut.extends = Some(match tag {
+                    class_mut.extends = match tag {
                         TypeDefOrRef::TypeDef => mod_tbl
                             .get(file.mod_name())
                             .unwrap()
-                            .get_class(file.get_str(file.typedef_tbl[idx].name))
-                            .unwrap(),
+                            .classes
+                            .get(file.get_str(file.typedef_tbl[idx].name))
+                            .unwrap()
+                            .as_ref()
+                            as *const Class,
                         TypeDefOrRef::TypeRef => {
                             let typeref = &file.typeref_tbl[idx];
                             let (parent_tag, parent_idx) = typeref.get_parent();
@@ -339,11 +326,13 @@ pub fn load_external_crate(
                                     ResolutionScope::TypeRef => unreachable!(),
                                 })
                                 .unwrap()
-                                .get_class(file.get_str(typeref.name))
+                                .classes
+                                .get(file.get_str(typeref.name))
                                 .unwrap()
+                                .as_ref() as *const Class
                         }
                         TypeDefOrRef::TypeSpec => unimplemented!(),
-                    });
+                    };
                 }
             }
         }
