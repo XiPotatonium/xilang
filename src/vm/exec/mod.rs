@@ -269,7 +269,6 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::R4
                         | BuiltinType::R8
                         | BuiltinType::String
-                        | BuiltinType::Class(_)
                         | BuiltinType::ByRef(_)
                         | BuiltinType::SZArray(_) => {
                             let ret_v = cur_state.eval_stack.pop_with_slot();
@@ -279,6 +278,20 @@ impl<'m> TExecutor<'m> {
                             }
                             unsafe {
                                 *state.ret_addr = ret_v;
+                            }
+                        }
+                        BuiltinType::Class(ty) => {
+                            if unsafe { ty.as_ref().ee_class.is_value } {
+                                unimplemented!()
+                            } else {
+                                let ret_v = cur_state.eval_stack.pop_with_slot();
+                                let state = self.states.pop().unwrap();
+                                if self.states.is_empty() {
+                                    return unsafe { ret_v.data.inative_ };
+                                }
+                                unsafe {
+                                    *state.ret_addr = ret_v;
+                                }
                             }
                         }
                         BuiltinType::Unk => unreachable!(),

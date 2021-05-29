@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
-use std::ptr;
+use std::ptr::{self, NonNull};
 
 use xir::attrib::*;
 use xir::file::*;
@@ -13,28 +13,28 @@ use xir::ty::{ResolutionScope, TypeDefOrRef};
 use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
-use super::{Class, Field, Method, Module, Param};
+use super::{Field, Method, Module, Param, Type};
 
-fn to_param(sig: &sig::ParamType, ctx: &IrFile) -> Param {
+fn to_param(sig: &sig::ParamType, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> Param {
     Param {
         id: String::from(""),
         attrib: ParamAttrib::default(),
         ty: match &sig.ty {
-            sig::InnerParamType::Default(ty) => to_rval(ty, ctx),
+            sig::InnerParamType::Default(ty) => to_rval(ty, f, mods),
             sig::InnerParamType::ByRef(_) => unimplemented!(),
         },
     }
 }
 
-fn to_ret(sig: &sig::RetType, ctx: &IrFile) -> RValType {
+fn to_ret(sig: &sig::RetType, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> RValType {
     match &sig.ty {
-        sig::InnerRetType::Default(ty) => to_rval(ty, ctx),
+        sig::InnerRetType::Default(ty) => to_rval(ty, f, mods),
         sig::InnerRetType::ByRef(_) => unimplemented!(),
         sig::InnerRetType::Void => RValType::Void,
     }
 }
 
-fn to_rval(sig: &TypeSig, ctx: &IrFile) -> RValType {
+fn to_rval(sig: &TypeSig, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> RValType {
     match sig {
         TypeSig::Boolean => RValType::Bool,
         TypeSig::Char => RValType::Char,
@@ -55,18 +55,30 @@ fn to_rval(sig: &TypeSig, ctx: &IrFile) -> RValType {
             let (tag, idx) = get_tok_tag(*tok);
             let idx = idx as usize - 1;
             match tag {
-                TokTag::TypeDef => RValType::Obj(
-                    ctx.mod_name().to_owned(),
-                    ctx.get_str(ctx.typedef_tbl[idx].name).to_owned(),
-                ),
+                TokTag::TypeDef => {
+                    let ty = mods
+                        .get(f.mod_name())
+                        .unwrap()
+                        .classes
+                        .get(f.get_str(f.typedef_tbl[idx].name))
+                        .unwrap();
+                    RValType::Type(NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap())
+                }
                 TokTag::TypeRef => {
-                    let (parent_tag, parent_idx) = ctx.typeref_tbl[idx].get_parent();
+                    let (parent_tag, parent_idx) = f.typeref_tbl[idx].get_parent();
                     match parent_tag {
                         ResolutionScope::Mod => unreachable!(),
-                        ResolutionScope::ModRef => RValType::Obj(
-                            ctx.get_str(ctx.modref_tbl[parent_idx].name).to_owned(),
-                            ctx.get_str(ctx.typeref_tbl[idx].name).to_owned(),
-                        ),
+                        ResolutionScope::ModRef => {
+                            let ty = mods
+                                .get(f.get_str(f.modref_tbl[parent_idx].name))
+                                .unwrap()
+                                .classes
+                                .get(f.get_str(f.typeref_tbl[idx].name))
+                                .unwrap();
+                            RValType::Type(
+                                NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap(),
+                            )
+                        }
                         ResolutionScope::TypeRef => unreachable!(),
                     }
                 }
@@ -92,41 +104,14 @@ pub fn load_external_crate(
         mod_path: this_mod_path.clone(),
         classes: HashMap::new(),
     });
-    let this_mod_ptr = this_mod.as_mut() as *mut Module;
+    let mut this_mod_ptr = NonNull::new(this_mod.as_mut() as *mut Module).unwrap();
 
-    // 1. Fill classes methods and fields that defined in this file
-    let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
-        (c0.fields as usize - 1, c0.methods as usize - 1)
-    } else {
-        (file.field_tbl.len(), file.method_tbl.len())
-    };
-
-    for _ in (0..field_i).into_iter() {
-        // load field
-        unimplemented!("Load field that has no class parent is not implemented");
-    }
-
-    for _ in (0..method_i).into_iter() {
-        // load methods
-        unimplemented!("Load method that has no class parent is not implemented");
-    }
-
-    for (class_i, class_entry) in file.typedef_tbl.iter().enumerate() {
-        let (field_lim, method_lim) = if class_i + 1 >= file.typedef_tbl.len() {
-            // last class
-            (file.field_tbl.len(), file.method_tbl.len())
-        } else {
-            let next_class = &file.typedef_tbl[class_i + 1];
-            (
-                next_class.fields as usize - 1,
-                next_class.methods as usize - 1,
-            )
-        };
-
+    // 1. Fill classes
+    for class_entry in file.typedef_tbl.iter() {
         let flag = TypeAttrib::from(class_entry.flag);
         let name = file.get_str(class_entry.name);
-        let mut class = Box::new(Class {
-            parent: this_mod.as_ref() as *const Module,
+        let class = Box::new(Type {
+            parent: NonNull::new(this_mod.as_ref() as *const Module as *mut Module).unwrap(),
             name: name.to_owned(),
             methods: HashMap::new(),
             fields: HashMap::new(),
@@ -135,85 +120,7 @@ pub fn load_external_crate(
             // idx of external class will not be used
             idx: 0,
         });
-
-        while method_i < method_lim {
-            let method_entry = &file.method_tbl[method_i];
-            let param = if method_i == file.method_tbl.len() - 1 {
-                // last method
-                &file.param_tbl[(method_entry.param_list as usize - 1)..]
-            } else {
-                &file.param_tbl[(method_entry.param_list as usize - 1)
-                    ..(file.method_tbl[method_i + 1].param_list as usize - 1)]
-            };
-
-            let flag = MethodAttrib::from(method_entry.flag);
-            let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
-
-            if let IrSig::Method(_, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
-                let mut ps: Vec<Param> = ps.iter().map(|t| to_param(t, &file)).collect();
-                for p in param.iter() {
-                    if p.sequence == 0 {
-                        // xilang has no interests about return type
-                        continue;
-                    }
-                    ps[(p.sequence - 1) as usize].id = file.get_str(p.name).to_owned();
-                    ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
-                }
-
-                let method = Box::new(Method {
-                    parent: class.as_ref() as *const Class,
-                    name: file.get_str(method_entry.name).to_owned(),
-                    ps,
-                    ret: to_ret(ret, &file),
-                    attrib: flag,
-                    impl_flag,
-                    ast: None, // external method has no ast
-                    idx: 0,    // idx of external method will not be used
-                });
-
-                let method_name = file.get_str(method_entry.name);
-                if class.methods.contains_key(method_name) {
-                    class.methods.get_mut(method_name).unwrap().push(method);
-                } else {
-                    class.methods.insert(method_name.to_owned(), vec![method]);
-                }
-            } else {
-                panic!();
-            }
-
-            method_i += 1;
-        }
-
-        while field_i < field_lim {
-            let field_entry = &file.field_tbl[field_i];
-            let field_name = file.get_str(field_entry.name);
-
-            let flag = FieldAttrib::from(field_entry.flag);
-
-            if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
-                let field = Box::new(Field {
-                    parent: class.as_ref() as *const Class,
-                    name: file.get_str(field_entry.name).to_owned(),
-                    attrib: flag,
-                    ty: to_rval(f_sig, &file),
-                    // idx of external field will not be used
-                    idx: 0,
-                });
-                class.fields.insert(field_name.to_owned(), field);
-            } else {
-                panic!();
-            }
-
-            field_i += 1;
-        }
-
-        unsafe {
-            this_mod_ptr
-                .as_mut()
-                .unwrap()
-                .classes
-                .insert(name.to_owned(), class);
-        }
+        this_mod.classes.insert(name.to_owned(), class);
     }
 
     if let Some(_) = mod_tbl.insert(file.mod_name().to_owned(), this_mod) {
@@ -246,7 +153,6 @@ pub fn load_external_crate(
             unsafe {
                 this_mod_ptr
                     .as_mut()
-                    .unwrap()
                     .sub_mods
                     .insert(sub_mod_name.to_owned());
             }
@@ -298,7 +204,7 @@ pub fn load_external_crate(
 
         // 3. link extends
         {
-            let this_mod_mut = unsafe { this_mod_ptr.as_mut().unwrap() };
+            let this_mod_mut = unsafe { this_mod_ptr.as_mut() };
             for class_entry in file.typedef_tbl.iter() {
                 let mut class_mut = this_mod_mut
                     .classes
@@ -313,7 +219,7 @@ pub fn load_external_crate(
                             .get(file.get_str(file.typedef_tbl[idx].name))
                             .unwrap()
                             .as_ref()
-                            as *const Class,
+                            as *const Type,
                         TypeDefOrRef::TypeRef => {
                             let typeref = &file.typeref_tbl[idx];
                             let (parent_tag, parent_idx) = typeref.get_parent();
@@ -329,12 +235,115 @@ pub fn load_external_crate(
                                 .classes
                                 .get(file.get_str(typeref.name))
                                 .unwrap()
-                                .as_ref() as *const Class
+                                .as_ref() as *const Type
                         }
                         TypeDefOrRef::TypeSpec => unimplemented!(),
                     };
                 }
             }
+        }
+    }
+
+    // 3. fill all method and fields
+    let (mut field_i, mut method_i) = if let Some(c0) = file.typedef_tbl.first() {
+        (c0.fields as usize - 1, c0.methods as usize - 1)
+    } else {
+        (file.field_tbl.len(), file.method_tbl.len())
+    };
+
+    for _ in (0..field_i).into_iter() {
+        // load field
+        unimplemented!("Load field that has no class parent is not implemented");
+    }
+
+    for _ in (0..method_i).into_iter() {
+        // load methods
+        unimplemented!("Load method that has no class parent is not implemented");
+    }
+    for (class_i, class_entry) in file.typedef_tbl.iter().enumerate() {
+        let (field_lim, method_lim) = if class_i + 1 >= file.typedef_tbl.len() {
+            // last class
+            (file.field_tbl.len(), file.method_tbl.len())
+        } else {
+            let next_class = &file.typedef_tbl[class_i + 1];
+            (
+                next_class.fields as usize - 1,
+                next_class.methods as usize - 1,
+            )
+        };
+
+        let name = file.get_str(class_entry.name);
+        let class = unsafe { this_mod_ptr.as_mut().classes.get_mut(name).unwrap() };
+
+        while method_i < method_lim {
+            let method_entry = &file.method_tbl[method_i];
+            let param = if method_i == file.method_tbl.len() - 1 {
+                // last method
+                &file.param_tbl[(method_entry.param_list as usize - 1)..]
+            } else {
+                &file.param_tbl[(method_entry.param_list as usize - 1)
+                    ..(file.method_tbl[method_i + 1].param_list as usize - 1)]
+            };
+
+            let flag = MethodAttrib::from(method_entry.flag);
+            let impl_flag = MethodImplAttrib::from(method_entry.impl_flag);
+
+            if let IrSig::Method(_, ps, ret) = &file.blob_heap[method_entry.sig as usize] {
+                let mut ps: Vec<Param> = ps.iter().map(|t| to_param(t, &file, mod_tbl)).collect();
+                for p in param.iter() {
+                    if p.sequence == 0 {
+                        // xilang has no interests about return type
+                        continue;
+                    }
+                    ps[(p.sequence - 1) as usize].id = file.get_str(p.name).to_owned();
+                    ps[(p.sequence - 1) as usize].attrib = ParamAttrib::from(p.flag);
+                }
+
+                let method = Box::new(Method {
+                    parent: NonNull::new(class.as_ref() as *const Type as *mut Type).unwrap(),
+                    name: file.get_str(method_entry.name).to_owned(),
+                    ps,
+                    ret: to_ret(ret, &file, mod_tbl),
+                    attrib: flag,
+                    impl_flag,
+                    ast: None, // external method has no ast
+                    idx: 0,    // idx of external method will not be used
+                });
+
+                let method_name = file.get_str(method_entry.name);
+                if class.methods.contains_key(method_name) {
+                    class.methods.get_mut(method_name).unwrap().push(method);
+                } else {
+                    class.methods.insert(method_name.to_owned(), vec![method]);
+                }
+            } else {
+                panic!();
+            }
+
+            method_i += 1;
+        }
+
+        while field_i < field_lim {
+            let field_entry = &file.field_tbl[field_i];
+            let field_name = file.get_str(field_entry.name);
+
+            let flag = FieldAttrib::from(field_entry.flag);
+
+            if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
+                let field = Box::new(Field {
+                    parent: NonNull::new(class.as_ref() as *const Type as *mut Type).unwrap(),
+                    name: file.get_str(field_entry.name).to_owned(),
+                    attrib: flag,
+                    ty: to_rval(f_sig, &file, mod_tbl),
+                    // idx of external field will not be used
+                    idx: 0,
+                });
+                class.fields.insert(field_name.to_owned(), field);
+            } else {
+                panic!();
+            }
+
+            field_i += 1;
         }
     }
 }

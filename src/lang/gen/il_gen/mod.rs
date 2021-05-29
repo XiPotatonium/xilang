@@ -1,27 +1,33 @@
+mod acc;
 mod branch_expr;
 mod call;
 mod cast;
 mod literal;
 mod loop_expr;
 mod op;
-mod sym;
 
 use super::super::ast::{ASTType, AST};
 use op::BinOp;
 // use super::interpreter::constant_folding;
-use super::{CodeGenCtx, RValType, SymType, SymUsage, ValType};
+use super::{CodeGenCtx, Field, Method, Module, RValType, SymType, Type, ValExpectation, ValType};
 
 use xir::attrib::*;
 use xir::inst::Inst;
 use xir::tok::to_tok;
+use xir::util::path::IModPath;
 use xir::CTOR_NAME;
+
+use std::ptr::NonNull;
 
 pub fn gen_base_ctor(ctx: &CodeGenCtx, args: &Vec<Box<AST>>) {
     let base = unsafe { ctx.class.extends.as_ref().unwrap() };
 
     // similar to gen_new
     let ctors = base.methods.get(CTOR_NAME).unwrap();
-    let args_ty: Vec<RValType> = args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
+    let args_ty: Vec<RValType> = args
+        .iter()
+        .map(|arg| gen(ctx, arg, ValExpectation::RVal).expect_rval())
+        .collect();
 
     let ctor = call::pick_method_from_refs(ctors, &args_ty);
     let ctor = if let Some(ctor) = ctor {
@@ -33,7 +39,7 @@ pub fn gen_base_ctor(ctx: &CodeGenCtx, args: &Vec<Box<AST>>) {
     let mut builder = ctx.module.builder.borrow_mut();
     let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
     let (ctor_idx, tok_tag) = builder.add_const_member(
-        unsafe { base.parent.as_ref().unwrap().fullname() },
+        unsafe { base.parent.as_ref().fullname() },
         &base.name,
         CTOR_NAME,
         ctor_sig,
@@ -45,7 +51,7 @@ pub fn gen_base_ctor(ctx: &CodeGenCtx, args: &Vec<Box<AST>>) {
         .add_inst(Inst::Call(to_tok(ctor_idx, tok_tag)));
 }
 
-pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
+pub fn gen(ctx: &CodeGenCtx, ast: &AST, expectation: ValExpectation) -> ValType {
     /*
     if ctx.mgr.cfg.optim >= 1 && ast.is_constant() {
         return gen(ctx, &Box::new(constant_folding(ast)));
@@ -53,17 +59,21 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
     */
 
     match ast {
-        AST::Block(children) => gen_block(ctx, children),
+        AST::Block(children) => gen_block(ctx, children, expectation),
         AST::ExprStmt(stmt) => gen_expr_stmt(ctx, stmt),
-        AST::If(cond, then, els) => ValType::RVal(branch_expr::gen_if(ctx, cond, then, els)),
-        AST::Let(pattern, flag, ty, init) => ValType::RVal(gen_let(ctx, pattern, flag, ty, init)),
-        AST::Return(v) => ValType::Ret(if let ValType::RVal(ret) = gen(ctx, v) {
+        AST::If(cond, then, els) => {
+            ValType::RVal(branch_expr::gen_if(ctx, cond, then, els, expectation))
+        }
+        AST::Let(pattern, flag, ty, init) => {
+            gen_let(ctx, pattern, flag, ty, init);
+            ValType::RVal(RValType::Void)
+        }
+        AST::Return(v) => {
+            let ret = gen(ctx, v, ValExpectation::RVal).expect_rval();
             ctx.method_builder.borrow_mut().add_inst(Inst::Ret);
-            ret
-        } else {
-            unreachable!();
-        }),
-        AST::Loop(body) => ValType::RVal(loop_expr::gen_loop(ctx, body)),
+            ValType::Ret(ret)
+        }
+        AST::Loop(body) => ValType::RVal(loop_expr::gen_loop(ctx, body, expectation)),
         AST::Break(v) => loop_expr::gen_break(ctx, v),
         AST::Continue => loop_expr::gen_continue(ctx),
         AST::OpCast(ty, val) => cast::gen_cast(ctx, ty, val),
@@ -86,55 +96,20 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
         AST::OpGt(lhs, rhs) => ValType::RVal(op::gen_cmp(ctx, BinOp::Gt, lhs, rhs)),
         AST::OpLe(lhs, rhs) => ValType::RVal(op::gen_cmp(ctx, BinOp::Le, lhs, rhs)),
         AST::OpLt(lhs, rhs) => ValType::RVal(op::gen_cmp(ctx, BinOp::Lt, lhs, rhs)),
-        AST::OpObjAccess(_, _) => {
-            let lval = sym::gen_sym(ctx, ast, SymUsage::Assignee);
-            match &lval {
-                SymType::Field(f) => {
-                    let (mod_name, class_name, field_name, field_ty) = unsafe {
-                        let f_ref = f.as_ref();
-                        let class_ref = f_ref.parent.as_ref().unwrap();
-                        let module_ref = class_ref.parent.as_ref().unwrap();
-                        (
-                            module_ref.fullname(),
-                            &class_ref.name,
-                            &f_ref.name,
-                            f_ref.ty.clone(),
-                        )
-                    };
-                    let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);
-                    let (field_idx, tok_tag) = ctx
-                        .module
-                        .builder
-                        .borrow_mut()
-                        .add_const_member(mod_name, class_name, field_name, sig);
-                    ctx.method_builder
-                        .borrow_mut()
-                        .add_inst(Inst::LdFld(to_tok(field_idx, tok_tag)));
-
-                    ValType::RVal(field_ty)
-                }
-                SymType::ArrLen => {
-                    ctx.method_builder.borrow_mut().add_inst(Inst::LdLen);
-                    ValType::RVal(RValType::I32)
-                }
-                _ => unreachable!(),
+        AST::OpObjAccess(lhs, rhs) => acc::gen_instance_acc(ctx, lhs, rhs, expectation),
+        AST::OpStaticAccess(lhs, rhs) => acc::gen_static_acc(ctx, lhs, rhs, expectation),
+        AST::OpArrayAccess(lhs, rhs) => acc::gen_arr_acc(ctx, lhs, rhs, expectation),
+        AST::Id(id) => gen_id(ctx, id, expectation),
+        AST::Type(ty) => match expectation {
+            ValExpectation::Callable
+            | ValExpectation::RVal
+            | ValExpectation::Instance
+            | ValExpectation::Assignable
+            | ValExpectation::None => {
+                panic!()
             }
-        }
-        AST::OpStaticAccess(_, _) => {
-            let v = sym::gen_sym(ctx, ast, SymUsage::Assignee);
-            gen_static_access(ctx, v)
-        }
-        AST::OpArrayAccess(_, _) => {
-            let lval = sym::gen_sym(ctx, ast, SymUsage::Assignee);
-            match lval {
-                SymType::ArrAcc(ele_ty) => {
-                    ctx.method_builder.borrow_mut().add_ldelem(&ele_ty);
-                    ValType::RVal(ele_ty)
-                }
-                _ => panic!("Cannot array access {}", lval),
-            }
-        }
-        AST::Id(id) => ValType::RVal(gen_id_rval(ctx, id)),
+            ValExpectation::Static => ValType::Sym(gen_type(ctx, ty)),
+        },
         AST::Bool(val) => literal::gen_bool(ctx, *val),
         AST::Int(val) => literal::gen_int(ctx, *val),
         AST::String(val) => literal::gen_string(ctx, val),
@@ -143,48 +118,24 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST) -> ValType {
     }
 }
 
-/// Access a static field
-fn gen_static_access(ctx: &CodeGenCtx, v: SymType) -> ValType {
-    match &v {
-        SymType::Field(f) => {
-            let (mod_name, class_name, field_name, field_ty) = unsafe {
-                let f_ref = f.as_ref();
-                let class_ref = f_ref.parent.as_ref().unwrap();
-                let module_ref = class_ref.parent.as_ref().unwrap();
-                (
-                    module_ref.fullname(),
-                    &class_ref.name,
-                    &f_ref.name,
-                    f_ref.ty.clone(),
-                )
-            };
-            let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);
-            let (field_idx, tok_tag) = ctx
-                .module
-                .builder
-                .borrow_mut()
-                .add_const_member(mod_name, class_name, field_name, sig);
-            ctx.method_builder
-                .borrow_mut()
-                .add_inst(Inst::LdSFld(to_tok(field_idx, tok_tag)));
-
-            ValType::RVal(field_ty)
-        }
-        _ => unreachable!(),
-    }
-}
-
-fn gen_block(ctx: &CodeGenCtx, children: &Vec<Box<AST>>) -> ValType {
+fn gen_block(ctx: &CodeGenCtx, children: &Vec<Box<AST>>, expectation: ValExpectation) -> ValType {
     // Push Symbol table
     ctx.locals.borrow_mut().push();
 
     let mut ret = ValType::RVal(RValType::Void);
-    for stmt in children.iter() {
-        ret = gen(ctx, stmt);
-        if ctx.method_builder.borrow().cur_bb_last_is_branch() {
-            // do not generate unreachable stmts.
-            // branch should be the last inst in bb
-            break;
+    let mut child_iter = children.iter().peekable();
+    while let Some(stmt) = child_iter.next() {
+        if child_iter.peek().is_some() {
+            // not last
+            gen(ctx, stmt, ValExpectation::None);
+            if ctx.method_builder.borrow().cur_bb_last_is_branch() {
+                // do not generate unreachable stmts.
+                // branch should be the last inst in bb
+                break;
+            }
+        } else {
+            // last
+            ret = gen(ctx, stmt, expectation);
         }
     }
 
@@ -194,7 +145,7 @@ fn gen_block(ctx: &CodeGenCtx, children: &Vec<Box<AST>>) -> ValType {
 }
 
 fn gen_expr_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
-    let ret = gen(ctx, stmt);
+    let ret = gen(ctx, stmt, ValExpectation::RVal);
     match &ret {
         ValType::RVal(ty) => {
             // pop from stack
@@ -211,13 +162,7 @@ fn gen_expr_stmt(ctx: &CodeGenCtx, stmt: &Box<AST>) -> ValType {
     }
 }
 
-fn gen_let(
-    ctx: &CodeGenCtx,
-    pattern: &Box<AST>,
-    flag: &LocalAttrib,
-    ty: &ASTType,
-    init: &AST,
-) -> RValType {
+fn gen_let(ctx: &CodeGenCtx, pattern: &Box<AST>, flag: &LocalAttrib, ty: &ASTType, init: &AST) {
     match pattern.as_ref() {
         AST::Id(id) => {
             if let AST::None = init {
@@ -232,7 +177,7 @@ fn gen_let(
                 }
             } else {
                 // build init
-                let init_ty = gen(ctx, init).expect_rval();
+                let init_ty = gen(ctx, init, ValExpectation::RVal).expect_rval();
                 let offset = ctx
                     .locals
                     .borrow_mut()
@@ -255,18 +200,17 @@ fn gen_let(
         }
         _ => unreachable!(),
     };
-
-    RValType::Void
 }
 
 fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
-    let lval = sym::gen_sym(ctx, lhs, SymUsage::Assignee);
-    let v_ty = gen(ctx, rhs).expect_rval();
+    // filter rval value type by expect_sym
+    let lval = gen(ctx, lhs, ValExpectation::Assignable).expect_sym();
+    let v_ty = gen(ctx, rhs, ValExpectation::RVal).expect_rval();
 
-    match lval {
+    match &lval {
         SymType::Local(idx) => {
             let locals = ctx.locals.borrow();
-            let local = &locals.locals[idx];
+            let local = &locals.locals[*idx];
             let local_ty = local.ty.clone();
 
             if local_ty != v_ty {
@@ -281,7 +225,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             panic!("Cannot assign self");
         }
         SymType::Arg(idx) => {
-            let arg = &ctx.method.ps[idx];
+            let arg = &ctx.method.ps[*idx];
 
             if arg.ty != v_ty {
                 panic!("Cannot assign {} to arg {}: {}", v_ty, arg.id, arg.ty);
@@ -292,17 +236,17 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
                 .attrib
                 .is(MethodAttribFlag::Static)
             {
-                idx
+                *idx
             } else {
-                idx + 1
+                *idx + 1
             } as u16);
         }
         SymType::Field(f) => {
             // TODO private and public
             let (mod_name, class_name, f_ref) = unsafe {
                 let f_ref = f.as_ref();
-                let class_ref = f_ref.parent.as_ref().unwrap();
-                let module_ref = class_ref.parent.as_ref().unwrap();
+                let class_ref = f_ref.parent.as_ref();
+                let module_ref = class_ref.parent.as_ref();
                 (module_ref.fullname(), &class_ref.name, f_ref)
             };
 
@@ -326,7 +270,7 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             ctx.method_builder.borrow_mut().add_inst(inst);
         }
         SymType::ArrAcc(ele_ty) => {
-            if ele_ty != v_ty {
+            if ele_ty != &v_ty {
                 panic!("Cannot store {} into {} array", v_ty, ele_ty);
             }
             ctx.method_builder.borrow_mut().add_stelem(&ele_ty);
@@ -340,38 +284,169 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
     RValType::Void
 }
 
-fn gen_id_rval(ctx: &CodeGenCtx, id: &str) -> RValType {
+fn gen_id(ctx: &CodeGenCtx, id: &str, expectation: ValExpectation) -> ValType {
     // try search locals
-    {
-        let locals = ctx.locals.borrow();
-        let is_instance_method = !ctx.method.attrib.is(MethodAttribFlag::Static);
-        if id == "self" {
-            if is_instance_method {
-                // first argument
-                ctx.method_builder.borrow_mut().add_inst_ldarg(0);
-                return RValType::Obj(
-                    ctx.module.get_module().fullname().to_owned(),
-                    ctx.class.name.clone(),
+    match expectation {
+        ValExpectation::None | ValExpectation::Callable => {
+            // currently only method is callable
+            let ms = ctx.class.query_method(id);
+            if ms.is_empty() {
+                panic!(
+                    "No method {} in class {}/{}",
+                    id,
+                    ctx.module.get_module().fullname(),
+                    ctx.class.name
                 );
-            } else {
-                panic!("Invalid self keyword in static method");
             }
-        } else if let Some(local_var) = locals.get(id) {
-            ctx.method_builder
-                .borrow_mut()
-                .add_inst_ldloc(local_var.idx);
-            return local_var.ty.clone();
-        } else if let Some(arg_idx) = ctx.ps_map.get(id) {
-            let arg = &ctx.method.ps[*arg_idx];
-            ctx.method_builder
-                .borrow_mut()
-                .add_inst_ldarg(if is_instance_method {
-                    *arg_idx + 1
+            ValType::Sym(SymType::Method(
+                ms.into_iter()
+                    .map(|m| NonNull::new(m as *const Method as *mut Method).unwrap())
+                    .collect(),
+            ))
+        }
+        ValExpectation::RVal | ValExpectation::Instance => {
+            let locals = ctx.locals.borrow();
+            let is_instance_method = !ctx.method.attrib.is(MethodAttribFlag::Static);
+            let mut loada = false;
+            ValType::RVal(if id == "self" {
+                if is_instance_method {
+                    // first argument
+                    ctx.method_builder.borrow_mut().add_inst_ldarg(0);
+                    RValType::Type(NonNull::new(ctx.class as *const Type as *mut Type).unwrap())
                 } else {
-                    *arg_idx
-                } as u16);
-            return arg.ty.clone();
+                    panic!("Invalid self keyword in static method");
+                }
+            } else if let Some(local_var) = locals.get(id) {
+                if let ValExpectation::Instance = expectation {
+                    if let RValType::Type(_ty) = local_var.ty {
+                        if unsafe { _ty.as_ref() }.is_struct() {
+                            loada = true;
+                        }
+                    }
+                }
+
+                if loada {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst_ldloca(local_var.idx);
+                    RValType::ByRef(Box::new(local_var.ty.clone()))
+                } else {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst_ldloc(local_var.idx);
+                    local_var.ty.clone()
+                }
+            } else if let Some(arg_idx) = ctx.ps_map.get(id) {
+                let arg = &ctx.method.ps[*arg_idx];
+                if let ValExpectation::Instance = expectation {
+                    if let RValType::Type(_ty) = arg.ty {
+                        if unsafe { _ty.as_ref() }.is_struct() {
+                            loada = true;
+                        }
+                    }
+                }
+                if loada {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst_ldarga(if is_instance_method {
+                            *arg_idx + 1
+                        } else {
+                            *arg_idx
+                        } as u16);
+                    RValType::ByRef(Box::new(arg.ty.clone()))
+                } else {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst_ldarg(if is_instance_method {
+                            *arg_idx + 1
+                        } else {
+                            *arg_idx
+                        } as u16);
+                    arg.ty.clone()
+                }
+            } else {
+                panic!();
+            })
+        }
+        ValExpectation::Static => {
+            let id = if id == "Self" { &ctx.class.name } else { id };
+            ValType::Sym(if let Some(path) = ctx.module.use_map.get(id) {
+                // item in sub module or any using module
+                SymType::Module(
+                    NonNull::new(ctx.mgr.mod_tbl.get(path.as_str()).unwrap().as_ref()
+                        as *const Module as *mut Module)
+                    .unwrap(),
+                )
+            } else if ctx.module.get_module().sub_mods.contains(id) {
+                // a submodule in this module
+                let mut path = ctx.module.get_module().mod_path.clone();
+                path.push(id);
+                SymType::Module(
+                    NonNull::new(ctx.mgr.mod_tbl.get(path.as_str()).unwrap().as_ref()
+                        as *const Module as *mut Module)
+                    .unwrap(),
+                )
+            } else if let Some(c) = ctx.module.get_module().classes.get(id) {
+                // class within the same module
+                SymType::Class(NonNull::new(c.as_ref() as *const Type as *mut Type).unwrap())
+            } else if let Some(m) = ctx.mgr.mod_tbl.get(id) {
+                // this crate can be referenced in this case (allow or not?)
+                SymType::Module(NonNull::new(m.as_ref() as *const Module as *mut Module).unwrap())
+            } else {
+                panic!();
+            })
+        }
+        ValExpectation::Assignable => {
+            let is_instance_method = !ctx.method.attrib.is(MethodAttribFlag::Static);
+            ValType::Sym(if id == "self" {
+                if is_instance_method {
+                    SymType::KwLSelf
+                } else {
+                    panic!("invalid keyword self in static method");
+                }
+            } else if let Some(var) = ctx.locals.borrow().get(id) {
+                // query local var
+                SymType::Local(var.idx as usize)
+            } else if let Some(arg) = ctx.ps_map.get(id) {
+                // query args
+                SymType::Arg(*arg)
+            } else if let Some(f) = ctx.class.query_field(id) {
+                // query field in this class
+                // either static or non-static is ok
+                SymType::Field(NonNull::new(f as *const Field as *mut Field).unwrap())
+            } else {
+                panic!("Cannot found item with id: {}", id);
+            })
         }
     }
-    unimplemented!("{} is not local nor arg", id);
+}
+
+fn gen_type(ctx: &CodeGenCtx, ty: &ASTType) -> SymType {
+    match ty {
+        ASTType::Bool => unimplemented!(),
+        ASTType::Char => unimplemented!(),
+        ASTType::I32 => unimplemented!(),
+        ASTType::F64 => unimplemented!(),
+        ASTType::String => unimplemented!(),
+        ASTType::Tuple(_) => unimplemented!(),
+        ASTType::Arr(_) => unimplemented!(),
+        ASTType::Class(path) => {
+            assert!(path.len() == 1, "invalid path in lval gen \"{}\"", path);
+            match path.as_str() {
+                "Self" => SymType::Class(
+                    NonNull::new(
+                        ctx.module
+                            .get_module()
+                            .classes
+                            .get(&ctx.class.name)
+                            .unwrap()
+                            .as_ref() as *const Type as *mut Type,
+                    )
+                    .unwrap(),
+                ),
+                _ => unreachable!(),
+            }
+        }
+        ASTType::None => panic!(),
+    }
 }

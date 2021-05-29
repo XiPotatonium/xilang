@@ -404,19 +404,21 @@ impl<'c> Loader<'c> {
         }
 
         // 3. Link extenal symbols
-        let this_mod = self
-            .mem
-            .mods
-            .get_mut(&this_mod_fullname_addr)
-            .unwrap()
-            .as_mut() as *mut Module;
+        let this_mod = NonNull::new(
+            self.mem
+                .mods
+                .get_mut(&this_mod_fullname_addr)
+                .unwrap()
+                .as_mut() as *mut Module,
+        )
+        .unwrap();
 
         linker::link_modref(&file, this_mod, &str_heap, &mut self.mem.mods);
         linker::link_typeref(&file, this_mod, &str_heap);
         linker::link_member_ref(&file, this_mod, &str_heap, &self.mem.str_pool);
         linker::fill_field_info(&file, this_mod);
         linker::fill_method_info(&file, this_mod);
-        linker::link_class_extends(&file, this_mod);
+        linker::fill_type_info(&file, this_mod);
 
         this_mod_fullname_addr
     }

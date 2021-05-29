@@ -1,5 +1,5 @@
 use super::super::super::ast::AST;
-use super::super::{gen, CodeGenCtx, RValType, ValType};
+use super::super::{gen, CodeGenCtx, RValType, ValExpectation, ValType};
 
 use xir::Inst;
 
@@ -18,7 +18,7 @@ pub enum BinOp {
 }
 
 pub fn gen_neg(ctx: &CodeGenCtx, lhs: &Box<AST>) -> ValType {
-    let v_ty = gen(ctx, lhs);
+    let v_ty = gen(ctx, lhs, ValExpectation::RVal);
 
     match v_ty.expect_rval_ref() {
         RValType::I32 | RValType::F64 => {
@@ -31,7 +31,7 @@ pub fn gen_neg(ctx: &CodeGenCtx, lhs: &Box<AST>) -> ValType {
 }
 
 pub fn gen_log_not(ctx: &CodeGenCtx, lhs: &Box<AST>) -> ValType {
-    let v_ty = gen(ctx, lhs);
+    let v_ty = gen(ctx, lhs, ValExpectation::RVal);
 
     match v_ty.expect_rval_ref() {
         RValType::Bool => {
@@ -57,7 +57,7 @@ pub fn gen_and(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         rhs_bb = builder.insert_after_cur();
     }
 
-    let lhs_ty = gen(ctx, lhs);
+    let lhs_ty = gen(ctx, lhs, ValExpectation::RVal);
     match lhs_ty.expect_rval() {
         RValType::Bool => {}
         _ => panic!("Cond not return bool"),
@@ -68,7 +68,7 @@ pub fn gen_and(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         .add_brfalse(false_bb.clone())
         .set_cur_bb(rhs_bb);
 
-    let rhs_ty = gen(ctx, rhs);
+    let rhs_ty = gen(ctx, rhs, ValExpectation::RVal);
     match rhs_ty.expect_rval() {
         RValType::Bool => {}
         _ => panic!("Cond not return bool"),
@@ -96,7 +96,7 @@ pub fn gen_or(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         rhs_bb = builder.insert_after_cur();
     }
 
-    let lhs_ty = gen(ctx, lhs);
+    let lhs_ty = gen(ctx, lhs, ValExpectation::RVal);
     match lhs_ty.expect_rval() {
         RValType::Bool => {}
         _ => panic!("Cond not return bool"),
@@ -107,7 +107,7 @@ pub fn gen_or(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
         .add_brtrue(after_bb.clone())
         .set_cur_bb(rhs_bb);
 
-    let rhs_ty = gen(ctx, rhs);
+    let rhs_ty = gen(ctx, rhs, ValExpectation::RVal);
     match rhs_ty.expect_rval() {
         RValType::Bool => {}
         _ => panic!("Cond not return bool"),
@@ -125,8 +125,8 @@ pub fn gen_or(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
 }
 
 pub fn gen_numeric(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
-    let lty = gen(ctx, lhs).expect_rval();
-    let rty = gen(ctx, rhs).expect_rval();
+    let lty = gen(ctx, lhs, ValExpectation::RVal).expect_rval();
+    let rty = gen(ctx, rhs, ValExpectation::RVal).expect_rval();
 
     if lty != rty {
         panic!("Numeric op cannot be applied between {} and {}", lty, rty);
@@ -146,8 +146,8 @@ pub fn gen_numeric(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) 
 }
 
 pub fn gen_cmp(ctx: &CodeGenCtx, op: BinOp, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
-    let lty = gen(ctx, lhs).expect_rval();
-    let rty = gen(ctx, rhs).expect_rval();
+    let lty = gen(ctx, lhs, ValExpectation::RVal).expect_rval();
+    let rty = gen(ctx, rhs, ValExpectation::RVal).expect_rval();
 
     if lty != rty {
         panic!("Cmp op cannot be applied between {} and {}", lty, rty);

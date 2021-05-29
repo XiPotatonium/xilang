@@ -1,5 +1,5 @@
 use super::super::super::ast::AST;
-use super::super::{CodeGenCtx, LoopCtx, LoopType, RValType, ValType};
+use super::super::{CodeGenCtx, LoopCtx, LoopType, RValType, ValExpectation, ValType};
 use super::gen;
 
 pub fn gen_continue(ctx: &CodeGenCtx) -> ValType {
@@ -36,7 +36,7 @@ pub fn gen_break(ctx: &CodeGenCtx, v: &AST) -> ValType {
 
         ValType::RVal(RValType::Void)
     } else {
-        let v_ty = gen(ctx, v);
+        let v_ty = gen(ctx, v, ValExpectation::RVal);
 
         if let ValType::RVal(v_ty_) = &v_ty {
             if let Some(l) = ctx.loop_ctx.borrow_mut().last_mut() {
@@ -68,7 +68,7 @@ pub fn gen_break(ctx: &CodeGenCtx, v: &AST) -> ValType {
     }
 }
 
-pub fn gen_loop(ctx: &CodeGenCtx, body: &AST) -> RValType {
+pub fn gen_loop(ctx: &CodeGenCtx, body: &AST, expectation: ValExpectation) -> RValType {
     {
         let mut builder = ctx.method_builder.borrow_mut();
         let after_bb = builder.insert_after_cur();
@@ -81,7 +81,7 @@ pub fn gen_loop(ctx: &CodeGenCtx, body: &AST) -> RValType {
         });
     }
 
-    gen(ctx, body);
+    gen(ctx, body, expectation);
 
     {
         let LoopCtx {

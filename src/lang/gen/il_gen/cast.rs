@@ -1,10 +1,10 @@
 use super::super::super::ast::{ASTType, AST};
-use super::super::super::mod_mgr::Class;
-use super::super::{CodeGenCtx, RValType, ValType};
+use super::super::super::mod_mgr::Type;
+use super::super::{CodeGenCtx, RValType, ValExpectation, ValType};
 use super::gen;
 
 pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
-    let lhs_ty = gen(ctx, val);
+    let lhs_ty = gen(ctx, val, ValExpectation::RVal);
     let lhs_rval_ty = lhs_ty.expect_rval_ref();
 
     let to_type = ctx.get_ty(ty);
@@ -18,16 +18,8 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
         RValType::Void => panic!("Cannot cast void type"),
         RValType::Never => panic!("Cannot cast never type"),
         RValType::String => unimplemented!(),
-        RValType::Obj(mod_fullname, class_name) => {
-            let lhs_class = ctx
-                .mgr
-                .mod_tbl
-                .get(mod_fullname)
-                .unwrap()
-                .classes
-                .get(class_name)
-                .unwrap()
-                .as_ref();
+        RValType::Type(ty) => {
+            let lhs_ty = unsafe { ty.as_ref() };
             match &to_type {
                 RValType::Bool
                 | RValType::U8
@@ -36,26 +28,21 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
                 | RValType::F64
                 | RValType::Void
                 | RValType::Never
-                | RValType::String
+                | RValType::ByRef(_)
                 | RValType::Array(_) => {
                     panic!("cast from {} to {} is not allowed", lhs_rval_ty, to_type)
                 }
-                RValType::Obj(mod_fullname, class_name) => {
-                    let rhs_class = ctx
-                        .mgr
-                        .mod_tbl
-                        .get(mod_fullname)
-                        .unwrap()
-                        .classes
-                        .get(class_name)
-                        .unwrap()
-                        .as_ref();
+                RValType::String => {
+                    unimplemented!()
+                }
+                RValType::Type(ty) => {
+                    let rhs_ty = unsafe { ty.as_ref() };
 
-                    if lhs_class as *const Class != rhs_class {
-                        let mut base = lhs_class.extends;
+                    if lhs_ty as *const Type != rhs_ty {
+                        let mut base = lhs_ty.extends;
                         let mut castable = false;
                         while let Some(base_ref) = unsafe { base.as_ref() } {
-                            if base == rhs_class {
+                            if base == rhs_ty {
                                 castable = true;
                                 break;
                             }
@@ -69,6 +56,7 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
                 }
             }
         }
+        RValType::ByRef(_) => unimplemented!(),
         RValType::Array(_) => unimplemented!(),
     }
 

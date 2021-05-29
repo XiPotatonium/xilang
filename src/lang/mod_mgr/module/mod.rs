@@ -3,10 +3,11 @@ mod member_pass;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::ptr;
+use std::ptr::{self, NonNull};
 
 use xir::file::IrFile;
 use xir::util::path::{IModPath, ModPath};
@@ -16,13 +17,13 @@ use super::super::ast::{ASTType, AST};
 use super::super::gen::{Builder, RValType};
 use super::super::parser;
 use super::external::load_external_crate;
-use super::{Class, Crate};
+use super::{Crate, Type};
 
 pub struct Module {
     pub mod_path: ModPath,
     pub sub_mods: HashSet<String>,
     /// key: class_name
-    pub classes: HashMap<String, Box<Class>>,
+    pub classes: HashMap<String, Box<Type>>,
 }
 
 impl Module {
@@ -36,6 +37,12 @@ impl Module {
 
     pub fn is_root(&self) -> bool {
         self.mod_path.len() == 1
+    }
+}
+
+impl fmt::Display for Module {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.fullname())
     }
 }
 
@@ -205,11 +212,12 @@ pub fn new_module(
 
                     this_mod.classes.insert(
                         ty.name.to_owned(),
-                        Box::new(Class {
+                        Box::new(Type {
                             name: ty.name.to_owned(),
                             fields: HashMap::new(),
                             methods: HashMap::new(),
-                            parent: this_mod.as_ref() as *const Module,
+                            parent: NonNull::new(this_mod.as_ref() as *const Module as *mut Module)
+                                .unwrap(),
                             idx: 0,
                             extends: ptr::null(),
                             attrib: ty.attrib.clone(),
@@ -308,12 +316,12 @@ impl ModuleBuildCtx {
 
 impl ModuleBuildCtx {
     /// item must exist
-    pub fn resolve_path(
+    pub fn resolve_user_define_type(
         &self,
         path: &ModPath,
         c: &Crate,
-        class: Option<&Class>,
-    ) -> (String, String) {
+        class: Option<&Type>,
+    ) -> NonNull<Type> {
         let (has_crate, super_cnt, canonicalized_path) = path.canonicalize();
         let class_id = canonicalized_path.get_self_name().unwrap();
         let mod_path = canonicalized_path.get_super();
@@ -321,20 +329,17 @@ impl ModuleBuildCtx {
         if mod_path.len() == 0 {
             // this mod
             // might be a class in this module
-            (
-                module.fullname().to_owned(),
-                if class_id == "Self" {
-                    if let Some(class) = class {
-                        class.name.clone()
-                    } else {
-                        panic!("Invalid Self keyword outside a class");
-                    }
-                } else if module.classes.contains_key(class_id) {
-                    class_id.to_owned()
+            if class_id == "Self" {
+                if let Some(class) = class {
+                    NonNull::new(class as *const Type as *mut Type).unwrap()
                 } else {
-                    panic!("No class {} in mod {}", class_id, module.fullname());
-                },
-            )
+                    panic!("Invalid Self keyword outside a class");
+                }
+            } else if let Some(ty) = module.classes.get(class_id) {
+                NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap()
+            } else {
+                panic!("No class {} in mod {}", class_id, module.fullname());
+            }
         } else {
             let m = if has_crate {
                 // crate::...
@@ -377,8 +382,8 @@ impl ModuleBuildCtx {
             };
 
             if let Some(m) = c.mod_tbl.get(m.as_str()) {
-                if let Some(_) = m.classes.get(class_id) {
-                    (m.fullname().to_owned(), class_id.to_owned())
+                if let Some(ty) = m.classes.get(class_id) {
+                    NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap()
                 } else {
                     panic!("Class {} not found", class_id);
                 }
@@ -388,7 +393,7 @@ impl ModuleBuildCtx {
         }
     }
 
-    pub fn get_ty(&self, ast: &ASTType, mod_mgr: &Crate, class: &Class) -> RValType {
+    pub fn get_rval_type(&self, ast: &ASTType, mod_mgr: &Crate, class: &Type) -> RValType {
         match ast {
             ASTType::I32 => RValType::I32,
             ASTType::F64 => RValType::F64,
@@ -400,10 +405,11 @@ impl ModuleBuildCtx {
                 unimplemented!();
             }
             ASTType::Class(class_path) => {
-                let (mod_name, class_name) = self.resolve_path(class_path, mod_mgr, Some(class));
-                RValType::Obj(mod_name, class_name)
+                RValType::Type(self.resolve_user_define_type(class_path, mod_mgr, Some(class)))
             }
-            ASTType::Arr(dtype) => RValType::Array(Box::new(self.get_ty(dtype, mod_mgr, class))),
+            ASTType::Arr(dtype) => {
+                RValType::Array(Box::new(self.get_rval_type(dtype, mod_mgr, class)))
+            }
         }
     }
 }

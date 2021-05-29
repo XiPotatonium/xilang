@@ -1,8 +1,14 @@
 use super::super::super::ast::AST;
-use super::super::{CodeGenCtx, RValType, ValType};
+use super::super::{CodeGenCtx, RValType, ValExpectation, ValType};
 use super::gen;
 
-pub fn gen_if(ctx: &CodeGenCtx, cond: &AST, then: &AST, els: &AST) -> RValType {
+pub fn gen_if(
+    ctx: &CodeGenCtx,
+    cond: &AST,
+    then: &AST,
+    els: &AST,
+    expectation: ValExpectation,
+) -> RValType {
     let then_bb;
     let els_bb;
     let after_bb;
@@ -13,7 +19,7 @@ pub fn gen_if(ctx: &CodeGenCtx, cond: &AST, then: &AST, els: &AST) -> RValType {
         then_bb = builder.insert_after_cur();
     }
 
-    let cond_ty = gen(ctx, cond);
+    let cond_ty = gen(ctx, cond, ValExpectation::RVal);
     match cond_ty.expect_rval() {
         RValType::Bool => {}
         _ => panic!("Cond not return bool"),
@@ -25,7 +31,7 @@ pub fn gen_if(ctx: &CodeGenCtx, cond: &AST, then: &AST, els: &AST) -> RValType {
         builder.set_cur_bb(then_bb);
     }
 
-    let then_v = gen(ctx, then);
+    let then_v = gen(ctx, then, expectation);
 
     {
         let mut builder = ctx.method_builder.borrow_mut();
@@ -36,7 +42,7 @@ pub fn gen_if(ctx: &CodeGenCtx, cond: &AST, then: &AST, els: &AST) -> RValType {
         builder.set_cur_bb(els_bb);
     }
 
-    let els_v = gen(ctx, els);
+    let els_v = gen(ctx, els, expectation);
 
     {
         let mut builder = ctx.method_builder.borrow_mut();

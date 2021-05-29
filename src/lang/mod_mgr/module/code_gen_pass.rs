@@ -1,7 +1,9 @@
 use super::super::super::super::XicCfg;
 use super::super::super::ast::{ASTClass, ASTMethodAttribFlag, AST};
-use super::super::super::gen::{gen, gen_base_ctor, CodeGenCtx, MethodBuilder, RValType, ValType};
-use super::super::{Class, Crate, Locals, Method};
+use super::super::super::gen::{
+    gen, gen_base_ctor, CodeGenCtx, MethodBuilder, RValType, ValExpectation, ValType,
+};
+use super::super::{Crate, Locals, Method, Type};
 use super::ModuleBuildCtx;
 
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, MethodImplAttribCodeTypeFlag};
@@ -11,7 +13,7 @@ use std::cell::RefCell;
 
 // code gen
 impl ModuleBuildCtx {
-    fn code_gen_method(&self, c: &Crate, class: &Class, m: &Method, optim_level: usize) {
+    fn code_gen_method(&self, c: &Crate, class: &Type, m: &Method, optim_level: usize) {
         let ctx = CodeGenCtx {
             mgr: c,
             module: self,
@@ -30,9 +32,9 @@ impl ModuleBuildCtx {
 
         let ret = match m.ast {
             Some(ast) => {
-                let ast = unsafe { ast.as_ref().unwrap() };
+                let ast = unsafe { ast.as_ref() };
                 match ast {
-                    AST::Block(_) => gen(&ctx, ast), // cctor
+                    AST::Block(_) => gen(&ctx, ast, ValExpectation::RVal), // cctor
                     AST::Ctor(ctor) => {
                         if !class.extends.is_null() {
                             // has base class, call base ctor for each ctor
@@ -50,9 +52,9 @@ impl ModuleBuildCtx {
                                 ctor, class
                             );
                         }
-                        gen(&ctx, &ctor.body)
+                        gen(&ctx, &ctor.body, ValExpectation::RVal)
                     }
-                    AST::Method(method) => gen(&ctx, &method.body),
+                    AST::Method(method) => gen(&ctx, &method.body, ValExpectation::RVal),
                     _ => unreachable!(),
                 }
             }
@@ -97,20 +99,15 @@ impl ModuleBuildCtx {
             .as_mut();
         for p in class.extends_or_impls.iter() {
             // find base class
-            let (mod_name, class_name) = self.resolve_path(p, mod_mgr, None);
+            let base = self.resolve_user_define_type(p, mod_mgr, None);
+            let base_ref = unsafe { base.as_ref() };
 
-            let (extends_idx, extends_idx_tag) = builder.add_const_class(&mod_name, &class_name);
+            let (extends_idx, extends_idx_tag) =
+                builder.add_const_class(base_ref.modname(), &base_ref.name);
             if !class_mut.extends.is_null() {
                 panic!("Multiple inheritance for class {}", class.name);
             }
-            class_mut.extends = mod_mgr
-                .mod_tbl
-                .get(&mod_name)
-                .unwrap()
-                .classes
-                .get(&class_name)
-                .unwrap()
-                .as_ref() as *const Class;
+            class_mut.extends = base.as_ptr() as *const Type;
             builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
         }
 
@@ -126,7 +123,7 @@ impl ModuleBuildCtx {
                     .classes
                     .get("Object")
                     .unwrap()
-                    .as_ref() as *const Class;
+                    .as_ref() as *const Type;
                 let (extends_idx, extends_idx_tag) = builder.add_const_class("std", "Object");
                 builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
             }
@@ -157,8 +154,8 @@ impl ModuleBuildCtx {
                     .iter()
                     .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
                 {
-                    let method_ast = if let AST::Method(method_ast) =
-                        unsafe { method.ast.unwrap().as_ref().unwrap() }
+                    let method_ast = method.ast.unwrap();
+                    let method_ast = if let AST::Method(method_ast) = unsafe { method_ast.as_ref() }
                     {
                         method_ast
                     } else {
@@ -249,7 +246,7 @@ impl ModuleBuildCtx {
                             .classes
                             .get("ValueType")
                             .unwrap()
-                            .as_ref() as *const Class;
+                            .as_ref() as *const Type;
                         let mut builder = self.builder.borrow_mut();
                         let (extends_idx, extends_idx_tag) =
                             builder.add_const_class("std", "ValueType");

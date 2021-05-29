@@ -1,7 +1,7 @@
 use super::super::super::ast::{ASTType, AST};
 use super::super::super::mod_mgr::Method;
-use super::super::{CodeGenCtx, RValType, SymType, SymUsage};
-use super::{gen, sym};
+use super::super::{CodeGenCtx, RValType, SymType, ValExpectation};
+use super::gen;
 
 use xir::attrib::MethodAttribFlag;
 use xir::tok::to_tok;
@@ -53,12 +53,14 @@ pub fn pick_method_from_refs<'m>(
 }
 
 pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValType {
-    let lval = sym::gen_sym(ctx, f, SymUsage::Callee);
+    let lval = gen(ctx, f, ValExpectation::Callable).expect_sym();
     let (inst, ret) = match &lval {
         SymType::Method(candidates) => {
             // build args
-            let args_ty: Vec<RValType> =
-                args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
+            let args_ty: Vec<RValType> = args
+                .iter()
+                .map(|arg| gen(ctx, arg, ValExpectation::RVal).expect_rval())
+                .collect();
 
             // only type is checked in gen_call
             // accessibility should be checked in class.query_method
@@ -68,8 +70,8 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
             let m_ref = pick_method_from_ptrs(candidates, &args_ty);
             let (mod_name, class_name, m_ref) = if let Some(m_ref) = unsafe { m_ref.as_ref() } {
                 unsafe {
-                    let class_ref = m_ref.parent.as_ref().unwrap();
-                    let module_ref = class_ref.parent.as_ref().unwrap();
+                    let class_ref = m_ref.parent.as_ref();
+                    let module_ref = class_ref.parent.as_ref();
                     (module_ref.fullname(), &class_ref.name, m_ref)
                 }
             } else {
@@ -124,20 +126,14 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
 pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.get_ty(ty);
     match &ret {
-        RValType::Obj(mod_name, class_name) => {
-            let args_ty: Vec<RValType> =
-                args.iter().map(|arg| gen(ctx, arg).expect_rval()).collect();
+        RValType::Type(ty) => {
+            let args_ty: Vec<RValType> = args
+                .iter()
+                .map(|arg| gen(ctx, arg, ValExpectation::RVal).expect_rval())
+                .collect();
 
-            let class_ref = ctx
-                .mgr
-                .mod_tbl
-                .get(mod_name)
-                .unwrap()
-                .classes
-                .get(class_name)
-                .unwrap()
-                .as_ref();
-            let ctors = class_ref.methods.get(CTOR_NAME).unwrap();
+            let type_ref = unsafe { ty.as_ref() };
+            let ctors = type_ref.methods.get(CTOR_NAME).unwrap();
 
             let ctor = pick_method_from_refs(ctors, &args_ty);
             let ctor = if let Some(ctor) = ctor {
@@ -149,7 +145,7 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType
             let mut builder = ctx.module.builder.borrow_mut();
             let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
             let (ctor_idx, tok_tag) =
-                builder.add_const_member(mod_name, class_name, CTOR_NAME, ctor_sig);
+                builder.add_const_member(type_ref.modname(), &type_ref.name, CTOR_NAME, ctor_sig);
 
             ctx.method_builder
                 .borrow_mut()
@@ -163,7 +159,7 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType
 }
 
 pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
-    let dim_ty = gen(ctx, dim);
+    let dim_ty = gen(ctx, dim, ValExpectation::RVal);
     // only i32 or isize if allowed
     match dim_ty.expect_rval_ref() {
         RValType::I32 => {}
@@ -183,12 +179,13 @@ pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
         | RValType::I32
         | RValType::F64
         | RValType::String => unimplemented!(),
-        RValType::Obj(mod_name, name) => {
+        RValType::Type(ty) => {
+            let ty_ref = unsafe { ty.as_ref() };
             let (idx, tag) = ctx
                 .module
                 .builder
                 .borrow_mut()
-                .add_const_class(mod_name, name);
+                .add_const_class(ty_ref.modname(), &ty_ref.name);
             to_tok(idx, tag.to_tok_tag())
         }
         _ => {

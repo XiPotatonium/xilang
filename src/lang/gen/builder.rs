@@ -312,12 +312,14 @@ impl Builder {
             RValType::I32 => TypeSig::I4,
             RValType::F64 => TypeSig::R8,
             RValType::Never => unreachable!(),
-            RValType::Obj(mod_name, name) => {
-                let (class_idx, class_tag) = self.add_const_class(mod_name, name);
+            RValType::String => TypeSig::String,
+            RValType::Type(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                let (class_idx, class_tag) = self.add_const_class(ty_ref.modname(), &ty_ref.name);
                 TypeSig::Class(to_tok(class_idx, class_tag.to_tok_tag()))
             }
+            RValType::ByRef(_) => unimplemented!(),
             RValType::Array(ele_ty) => TypeSig::SZArray(Box::new(self.to_sig_ty(ele_ty))),
-            RValType::String => TypeSig::String,
             RValType::Void => unreachable!(),
         }
     }

@@ -94,7 +94,7 @@ fn main() {
     for module in m.mods.values_mut() {
         if let Module::IL(module) = module.as_mut() {
             for ty in module.types.iter_mut() {
-                ty.dispose_instance_info();
+                ty.dispose_instance_info(&m.str_pool);
             }
         }
     }

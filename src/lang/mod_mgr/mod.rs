@@ -1,13 +1,13 @@
-mod class;
 mod external;
 mod member;
 mod module;
+mod ty;
 mod var;
 
-pub use self::class::Class;
 pub use self::member::{Field, Method, Param};
 use self::module::new_module;
 pub use self::module::{Module, ModuleBuildCtx};
+pub use self::ty::Type;
 pub use self::var::{Locals, Var};
 
 use super::super::XicCfg;

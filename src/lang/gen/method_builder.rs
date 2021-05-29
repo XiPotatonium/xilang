@@ -121,6 +121,16 @@ impl MethodBuilder {
         })
     }
 
+    pub fn add_inst_ldloca(&mut self, local_idx: u16) -> &mut Self {
+        self.add_inst(
+            if local_idx >= u8::MIN as u16 && local_idx <= u8::MAX as u16 {
+                Inst::LdLocAS(local_idx as u8)
+            } else {
+                Inst::LdLocA(local_idx)
+            },
+        )
+    }
+
     pub fn add_inst_ldarg(&mut self, idx: u16) -> &mut Self {
         self.add_inst(match idx {
             0 => Inst::LdArg0,
@@ -134,6 +144,14 @@ impl MethodBuilder {
                     unimplemented!("ldarg is not implemeneted");
                 }
             }
+        })
+    }
+
+    pub fn add_inst_ldarga(&mut self, idx: u16) -> &mut Self {
+        self.add_inst(if idx >= u8::MIN as u16 && idx <= u8::MAX as u16 {
+            Inst::LdArgAS(idx as u8)
+        } else {
+            unimplemented!("ldarga is not implemeneted");
         })
     }
 
@@ -170,7 +188,7 @@ impl MethodBuilder {
 
     pub fn add_stelem(&mut self, ele_ty: &RValType) -> &mut Self {
         match ele_ty {
-            RValType::String | RValType::Obj(_, _) | RValType::Array(_) => {
+            RValType::String | RValType::Type(_) | RValType::Array(_) => {
                 self.add_inst(Inst::StElemRef)
             }
             _ => unimplemented!(),
@@ -179,8 +197,17 @@ impl MethodBuilder {
 
     pub fn add_ldelem(&mut self, ele_ty: &RValType) -> &mut Self {
         match ele_ty {
-            RValType::String | RValType::Obj(_, _) | RValType::Array(_) => {
+            RValType::String | RValType::Type(_) | RValType::Array(_) => {
                 self.add_inst(Inst::LdElemRef)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn add_ldelema(&mut self, ele_ty: &RValType) -> &mut Self {
+        match ele_ty {
+            RValType::String | RValType::Type(_) | RValType::Array(_) => {
+                unimplemented!();
             }
             _ => unimplemented!(),
         }

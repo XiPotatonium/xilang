@@ -28,6 +28,7 @@ class Int32 {
 class Program: IOHelper::IOBase {
 
     fn str_arr_test() {
+        std::IO::writeln("String&Array Test:");
         let s: string = "Hello world!";
         std::IO::write(s.len());
         std::IO::writeln(s);
@@ -52,6 +53,7 @@ class Program: IOHelper::IOBase {
     }
     
     fn logic_test() {
+        std::IO::writeln("Basic Logic Test:");
         let d: demo::Demo = new crate::demo::Demo(1, 24);
         let a = d.foo(6);               // 32
         std::IO::writeln(a);
@@ -64,6 +66,7 @@ class Program: IOHelper::IOBase {
     static singleton: Program;
 
     fn virt_test() {
+        std::IO::writeln("Virtual Method Test:");
         Self::singleton = new Self();
         std::IO::writeln(Self::singleton.hi_count);         // 0
         Self::singleton.hi();                               // HI

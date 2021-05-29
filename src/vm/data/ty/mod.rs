@@ -1,7 +1,7 @@
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, TypeAttrib};
 
 use super::super::util::ptr::NonNull;
-use super::{Field, ILModule, MethodDesc};
+use super::{Field, ILModule, MethodDesc, Module};
 
 use std::collections::HashMap;
 use std::ptr;
@@ -61,7 +61,7 @@ impl Type {
         }
     }
 
-    pub fn dispose_instance_info(&mut self) {
+    pub fn dispose_instance_info(&mut self, str_pool: &Vec<String>) {
         if self.ee_class.initialized {
             // already initialized
             return;
@@ -70,6 +70,11 @@ impl Type {
         // check if type is a value type or enum
         let mut base_ptr = self.extends;
         while let Some(base) = unsafe { base_ptr.as_ref() } {
+            if str_pool[unsafe { base.module.as_ref() }.fullname] == "std"
+                && str_pool[base.name] == "ValueType"
+            {
+                Rc::get_mut(&mut self.ee_class).unwrap().is_value = true;
+            }
             base_ptr = base.extends;
         }
 
@@ -77,7 +82,7 @@ impl Type {
         let mut static_field_offset = 0;
 
         if let Some(base) = unsafe { self.extends.as_mut() } {
-            base.dispose_instance_info();
+            base.dispose_instance_info(str_pool);
             // base fields
             instance_field_offset += base.basic_instance_size;
             // base methods

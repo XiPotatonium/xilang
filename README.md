@@ -59,10 +59,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 #### Ver 0.5.0
 
 * Generic
-* Refactor lang
-  * DRY
-  * make incremental compilation possible
-  * lazy loading external class
+* Incremental compilation possible
 * Refactor vm
   * lazy type loading
 * stdlib

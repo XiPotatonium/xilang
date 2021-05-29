@@ -4,12 +4,13 @@ use xir::attrib::{
 
 use super::super::ast::AST;
 use super::super::gen::RValType;
-use super::Class;
+use super::Type;
 
 use std::fmt;
+use std::ptr::NonNull;
 
 pub struct Method {
-    pub parent: *const Class,
+    pub parent: NonNull<Type>,
 
     pub name: String,
 
@@ -29,7 +30,7 @@ pub struct Method {
     /// Some(AST::Ctor) for ctor
     ///
     /// Some(AST::Method) for normal method
-    pub ast: Option<*const AST>,
+    pub ast: Option<NonNull<AST>>,
 }
 
 impl Method {
@@ -53,7 +54,7 @@ impl Method {
 
 impl fmt::Display for Method {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", unsafe { self.parent.as_ref().unwrap() })?;
+        write!(f, "{}", unsafe { self.parent.as_ref() })?;
         if self.attrib.is(MethodAttribFlag::Static) {
             write!(f, "::")?;
         } else {
@@ -76,7 +77,7 @@ impl AsRef<RValType> for Param {
 }
 
 pub struct Field {
-    pub parent: *const Class,
+    pub parent: NonNull<Type>,
 
     pub name: String,
 
@@ -89,7 +90,7 @@ pub struct Field {
 
 impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", unsafe { self.parent.as_ref().unwrap() })?;
+        write!(f, "{}", unsafe { self.parent.as_ref() })?;
         if self.attrib.is(FieldAttribFlag::Static) {
             write!(f, "::")?;
         } else {

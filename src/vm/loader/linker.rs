@@ -3,18 +3,20 @@ use xir::member::MemberRefParent;
 use xir::sig::IrSig;
 use xir::ty::{ResolutionScope, TypeDefOrRef};
 
-use super::super::data::{method_str_desc, BuiltinType, MemberRef, MethodImpl, Module, Type};
+use super::super::data::{
+    method_str_desc, BuiltinType, ILModule, MemberRef, MethodImpl, Module, Type,
+};
 use super::super::util::ptr::NonNull;
 
 use std::collections::HashMap;
 
 pub fn link_modref(
     file: &IrFile,
-    this_mod: *mut Module,
+    this_mod: NonNull<Module>,
     str_heap: &Vec<usize>,
     mods: &mut HashMap<usize, Box<Module>>,
 ) {
-    let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
+    let this_mod_mut = unsafe { this_mod.as_mut().expect_il_mut() };
     for modref in file.modref_tbl.iter() {
         let name = str_heap[modref.name as usize];
         this_mod_mut
@@ -23,8 +25,8 @@ pub fn link_modref(
     }
 }
 
-pub fn link_typeref(file: &IrFile, this_mod: *mut Module, str_heap: &Vec<usize>) {
-    let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
+pub fn link_typeref(file: &IrFile, this_mod: NonNull<Module>, str_heap: &Vec<usize>) {
+    let this_mod_mut = unsafe { this_mod.as_mut().expect_il_mut() };
     for typeref in file.typeref_tbl.iter() {
         let name = str_heap[typeref.name as usize];
         let (parent_tag, parent_idx) = typeref.get_parent();
@@ -52,11 +54,11 @@ pub fn link_typeref(file: &IrFile, this_mod: *mut Module, str_heap: &Vec<usize>)
 
 pub fn link_member_ref(
     file: &IrFile,
-    this_mod: *mut Module,
+    this_mod: NonNull<Module>,
     str_heap: &Vec<usize>,
     str_pool: &Vec<String>,
 ) {
-    let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
+    let this_mod_mut = unsafe { this_mod.as_mut().expect_il_mut() };
     for memberref in file.memberref_tbl.iter() {
         let name = str_heap[memberref.name as usize];
         let mut found = false;
@@ -126,10 +128,10 @@ pub fn link_member_ref(
     }
 }
 
-pub fn fill_field_info(file: &IrFile, this_mod: *mut Module) {
-    let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
+pub fn fill_field_info(file: &IrFile, this_mod: NonNull<Module>) {
+    let this_mod_mut = unsafe { this_mod.as_mut().expect_il_mut() };
     // avoid borrow twice, actually we won't change this_mod_mut.fields so there are no memory issues
-    let this_mod_ref = unsafe { this_mod.as_ref().unwrap().expect_il() };
+    let this_mod_ref = unsafe { this_mod.as_ref().expect_il() };
 
     for (field, field_entry) in this_mod_mut.fields.iter_mut().zip(file.field_tbl.iter()) {
         if let IrSig::Field(f_sig) = &file.blob_heap[field_entry.sig as usize] {
@@ -140,10 +142,10 @@ pub fn fill_field_info(file: &IrFile, this_mod: *mut Module) {
     }
 }
 
-pub fn fill_method_info(file: &IrFile, this_mod: *mut Module) {
-    let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
+pub fn fill_method_info(file: &IrFile, this_mod: NonNull<Module>) {
+    let this_mod_mut = unsafe { this_mod.as_mut().expect_il_mut() };
     // avoid borrow twice, actually we won't change this_mod_mut.methods so there are no memory issues
-    let this_mod_ref = unsafe { this_mod.as_ref().unwrap().expect_il() };
+    let this_mod_ref = unsafe { this_mod.as_ref().expect_il() };
 
     for (method, method_entry) in this_mod_mut.methods.iter_mut().zip(file.method_tbl.iter()) {
         let sig = &file.blob_heap[method_entry.sig as usize];
@@ -171,13 +173,15 @@ pub fn fill_method_info(file: &IrFile, this_mod: *mut Module) {
     }
 }
 
-pub fn link_class_extends(file: &IrFile, this_mod: *mut Module) {
-    let this_mod_mut = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
+pub fn fill_type_info(file: &IrFile, this_mod: NonNull<Module>) {
+    let this_mod_mut = unsafe { this_mod.as_mut().expect_il_mut() };
+    let il_mod_ptr = NonNull::new(this_mod_mut as *mut ILModule).unwrap();
     // avoid borrow twice, actually we won't change this_mod_mut.types so there are no memory issues
-    let this_mod_mut1 = unsafe { this_mod.as_mut().unwrap().expect_il_mut() };
-    let this_mod_ref = unsafe { this_mod.as_ref().unwrap().expect_il() };
+    let this_mod_mut1 = unsafe { this_mod.as_mut().expect_il_mut() };
+    let this_mod_ref = unsafe { this_mod.as_ref().expect_il() };
 
     for (ty, type_entry) in this_mod_mut.types.iter_mut().zip(file.typedef_tbl.iter()) {
+        ty.module = il_mod_ptr;
         if let Some((parent_tag, parent_idx)) = type_entry.get_extends() {
             ty.extends = match parent_tag {
                 TypeDefOrRef::TypeDef => this_mod_mut1.types[parent_idx].as_mut() as *mut Type,

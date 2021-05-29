@@ -3,6 +3,8 @@ use xir::tok::{get_tok_tag, TokTag};
 use super::super::data::BuiltinType;
 use super::super::stack::{ActivationRecord, EvalStack, SlotTag};
 
+use std::mem;
+
 unsafe fn do_load(addr: *const u8, ty: &BuiltinType, stack: &mut EvalStack) {
     match ty {
         BuiltinType::Void | BuiltinType::Unk => {
@@ -41,7 +43,18 @@ pub fn exec_ldfld(cur_ar: &mut ActivationRecord) {
         _ => unimplemented!(),
     };
 
-    let instance_addr: *mut u8 = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref_or_ptr() };
+    let obj = cur_ar.eval_stack.pop_with_slot();
+    let instance_addr = unsafe {
+        match obj.tag {
+            SlotTag::INative => mem::transmute::<isize, *mut u8>(obj.data.inative_),
+            SlotTag::Managed | SlotTag::Ref => obj.data.ptr_,
+            SlotTag::Value => {
+                // load field of a value type
+                unimplemented!();
+            }
+            _ => panic!(),
+        }
+    };
 
     unsafe {
         do_load(
@@ -111,12 +124,17 @@ pub fn exec_stfld(cur_ar: &mut ActivationRecord) {
             BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::String
-            | BuiltinType::Class(_)
-            | BuiltinType::ByRef(_)
-            | BuiltinType::SZArray(_) => {
+            BuiltinType::String | BuiltinType::ByRef(_) | BuiltinType::SZArray(_) => {
                 v.expect(SlotTag::Ref);
                 *(field_addr as *mut *mut u8) = v.data.ptr_;
+            }
+            BuiltinType::Class(ty) => {
+                if ty.as_ref().ee_class.is_value {
+                    unimplemented!();
+                } else {
+                    v.expect(SlotTag::Ref);
+                    *(field_addr as *mut *mut u8) = v.data.ptr_;
+                }
             }
         }
     }
@@ -187,12 +205,17 @@ pub fn exec_stsfld(cur_ar: &mut ActivationRecord) {
             BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::String
-            | BuiltinType::Class(_)
-            | BuiltinType::ByRef(_)
-            | BuiltinType::SZArray(_) => {
+            BuiltinType::String | BuiltinType::ByRef(_) | BuiltinType::SZArray(_) => {
                 v.expect(SlotTag::Ref);
                 *(field_addr as *mut *mut u8) = v.data.ptr_;
+            }
+            BuiltinType::Class(ty) => {
+                if ty.as_ref().ee_class.is_value {
+                    unimplemented!();
+                } else {
+                    v.expect(SlotTag::Ref);
+                    *(field_addr as *mut *mut u8) = v.data.ptr_;
+                }
             }
         }
     }

@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::ptr::NonNull;
 
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, TypeAttrib};
 
 use super::{Field, Method, Module};
 
-pub struct Class {
-    pub parent: *const Module,
+pub struct Type {
+    pub parent: NonNull<Module>,
 
     pub name: String,
 
@@ -19,27 +20,31 @@ pub struct Class {
 
     pub attrib: TypeAttrib,
 
-    pub extends: *const Class,
+    pub extends: *const Type,
 
     /// index into typedef tbl
     pub idx: u32,
 }
 
-impl fmt::Display for Class {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}::{}",
-            unsafe { self.parent.as_ref().unwrap().fullname() },
-            self.name
-        )
+        write!(f, "{}::{}", self.modname(), self.name)
     }
 }
 
-impl Class {
+impl Type {
+    pub fn modname(&self) -> &str {
+        unsafe { self.parent.as_ref().fullname() }
+    }
+
     pub fn is_struct(&self) -> bool {
-        let base = self.extends;
-        while let Some(b) = unsafe { base.as_ref() } {}
+        let mut base = self.extends;
+        while let Some(b) = unsafe { base.as_ref() } {
+            if unsafe { b.parent.as_ref().fullname() == "std" && b.name == "ValueType" } {
+                return true;
+            }
+            base = b.extends;
+        }
         false
     }
 

@@ -1,6 +1,6 @@
 use super::super::super::ast::{ASTMethodAttribFlag, AST};
 use super::super::super::gen::RValType;
-use super::super::{Class, Crate, Field, Method, Param};
+use super::super::{Crate, Field, Method, Param, Type};
 use super::ModuleBuildCtx;
 
 use xir::attrib::{
@@ -10,13 +10,15 @@ use xir::attrib::{
 };
 use xir::{CCTOR_NAME, CTOR_NAME};
 
+use std::ptr::NonNull;
+
 // member pass
 impl ModuleBuildCtx {
     /// declare method according to ast
-    fn declare_method(&self, mod_mgr: &Crate, class_mut: &mut Class, ast: Option<&Box<AST>>) {
+    fn declare_method(&self, mod_mgr: &Crate, class_mut: &mut Type, ast: Option<&Box<AST>>) {
         let (ast, name, custom_attribs, attrib, ps, ret) = match ast {
             Some(ast) => {
-                let ast_ptr = Some(ast.as_ref() as *const AST);
+                let ast_ptr = NonNull::new(ast.as_ref() as *const AST as *mut AST);
                 match ast.as_ref() {
                     AST::Block(_) => (
                         ast_ptr,
@@ -58,7 +60,7 @@ impl ModuleBuildCtx {
                             Some(&method.custom_attribs),
                             attrib,
                             Some(&method.ps),
-                            self.get_ty(&method.ret, mod_mgr, class_mut),
+                            self.get_rval_type(&method.ret, mod_mgr, class_mut),
                         )
                     }
                     _ => unreachable!(),
@@ -87,7 +89,7 @@ impl ModuleBuildCtx {
                     if let AST::Param(id, attrib, ty) = p.as_ref() {
                         Param {
                             id: id.to_owned(),
-                            ty: self.get_ty(ty, mod_mgr, class_mut),
+                            ty: self.get_rval_type(ty, mod_mgr, class_mut),
                             attrib: attrib.clone(),
                         }
                     } else {
@@ -135,7 +137,7 @@ impl ModuleBuildCtx {
             .add_method(name, &ps, &ret, &attrib, &impl_flag);
 
         let method = Box::new(Method {
-            parent: class_mut as &Class as *const Class,
+            parent: NonNull::new(class_mut as *mut Type).unwrap(),
             name: name.to_owned(),
             ret,
             ps,
@@ -219,13 +221,13 @@ impl ModuleBuildCtx {
                     for field in class.fields.iter() {
                         if let AST::Field(id, flag, _, ty) = field.as_ref() {
                             // Field will have default initialization
-                            let ty = self.get_ty(ty, mod_mgr, &class_mut);
+                            let ty = self.get_rval_type(ty, mod_mgr, &class_mut);
 
                             // Build Field in class file
                             let idx = self.builder.borrow_mut().add_field(id, &ty, flag);
 
                             let field = Box::new(Field {
-                                parent: &class_mut as &Class as *const Class,
+                                parent: NonNull::new(class_mut as *mut Type).unwrap(),
                                 name: id.clone(),
                                 attrib: *flag,
                                 ty,

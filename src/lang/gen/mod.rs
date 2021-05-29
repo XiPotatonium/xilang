@@ -10,7 +10,7 @@ pub use il_gen::{gen, gen_base_ctor};
 pub use method_builder::MethodBuilder;
 
 use super::ast::ASTType;
-use super::mod_mgr::{Class, Crate, Field, Locals, Method, ModuleBuildCtx};
+use super::mod_mgr::{Crate, Field, Locals, Method, Module, ModuleBuildCtx, Type};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -31,7 +31,7 @@ pub struct LoopCtx {
 pub struct CodeGenCtx<'c> {
     pub mgr: &'c Crate,
     pub module: &'c ModuleBuildCtx,
-    pub class: &'c Class,
+    pub class: &'c Type,
     pub method: &'c Method,
     /// map from ps name to ps idx
     pub ps_map: HashMap<String, usize>,
@@ -42,7 +42,7 @@ pub struct CodeGenCtx<'c> {
 
 impl<'mgr> CodeGenCtx<'mgr> {
     fn get_ty(&self, ast: &ASTType) -> RValType {
-        self.module.get_ty(ast, self.mgr, self.class)
+        self.module.get_rval_type(ast, self.mgr, self.class)
     }
 
     pub fn done(&self, optim_level: usize) {
@@ -63,49 +63,41 @@ impl<'mgr> CodeGenCtx<'mgr> {
 }
 
 pub enum ValType {
+    /// value on eval stack
     RVal(RValType),
     Sym(SymType),
     Ret(RValType),
 }
 
 #[derive(Clone, Copy)]
-pub enum SymUsage {
-    Callee,
-    Assignee,
-}
-
-impl SymUsage {
-    pub fn is_callee(&self) -> bool {
-        if let SymUsage::Callee = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_assignee(&self) -> bool {
-        if let SymUsage::Assignee = self {
-            true
-        } else {
-            false
-        }
-    }
+pub enum ValExpectation {
+    /// return val should be a SymType which is callable
+    Callable,
+    /// Return val should be a RValType, notice that Empty is allowed,
+    /// value-type will only be loaded by value.
+    RVal,
+    /// Return val shoule be a RValType, Empty is not allowed,
+    /// value-type will be loaded byref in preference
+    Instance,
+    /// return val should be a Module or Class symbol (which may have static member)
+    Static,
+    /// return lval symbol
+    Assignable,
+    /// Nothing
+    None,
 }
 
 pub enum SymType {
     Method(Vec<NonNull<Method>>),
     Field(NonNull<Field>),
-    Class(NonNull<Class>),
-    // mod fullname
-    Module(String),
+    Class(NonNull<Type>),
+    Module(NonNull<Module>),
     // index into locals
     Local(usize),
     // self
     KwLSelf,
     // index into method.ps
     Arg(usize),
-    /// arrlen is not handled like a field
-    ArrLen,
     /// array element type
     ArrAcc(RValType),
 }
@@ -120,8 +112,10 @@ pub enum RValType {
     Void,
     Never,
     String,
-    // module fullname, class name
-    Obj(String, String),
+    /// module fullname, class name,
+    /// byref if type is reference type, byval if type is value type
+    Type(NonNull<Type>),
+    ByRef(Box<RValType>),
     /// elety
     Array(Box<RValType>),
 }
@@ -142,12 +136,12 @@ impl PartialEq for RValType {
             | (Self::F64, Self::F64)
             | (Self::String, Self::String)
             | (Self::Void, Self::Void) => true,
-            (Self::Obj(mod_name, class_name), Self::String)
-            | (Self::String, Self::Obj(mod_name, class_name)) => {
-                mod_name == "std" && class_name == "String"
-            }
-            (Self::Obj(mod0, class0), Self::Obj(mod1, class1)) => mod0 == mod1 && class0 == class1,
-            (Self::Array(ele_ty1), Self::Array(ele_ty2)) => ele_ty1 == ele_ty2,
+            (Self::Type(ty), Self::String) | (Self::String, Self::Type(ty)) => unsafe {
+                ty.as_ref().modname() == "std" && ty.as_ref().name == "String"
+            },
+            (Self::Type(ty1), Self::Type(ty2)) => ty1 == ty2,
+            (Self::ByRef(ty0), Self::ByRef(ty1)) => ty0 == ty1,
+            (Self::Array(ele_ty0), Self::Array(ele_ty1)) => ele_ty0 == ele_ty1,
             _ => false,
         }
     }
@@ -164,7 +158,8 @@ impl fmt::Display for RValType {
             Self::Void => write!(f, "V"),
             Self::Never => write!(f, "!"),
             Self::String => write!(f, "Ostd/String;"),
-            Self::Obj(m, s) => write!(f, "O{}/{};", m, s),
+            Self::Type(ty) => write!(f, "O{};", unsafe { ty.as_ref() }),
+            Self::ByRef(ty) => write!(f, "&{}", ty),
             Self::Array(ty) => write!(f, "[{}", ty),
         }
     }
@@ -186,11 +181,10 @@ impl fmt::Display for SymType {
             Self::Method(method) => write!(f, "(Method){}", unsafe { method[0].as_ref() }),
             Self::Field(field) => write!(f, "(Field){}", unsafe { field.as_ref() }),
             Self::Class(class) => write!(f, "(Class){}", unsafe { class.as_ref() }),
-            Self::Module(m) => write!(f, "(Mod){}", m),
+            Self::Module(m) => write!(f, "(Mod){}", unsafe { m.as_ref() }),
             Self::Local(n) => write!(f, "(Local){}", n),
             Self::KwLSelf => write!(f, "(Arg)self"),
             Self::Arg(n) => write!(f, "(Arg){}", n),
-            Self::ArrLen => write!(f, "(arr.len)"),
             Self::ArrAcc(ele_ty) => write!(f, "(acc){}[]", ele_ty),
         }
     }
@@ -209,6 +203,14 @@ impl ValType {
         match self {
             ValType::RVal(val) => val,
             ValType::Sym(_) => panic!("Expect rval but found sym value"),
+            ValType::Ret(_) => panic!("Expect rval but found return value"),
+        }
+    }
+
+    pub fn expect_sym(self) -> SymType {
+        match self {
+            ValType::RVal(_) => panic!("Expect rval but found rval value"),
+            ValType::Sym(val) => val,
             ValType::Ret(_) => panic!("Expect rval but found return value"),
         }
     }
