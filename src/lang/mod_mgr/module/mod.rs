@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::ptr::{self, NonNull};
 
 use xir::file::IrFile;
@@ -49,7 +49,6 @@ impl fmt::Display for Module {
 pub struct ModuleBuildCtx {
     /// Vec<Box<AST::Class|AST::Struct>>
     class_asts: Vec<Box<AST>>,
-    output_dir: PathBuf,
     pub use_map: HashMap<String, ModPath>,
 
     pub builder: RefCell<Builder>,
@@ -58,15 +57,44 @@ pub struct ModuleBuildCtx {
     module: *mut Module,
 }
 
-pub fn new_module(
-    mod_path: ModPath,
-    rel_dir: &Path,
-    fpath: &Path,
-    is_dir_mod: bool,
-    mgr: &mut Crate,
-    cfg: &XicCfg,
-) {
-    let output_dir = cfg.out_dir.join(rel_dir);
+pub fn new_module(mod_path: ModPath, mgr: &mut Crate, cfg: &XicCfg) {
+    let mut output_dir = cfg.out_dir.clone();
+    let mut input_dir = cfg.root_dir.clone();
+    let fpath = if mod_path.len() == 1 {
+        // for root module, fpath is specified in cfg
+        cfg.root_path.clone()
+    } else {
+        for seg in mod_path.iter().skip(1).take(mod_path.len() - 2) {
+            output_dir.push(seg);
+            input_dir.push(seg);
+        }
+        let fpath1 = input_dir.join(format!("{}.xi", mod_path.get_self_name().unwrap()));
+        let mut fpath2 = input_dir.join(mod_path.get_self_name().unwrap());
+        fpath2.push("mod.xi");
+        if fpath1.is_file() && fpath2.is_file() {
+            panic!(
+                "Ambiguous module {}. {} or {}?",
+                mod_path,
+                fpath1.display(),
+                fpath2.display()
+            );
+        }
+        if fpath1.is_file() {
+            fpath1
+        } else if fpath2.is_file() {
+            fpath2
+        } else {
+            panic!(
+                "Cannot find module {} (Consider create {} or {})",
+                mod_path,
+                fpath1.display(),
+                fpath2.display()
+            );
+        }
+    };
+
+    fs::create_dir_all(&output_dir).unwrap();
+
     let mut this_mod = Box::new(Module {
         mod_path,
         sub_mods: HashSet::new(),
@@ -74,7 +102,7 @@ pub fn new_module(
     });
 
     // Parse source file
-    let ast = parser::peg_parse(fpath).unwrap();
+    let ast = parser::peg_parse(&fpath).unwrap();
 
     if cfg.verbose >= 2 {
         // save ast to .json file
@@ -114,21 +142,6 @@ pub fn new_module(
             println!("Warning: {} is not root mod. External mod specified in this file won't take effect", this_mod.fullname());
         }
 
-        // process sub mods
-        let sub_mod_rel_dir = if this_mod.is_root() || is_dir_mod {
-            // this is the root mod in this dir
-            // search sub modules in this directory
-            rel_dir.to_owned()
-        } else {
-            // this is a normal file mod
-            // search sub modules in directory dir/mod_name
-            rel_dir.join(this_mod.self_name())
-        };
-        // input_root/sub_mod_rel_dir
-        let sub_mod_input_dir = cfg.root_dir.join(&sub_mod_rel_dir);
-        // output_root/sub_mod_rel_dir
-        let sub_mod_output_dir = cfg.out_dir.join(&sub_mod_rel_dir);
-
         for sub_mod_name in mods.into_iter() {
             if !this_mod.sub_mods.insert(sub_mod_name.clone()) {
                 panic!(
@@ -141,61 +154,7 @@ pub fn new_module(
             let mut sub_mod_path = this_mod.mod_path.clone();
             sub_mod_path.push(&sub_mod_name);
 
-            // possible locations
-            // * input_root/sub_mod_rel_dir/sub_mod_name.xi
-            // * input_root/sub_mod_rel_dir/sub_mod_name/mod.xi
-
-            // input_root/sub_mod_rel_dir/sub_mod_name.xi
-            let sub_mod_fpath = sub_mod_input_dir.join(format!("{}.xi", sub_mod_name));
-            // input_root/sub_mod_rel_dir/sub_mod_name/mod.xi
-            let mut sub_mod_dpath = sub_mod_input_dir.join(format!("{}", &sub_mod_name));
-            sub_mod_dpath.push("mod.xi");
-
-            if sub_mod_fpath.is_file() && sub_mod_dpath.is_file() {
-                panic!(
-                    "Ambiguous sub-module {} in {}. {} or {}?",
-                    sub_mod_name,
-                    this_mod.fullname(),
-                    sub_mod_dpath.display(),
-                    sub_mod_fpath.display()
-                );
-            } else if sub_mod_dpath.is_file() {
-                // prepare output dir for sub dir mod
-                // output_dir/sub_mod_rel_dir/sub_mod_name
-                let sub_mod_out_dir = sub_mod_output_dir.join(&sub_mod_name);
-                if !sub_mod_out_dir.exists() {
-                    fs::create_dir_all(sub_mod_out_dir).unwrap();
-                } else if !sub_mod_out_dir.is_dir() {
-                    panic!("Path {} is not a directory", sub_mod_out_dir.display());
-                }
-
-                let sub_mod_rel_dir = sub_mod_rel_dir.join(&sub_mod_name);
-                new_module(
-                    sub_mod_path,
-                    &sub_mod_rel_dir,
-                    &sub_mod_dpath,
-                    true,
-                    mgr,
-                    cfg,
-                );
-            } else if sub_mod_fpath.is_file() {
-                new_module(
-                    sub_mod_path,
-                    &sub_mod_rel_dir,
-                    &sub_mod_fpath,
-                    false,
-                    mgr,
-                    cfg,
-                );
-            } else {
-                panic!(
-                    "Cannot find sub-module {} in {} (Consider create {} or {})",
-                    sub_mod_name,
-                    this_mod.fullname(),
-                    sub_mod_dpath.display(),
-                    sub_mod_fpath.display()
-                );
-            }
+            new_module(sub_mod_path, mgr, cfg);
         }
 
         // generate all classes
@@ -275,7 +234,6 @@ pub fn new_module(
 
         let mod_build_ctx = ModuleBuildCtx {
             class_asts: classes,
-            output_dir,
             use_map,
 
             module: this_mod.as_mut() as *mut Module,
@@ -298,11 +256,20 @@ impl ModuleBuildCtx {
         unsafe { self.module.as_mut().unwrap() }
     }
 
-    pub fn dump(&self) {
+    pub fn dump(&self, cfg: &XicCfg) {
+        let mut p = cfg.out_dir.clone();
+        let mod_path = &self.get_module().mod_path;
+        if mod_path.len() == 1 {
+            // root module is output at {out_dir}/{root_name}.xibc
+            p.push(mod_path.get_self_name().unwrap());
+        } else {
+            // other modules are output at {out_dir}/{mod_path_except_root}.xibc
+            for seg in self.get_module().mod_path.iter().skip(1) {
+                p.push(seg);
+            }
+        }
         // dump ir
-        let mut p = self
-            .output_dir
-            .join(format!("{}.xir", self.get_module().self_name()));
+        p.set_extension("xir");
         let mut f = fs::File::create(&p).unwrap();
         write!(f, "{}", self.builder.borrow().file).unwrap();
 

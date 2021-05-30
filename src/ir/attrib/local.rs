@@ -5,6 +5,12 @@ pub struct LocalAttrib {
     pub attrib: u16,
 }
 
+impl Default for LocalAttrib {
+    fn default() -> Self {
+        Self { attrib: 0 }
+    }
+}
+
 impl LocalAttrib {
     pub fn from(attrib: u16) -> LocalAttrib {
         LocalAttrib { attrib }

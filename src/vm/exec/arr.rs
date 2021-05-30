@@ -1,4 +1,4 @@
-use super::super::data::{Type, REF_SIZE};
+use super::super::data::{Type, I4_SIZE, REF_SIZE};
 use super::super::heap::Heap;
 use super::super::shared_mem::SharedMem;
 use super::super::stack::{ActivationRecord, Slot, SlotTag};
@@ -65,6 +65,24 @@ pub fn exec_ldelema(cur_ar: &mut ActivationRecord) {
     } else {
         // TODO: what if ele_ty is a reference type?
         unimplemented!();
+    }
+}
+
+pub fn exec_ldelem_i32(cur_ar: &mut ActivationRecord) {
+    let idx = to_arr_size(cur_ar.eval_stack.pop_with_slot());
+    let arr = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
+    let addr = Heap::get_arr_offset(arr, I4_SIZE, idx as usize);
+    cur_ar.eval_stack.push_i32(unsafe { *(addr as *const i32) });
+}
+
+pub fn exec_stelem_i32(cur_ar: &mut ActivationRecord) {
+    let val = cur_ar.eval_stack.pop_with_slot();
+    val.expect(SlotTag::I32);
+    let idx = to_arr_size(cur_ar.eval_stack.pop_with_slot());
+    let addr = unsafe { cur_ar.eval_stack.pop_with_slot().expect_ref() };
+    let addr = Heap::get_arr_offset(addr, I4_SIZE, idx as usize);
+    unsafe {
+        *(addr as *mut i32) = val.data.i32_;
     }
 }
 

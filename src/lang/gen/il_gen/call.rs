@@ -173,12 +173,39 @@ pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
 
     let ty_tok = match &ele_ty {
         // TODO: convert to their std class/struct type
-        RValType::Bool
-        | RValType::U8
-        | RValType::Char
-        | RValType::I32
-        | RValType::F64
-        | RValType::String => unimplemented!(),
+        RValType::Bool | RValType::U8 | RValType::Char | RValType::F64 => unimplemented!(),
+        RValType::I32 => {
+            let i32_ty = ctx
+                .mgr
+                .mod_tbl
+                .get("std")
+                .unwrap()
+                .classes
+                .get("Int32")
+                .unwrap();
+            let (idx, tag) = ctx
+                .module
+                .builder
+                .borrow_mut()
+                .add_const_class(i32_ty.modname(), &i32_ty.name);
+            to_tok(idx, tag.to_tok_tag())
+        }
+        RValType::String => {
+            let str_ty = ctx
+                .mgr
+                .mod_tbl
+                .get("std")
+                .unwrap()
+                .classes
+                .get("String")
+                .unwrap();
+            let (idx, tag) = ctx
+                .module
+                .builder
+                .borrow_mut()
+                .add_const_class(str_ty.modname(), &str_ty.name);
+            to_tok(idx, tag.to_tok_tag())
+        }
         RValType::Type(ty) => {
             let ty_ref = unsafe { ty.as_ref() };
             let (idx, tag) = ctx

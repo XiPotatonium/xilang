@@ -17,14 +17,6 @@ class Derived: Base {
     }
 }
 
-class Int32 {
-    let val: i32;
-
-    Self(self, v: i32) {
-        self.val = v;
-    }
-}
-
 class Program: IOHelper::IOBase {
 
     fn str_arr_test() {
@@ -32,13 +24,13 @@ class Program: IOHelper::IOBase {
         let s: string = "Hello world!";
         std::IO::write(s.len());
         std::IO::writeln(s);
-        let arr: Int32[] = new Int32[10];
+        let arr: i32[] = new i32[10];
         let i = 0;
         loop {
             if i >= arr.len {
                 break;
             }
-            arr[i] = new Int32(i);
+            arr[i] = i;
             i = i + 1;
         }
         loop {
@@ -46,7 +38,7 @@ class Program: IOHelper::IOBase {
             if i < 0 {
                 break;
             }
-            std::IO::write(arr[i].val);
+            std::IO::write(arr[i]);
             std::IO::putchar(std::IO::SPACE);
         }
         std::IO::putchar(std::IO::NEW_LINE);

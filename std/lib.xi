@@ -45,7 +45,8 @@ class ValueType {
 
 }
 
-struct I32 {
+// This is a special struct, new Int32() is the same as initialize a i32
+struct Int32 {
    let value: i32;
 }
 

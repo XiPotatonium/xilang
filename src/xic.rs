@@ -157,7 +157,7 @@ fn main() {
     }
 
     let start_time = SystemTime::now();
-    module_mgr.dump();
+    module_mgr.dump(&cfg);
     if cfg.verbose >= 1 {
         println!(
             "Dump finished in {} seconds",

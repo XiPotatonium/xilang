@@ -55,6 +55,15 @@ impl Locals {
         idx as u16
     }
 
+    pub fn add_tmp(&mut self, ty: RValType, flag: LocalAttrib, initialized: bool) -> u16 {
+        let idx = self.locals.len();
+        let id = format!("${}", idx);
+        let var = Var::new(&id, flag, ty, idx as u16, initialized);
+        self.sym_tbl.last_mut().unwrap().insert(id, idx);
+        self.locals.push(var);
+        idx as u16
+    }
+
     pub fn get(&self, id: &str) -> Option<&Var> {
         for frame in self.sym_tbl.iter().rev() {
             if let Some(ret) = frame.get(id) {

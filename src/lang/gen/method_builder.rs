@@ -188,6 +188,7 @@ impl MethodBuilder {
 
     pub fn add_stelem(&mut self, ele_ty: &RValType) -> &mut Self {
         match ele_ty {
+            RValType::I32 => self.add_inst(Inst::StElemI4),
             RValType::String | RValType::Type(_) | RValType::Array(_) => {
                 self.add_inst(Inst::StElemRef)
             }
@@ -197,6 +198,7 @@ impl MethodBuilder {
 
     pub fn add_ldelem(&mut self, ele_ty: &RValType) -> &mut Self {
         match ele_ty {
+            RValType::I32 => self.add_inst(Inst::LdElemI4),
             RValType::String | RValType::Type(_) | RValType::Array(_) => {
                 self.add_inst(Inst::LdElemRef)
             }

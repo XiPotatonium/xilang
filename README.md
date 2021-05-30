@@ -92,6 +92,8 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 #### Ver 0.6.2
 
 * match expr
+* Built-in attribute:
+  * cfg
 
 #### Ver 0.1.0
 

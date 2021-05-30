@@ -41,6 +41,18 @@ pub fn gen_instance_acc(
             let type_ref = unsafe { ty.as_ref() };
             match expectation {
                 ValExpectation::None | ValExpectation::Callable => {
+                    if type_ref.is_struct() {
+                        // a value on top of the eval stack, this might be caused by method return
+                        // compiler should create a new local var, save value to this local var and then ldloca
+                        let loc_idx = ctx.locals.borrow_mut().add_tmp(
+                            lhs_ty.clone(),
+                            Default::default(),
+                            false,
+                        );
+                        let mut method_builder = ctx.method_builder.borrow_mut();
+                        method_builder.add_inst_stloc(loc_idx);
+                        method_builder.add_inst_ldloca(loc_idx);
+                    }
                     let ms = type_ref.query_method(rhs);
                     let ms: Vec<NonNull<Method>> = ms
                         .into_iter()
@@ -53,6 +65,8 @@ pub fn gen_instance_acc(
                     ValType::Sym(SymType::Method(ms))
                 }
                 ValExpectation::RVal | ValExpectation::Instance => {
+                    // unlike ValExpectation::Callable,
+                    // xivm can handle instance field acc of value type correctly, as specified in CLI III.4.10
                     if let Some(f) = type_ref.query_field(rhs) {
                         let field_ty = f.ty.clone();
                         let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);

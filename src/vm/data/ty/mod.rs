@@ -1,7 +1,7 @@
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, TypeAttrib};
 
 use super::super::util::ptr::NonNull;
-use super::{Field, ILModule, MethodDesc, Module};
+use super::{Field, ILModule, MethodDesc};
 
 use std::collections::HashMap;
 use std::ptr;

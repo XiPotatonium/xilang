@@ -21,6 +21,18 @@ pub use self::module::{ILModule, MemberRef, Module};
 pub use self::ty::Type;
 
 pub const REF_SIZE: usize = size_of::<*mut u8>();
+pub const BOOL_SIZE: usize = size_of::<i8>();
+pub const CHAR_SIZE: usize = size_of::<u16>();
+pub const U1_SIZE: usize = size_of::<u8>();
+pub const I1_SIZE: usize = size_of::<i8>();
+pub const U4_SIZE: usize = size_of::<u32>();
+pub const I4_SIZE: usize = size_of::<i32>();
+pub const U8_SIZE: usize = size_of::<u64>();
+pub const I8_SIZE: usize = size_of::<i64>();
+pub const UNATIVE_SIZE: usize = size_of::<usize>();
+pub const INATIVE_SIZE: usize = size_of::<isize>();
+pub const R4_SIZE: usize = size_of::<f32>();
+pub const R8_SIZE: usize = size_of::<f64>();
 
 /// VM representation of IrSig
 #[derive(PartialEq, Eq)]
@@ -112,18 +124,18 @@ impl BuiltinType {
     pub fn byte_size(&self) -> usize {
         match self {
             BuiltinType::Void => panic!("Void type has no byte size"),
-            BuiltinType::Bool => size_of::<i8>(),
-            BuiltinType::Char => size_of::<u16>(),
-            BuiltinType::U1 => size_of::<u8>(),
-            BuiltinType::I1 => size_of::<i8>(),
-            BuiltinType::U4 => size_of::<u32>(),
-            BuiltinType::I4 => size_of::<i32>(),
-            BuiltinType::U8 => size_of::<u64>(),
-            BuiltinType::I8 => size_of::<i64>(),
-            BuiltinType::UNative => size_of::<usize>(),
-            BuiltinType::INative => size_of::<isize>(),
-            BuiltinType::R4 => size_of::<f32>(),
-            BuiltinType::R8 => size_of::<f64>(),
+            BuiltinType::Bool => BOOL_SIZE,
+            BuiltinType::Char => CHAR_SIZE,
+            BuiltinType::U1 => U1_SIZE,
+            BuiltinType::I1 => I1_SIZE,
+            BuiltinType::U4 => U4_SIZE,
+            BuiltinType::I4 => I4_SIZE,
+            BuiltinType::U8 => U8_SIZE,
+            BuiltinType::I8 => I8_SIZE,
+            BuiltinType::UNative => UNATIVE_SIZE,
+            BuiltinType::INative => INATIVE_SIZE,
+            BuiltinType::R4 => R4_SIZE,
+            BuiltinType::R8 => R8_SIZE,
             BuiltinType::String
             | BuiltinType::ByRef(_)
             | BuiltinType::SZArray(_)

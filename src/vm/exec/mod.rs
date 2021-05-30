@@ -467,15 +467,10 @@ impl<'m> TExecutor<'m> {
                 0x80 => fld::exec_stsfld(self.states.last_mut().unwrap()),
                 0x8D => arr::exec_newarr(self.states.last_mut().unwrap(), mem),
                 0x8E => arr::exec_ldlen(self.states.last_mut().unwrap()),
-                // ldelema
                 0x8F => arr::exec_ldelema(self.states.last_mut().unwrap()),
-                // ldelem.i4
-                0x94 => unimplemented!(),
-                // ldelem.ref
+                0x94 => arr::exec_ldelem_i32(self.states.last_mut().unwrap()),
                 0x9A => arr::exec_ldelem_ref(self.states.last_mut().unwrap()),
-                // stelem.i4
-                0x9E => unimplemented!(),
-                // stelem.ref
+                0x9E => arr::exec_stelem_i32(self.states.last_mut().unwrap()),
                 0xA2 => arr::exec_stelem_ref(self.states.last_mut().unwrap()),
                 // ldelem
                 0xA3 => unimplemented!(),

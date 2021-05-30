@@ -390,11 +390,11 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     match clause.as_rule() {
                         Rule::Semi => {
                             // no init
-                            AST::Let(pattern, LocalAttrib::from(0), ty, Box::new(AST::None))
+                            AST::Let(pattern, LocalAttrib::default(), ty, Box::new(AST::None))
                         }
                         Rule::Eq => AST::Let(
                             pattern,
-                            LocalAttrib::from(0),
+                            LocalAttrib::default(),
                             ty,
                             build_expr(iter.next().unwrap()),
                         ),
@@ -405,7 +405,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     // no type but has init
                     AST::Let(
                         pattern,
-                        LocalAttrib::from(0),
+                        LocalAttrib::default(),
                         Box::new(ASTType::None),
                         build_expr(iter.next().unwrap()),
                     )
@@ -414,7 +414,7 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                     // no type and no init
                     AST::Let(
                         pattern,
-                        LocalAttrib::from(0),
+                        LocalAttrib::default(),
                         Box::new(ASTType::None),
                         Box::new(AST::None),
                     )

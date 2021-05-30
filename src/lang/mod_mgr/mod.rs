@@ -16,7 +16,6 @@ use xir::util::path::ModPath;
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
 
 pub struct Crate {
     pub crate_name: String,
@@ -50,14 +49,7 @@ impl Crate {
             mod_build_ctx: Vec::new(),
         };
 
-        new_module(
-            mod_path,
-            &PathBuf::from(""),
-            &cfg.root_path,
-            false,
-            &mut mgr,
-            &cfg,
-        );
+        new_module(mod_path, &mut mgr, &cfg);
         mgr
     }
 
@@ -74,9 +66,9 @@ impl Crate {
     }
 
     /// dump is done recursively
-    pub fn dump(&self) {
+    pub fn dump(&self, cfg: &XicCfg) {
         for ctx in self.mod_build_ctx.iter() {
-            ctx.dump();
+            ctx.dump(cfg);
         }
     }
 }

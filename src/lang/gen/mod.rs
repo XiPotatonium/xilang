@@ -214,12 +214,4 @@ impl ValType {
             ValType::Ret(_) => panic!("Expect rval but found return value"),
         }
     }
-
-    pub fn expect_sym_ref(&self) -> &SymType {
-        match self {
-            ValType::RVal(_) => panic!("Expect rval but found rval value"),
-            ValType::Sym(val) => val,
-            ValType::Ret(_) => panic!("Expect rval but found return value"),
-        }
-    }
 }
