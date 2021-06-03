@@ -17,13 +17,37 @@ class Derived: Base {
     }
 }
 
+struct MyPair {
+    static DEFAULT: MyPair;
+
+    let key: i32;
+    let val: string;
+
+    Self(self, key: i32, val: string) {
+        self.key = key;
+        self.val = val;
+    }
+
+    fn print(self) {
+        std::IO::write("{ ");
+        std::IO::write(self.key);
+        std::IO::write(": \"");
+        std::IO::write(self.val);
+        std::IO::write("\" }");
+    }
+}
+
 class Program: IOHelper::IOBase {
 
-    fn str_arr_test() {
-        std::IO::writeln("String&Array Test:");
+    fn str_test() {
+        std::IO::writeln("String Test:");
         let s: string = "Hello world!";
         std::IO::write(s.len());
         std::IO::writeln(s);
+    }
+
+    fn arr_test() {
+        std::IO::writeln("Array Test:");
         let arr: i32[] = new i32[10];
         let i = 0;
         loop {
@@ -42,6 +66,41 @@ class Program: IOHelper::IOBase {
             std::IO::putchar(std::IO::SPACE);
         }
         std::IO::putchar(std::IO::NEW_LINE);
+
+        let struct_arr = new MyPair[3]; 
+        i = 0;
+        loop {
+            if i >= struct_arr.len {
+                break;
+            }
+            struct_arr[i] = new MyPair(i, "MyPairs");
+            struct_arr[i].val = "MyPair";
+            i = i + 1;
+        }
+        loop {
+            i = i - 1;
+            if i < 0 {
+                break;
+            }
+            struct_arr[i].print();
+            std::IO::putchar(std::IO::SPACE);
+        }
+        std::IO::putchar(std::IO::NEW_LINE);
+    }
+
+    fn value_type_test() {
+        std::IO::writeln("Value type Test:");
+        // value array is tested at str_arr_test()
+        let pair: MyPair = new MyPair(101, "This is my pair");
+        std::IO::writeln(pair.key);
+        std::IO::writeln(pair.val);
+        pair.key = 102;
+        pair.val = "This is also my pair";
+        pair.print();
+
+        MyPair::DEFAULT = new MyPair(102, "MyPair::DEFAULT");
+        MyPair::DEFAULT.print();
+        std::IO::writeln(MyPair::DEFAULT.val);
     }
     
     fn logic_test() {
@@ -77,6 +136,8 @@ class Program: IOHelper::IOBase {
     fn main() {
         Self::logic_test();
         Self::virt_test();
-        Self::str_arr_test();
+        Self::str_test();
+        Self::arr_test();
+        Self::value_type_test();
     }
 }

@@ -273,7 +273,9 @@ fn gen_assign(ctx: &CodeGenCtx, lhs: &Box<AST>, rhs: &Box<AST>) -> RValType {
             if ele_ty != &v_ty {
                 panic!("Cannot store {} into {} array", v_ty, ele_ty);
             }
-            ctx.method_builder.borrow_mut().add_stelem(&ele_ty);
+            ctx.method_builder
+                .borrow_mut()
+                .add_stelem(&ele_ty, &ctx.module.builder);
         }
         SymType::Module(_) => panic!(),
         SymType::Class(_) => panic!(),
@@ -319,7 +321,7 @@ fn gen_id(ctx: &CodeGenCtx, id: &str, expectation: ValExpectation) -> ValType {
             } else if let Some(local_var) = locals.get(id) {
                 if let ValExpectation::Instance = expectation {
                     if let RValType::Type(_ty) = local_var.ty {
-                        if unsafe { _ty.as_ref() }.is_struct() {
+                        if unsafe { _ty.as_ref() }.is_value_type() {
                             loada = true;
                         }
                     }
@@ -340,7 +342,7 @@ fn gen_id(ctx: &CodeGenCtx, id: &str, expectation: ValExpectation) -> ValType {
                 let arg = &ctx.method.ps[*arg_idx];
                 if let ValExpectation::Instance = expectation {
                     if let RValType::Type(_ty) = arg.ty {
-                        if unsafe { _ty.as_ref() }.is_struct() {
+                        if unsafe { _ty.as_ref() }.is_value_type() {
                             loada = true;
                         }
                     }

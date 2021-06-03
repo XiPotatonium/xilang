@@ -140,7 +140,7 @@ impl fmt::Display for TypeAttrib {
         }
 
         match self.attrib & TYPE_ATTRIB_SEM_MASK {
-            TYPE_ATTRIB_CLASS_FLAG => write!(f, " class")?,
+            TYPE_ATTRIB_CLASS_FLAG => {}
             TYPE_ATTRIB_INTERFACE_FLAG => write!(f, " interface")?,
             _ => unreachable!(),
         }

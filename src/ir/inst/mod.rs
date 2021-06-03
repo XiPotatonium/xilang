@@ -215,7 +215,7 @@ pub enum Inst {
     LdStr(u32),
     /// 0x73, new ctor
     ///
-    /// Call a creator, return obj addr
+    /// Call a creator, return obj addr for reference type, return value on stack for value type
     ///
     /// `..., arg0, ..., argN -> ..., obj`
     NewObj(u32),
@@ -358,7 +358,6 @@ impl Inst {
 
             Inst::CallVirt(_)
             | Inst::NewObj(_)
-            | Inst::InitObj(_)
             | Inst::CpObj(_)
             | Inst::LdFld(_)
             | Inst::LdFldA(_)
@@ -366,6 +365,8 @@ impl Inst {
             | Inst::LdSFld(_)
             | Inst::LdSFldA(_)
             | Inst::StSFld(_) => INST_SIZE + mem::size_of::<u32>(),
+
+            Inst::InitObj(_) => FAT_INST_SIZE + mem::size_of::<i32>(),
 
             Inst::LdStr(_) => INST_SIZE + mem::size_of::<u32>(),
 

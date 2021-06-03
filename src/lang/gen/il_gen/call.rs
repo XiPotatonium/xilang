@@ -103,12 +103,20 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
                 sig,
             );
 
+            let mut callvirt = !m_ref.attrib.is(MethodAttribFlag::Static);
+            if callvirt {
+                let self_ty = unsafe { m_ref.parent.as_ref() };
+                if self_ty.is_value_type() {
+                    // use call for value type instance methods
+                    callvirt = false;
+                }
+            }
+
             (
-                if m_ref.attrib.is(MethodAttribFlag::Static) {
-                    Inst::Call(to_tok(m_idx, tok_tag))
+                if callvirt {
+                    Inst::CallVirt(to_tok(m_idx, tok_tag))
                 } else {
-                    let tok = to_tok(m_idx, tok_tag);
-                    Inst::CallVirt(tok)
+                    Inst::Call(to_tok(m_idx, tok_tag))
                 },
                 m_ref.ret.clone(),
             )
@@ -133,6 +141,7 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType
                 .collect();
 
             let type_ref = unsafe { ty.as_ref() };
+
             let ctors = type_ref.methods.get(CTOR_NAME).unwrap();
 
             let ctor = pick_method_from_refs(ctors, &args_ty);
@@ -151,9 +160,8 @@ pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType
                 .borrow_mut()
                 .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));
         }
-        RValType::Array(_) => unimplemented!(),
         RValType::String => unimplemented!("new string is not implemented"),
-        _ => panic!("Invalid new expression, only new class or array is allowed"),
+        _ => panic!("Cannot new {}", ret),
     }
     ret
 }

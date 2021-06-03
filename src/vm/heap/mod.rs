@@ -54,9 +54,7 @@ impl Heap {
     /// New obj
     ///
     /// [ObjHeader] [content...]
-    pub unsafe fn new_obj(&mut self, class: *const Type) -> *mut u8 {
-        let class = class.as_ref().unwrap();
-
+    pub unsafe fn new_obj(&mut self, class: &Type) -> *mut u8 {
         let offset_after_alloc =
             class.basic_instance_size + size_of::<ObjHeader>() + self.next_obj_offset;
         if offset_after_alloc >= self.data.len() {

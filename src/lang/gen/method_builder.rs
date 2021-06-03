@@ -1,9 +1,11 @@
 use xir::inst::Inst;
+use xir::tok::to_tok;
 
+use std::cell::RefCell;
 use std::mem;
 
 use super::basic_block::{BasicBlock, LLCursor, LinkedList};
-use super::RValType;
+use super::{Builder, RValType};
 
 pub struct MethodBuilder {
     pub bb: LinkedList<BasicBlock>,
@@ -186,30 +188,64 @@ impl MethodBuilder {
         })
     }
 
-    pub fn add_stelem(&mut self, ele_ty: &RValType) -> &mut Self {
+    pub fn add_stelem(&mut self, ele_ty: &RValType, builder: &RefCell<Builder>) -> &mut Self {
         match ele_ty {
             RValType::I32 => self.add_inst(Inst::StElemI4),
-            RValType::String | RValType::Type(_) | RValType::Array(_) => {
-                self.add_inst(Inst::StElemRef)
+            RValType::String | RValType::Array(_) => self.add_inst(Inst::StElemRef),
+            RValType::Type(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                if ty_ref.is_value_type() {
+                    let (idx, tag) = builder
+                        .borrow_mut()
+                        .add_const_class(ty_ref.modname(), &ty_ref.name);
+                    self.add_inst(Inst::StElem(to_tok(idx, tag.to_tok_tag())))
+                } else {
+                    self.add_inst(Inst::StElemRef)
+                }
             }
             _ => unimplemented!(),
         }
     }
 
-    pub fn add_ldelem(&mut self, ele_ty: &RValType) -> &mut Self {
+    pub fn add_ldelem(&mut self, ele_ty: &RValType, builder: &RefCell<Builder>) -> &mut Self {
         match ele_ty {
             RValType::I32 => self.add_inst(Inst::LdElemI4),
-            RValType::String | RValType::Type(_) | RValType::Array(_) => {
-                self.add_inst(Inst::LdElemRef)
+            RValType::String | RValType::Array(_) => self.add_inst(Inst::LdElemRef),
+            RValType::Type(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                if ty_ref.is_value_type() {
+                    let (idx, tag) = builder
+                        .borrow_mut()
+                        .add_const_class(ty_ref.modname(), &ty_ref.name);
+                    self.add_inst(Inst::LdElem(to_tok(idx, tag.to_tok_tag())))
+                } else {
+                    self.add_inst(Inst::LdElemRef)
+                }
             }
             _ => unimplemented!(),
         }
     }
 
-    pub fn add_ldelema(&mut self, ele_ty: &RValType) -> &mut Self {
+    pub fn add_ldelema(&mut self, ele_ty: &RValType, builder: &RefCell<Builder>) -> &mut Self {
         match ele_ty {
-            RValType::String | RValType::Type(_) | RValType::Array(_) => {
-                unimplemented!();
+            RValType::I32 => {
+                let (idx, tag) = builder.borrow_mut().add_const_class("std", "Int32");
+                self.add_inst(Inst::LdElem(to_tok(idx, tag.to_tok_tag())))
+            }
+            RValType::String | RValType::Array(_) => {
+                // ref types don't need ldelema
+                unreachable!();
+            }
+            RValType::Type(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                if ty_ref.is_value_type() {
+                    let (idx, tag) = builder
+                        .borrow_mut()
+                        .add_const_class(ty_ref.modname(), &ty_ref.name);
+                    self.add_inst(Inst::LdElemA(to_tok(idx, tag.to_tok_tag())))
+                } else {
+                    unreachable!()
+                }
             }
             _ => unimplemented!(),
         }

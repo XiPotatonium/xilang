@@ -206,7 +206,9 @@ impl<'m> TExecutor<'m> {
                 // dup
                 0x25 => self.states.last_mut().unwrap().eval_stack.dup(),
                 // pop
-                0x26 => self.states.last_mut().unwrap().eval_stack.pop(),
+                0x26 => {
+                    self.states.last_mut().unwrap().eval_stack.pop(None);
+                }
                 // call
                 0x28 => {
                     let cur_state = self.states.last_mut().unwrap();
@@ -271,7 +273,7 @@ impl<'m> TExecutor<'m> {
                         | BuiltinType::String
                         | BuiltinType::ByRef(_)
                         | BuiltinType::SZArray(_) => {
-                            let ret_v = cur_state.eval_stack.pop_with_slot();
+                            let ret_v = cur_state.eval_stack.pop(None);
                             let state = self.states.pop().unwrap();
                             if self.states.is_empty() {
                                 return unsafe { ret_v.data.inative_ };
@@ -284,7 +286,7 @@ impl<'m> TExecutor<'m> {
                             if unsafe { ty.as_ref().ee_class.is_value } {
                                 unimplemented!()
                             } else {
-                                let ret_v = cur_state.eval_stack.pop_with_slot();
+                                let ret_v = cur_state.eval_stack.pop(None);
                                 let state = self.states.pop().unwrap();
                                 if self.states.is_empty() {
                                     return unsafe { ret_v.data.inative_ };
@@ -307,7 +309,7 @@ impl<'m> TExecutor<'m> {
                 0x39 => {
                     let cur_state = self.states.last_mut().unwrap();
                     let offset = cur_state.consume_i32();
-                    let v = cur_state.eval_stack.pop_with_slot();
+                    let v = cur_state.eval_stack.pop(None);
                     unsafe {
                         v.expect(SlotTag::I32);
                         if v.data.i32_ == 0 {
@@ -320,7 +322,7 @@ impl<'m> TExecutor<'m> {
                 0x3A => {
                     let cur_state = self.states.last_mut().unwrap();
                     let offset = cur_state.consume_i32();
-                    let v = cur_state.eval_stack.pop_with_slot();
+                    let v = cur_state.eval_stack.pop(None);
                     unsafe {
                         v.expect(SlotTag::I32);
                         if v.data.i32_ != 0 {
@@ -359,6 +361,7 @@ impl<'m> TExecutor<'m> {
                     let mut args = Args::new(callee);
                     args.fill_args(&mut cur_state.eval_stack);
                     if let Some(self_ptr) = args.get_self() {
+                        // unlike call, callvirt must make sure self pointer is not NULL
                         assert!(!self_ptr.is_null());
 
                         // If calle is virtual, use dynamic dispatching
@@ -395,8 +398,8 @@ impl<'m> TExecutor<'m> {
                         _ => unimplemented!(),
                     };
 
-                    let src = unsafe { cur_state.eval_stack.pop_with_slot().expect_ptr() };
-                    let dest = unsafe { cur_state.eval_stack.pop_with_slot().expect_ptr() };
+                    let src = unsafe { cur_state.eval_stack.pop(None).expect_ptr() };
+                    let dest = unsafe { cur_state.eval_stack.pop(None).expect_ptr() };
 
                     unsafe {
                         // copy value if ty is value type, else copy ref
@@ -442,14 +445,24 @@ impl<'m> TExecutor<'m> {
                     }
                     // TODO: more strict check
 
-                    // Alloc space at heap
+                    let ty = unsafe { callee.parent.as_ref().expect(".ctor must be class member") };
+
                     let mut args = Args::new(callee);
-                    unsafe {
-                        assert!(!callee.parent.is_null());
-                        let instance_addr = mem.new_obj(callee.parent);
-                        args.store_slot(0, Slot::new_ref(instance_addr));
+                    if ty.ee_class.is_value {
+                        // new value type on stack
                         args.fill_args_except_self(&mut cur_state.eval_stack);
-                        cur_state.eval_stack.push_slot(Slot::new_ref(instance_addr));
+                        unsafe {
+                            let value_addr = cur_state.eval_stack.alloc_value(ty, ptr::null());
+                            args.store_slot(0, Slot::new_managed(value_addr));
+                        }
+                    } else {
+                        // Alloc space at heap
+                        unsafe {
+                            let instance_addr = mem.new_obj(ty);
+                            args.store_slot(0, Slot::new_ref(instance_addr));
+                            args.fill_args_except_self(&mut cur_state.eval_stack);
+                            cur_state.eval_stack.push_slot(Slot::new_ref(instance_addr));
+                        }
                     }
 
                     self.call(
@@ -472,10 +485,8 @@ impl<'m> TExecutor<'m> {
                 0x9A => arr::exec_ldelem_ref(self.states.last_mut().unwrap()),
                 0x9E => arr::exec_stelem_i32(self.states.last_mut().unwrap()),
                 0xA2 => arr::exec_stelem_ref(self.states.last_mut().unwrap()),
-                // ldelem
-                0xA3 => unimplemented!(),
-                // stelem
-                0xA4 => unimplemented!(),
+                0xA3 => arr::exec_ldelem(self.states.last_mut().unwrap()),
+                0xA4 => arr::exec_stelem(self.states.last_mut().unwrap()),
 
                 0xFE => {
                     let inner_code = self.states.last_mut().unwrap().consume_u8();
@@ -523,7 +534,7 @@ impl<'m> TExecutor<'m> {
                                 TokTag::TypeSpec => unimplemented!(),
                                 _ => unimplemented!(),
                             };
-                            let dest = unsafe { cur_state.eval_stack.pop_with_slot().expect_ptr() };
+                            let dest = unsafe { cur_state.eval_stack.pop(None).expect_ptr() };
                             unsafe {
                                 // init value with all 0 if ty is value type else ldnull followed by stind.ref
                                 ptr::write_bytes(

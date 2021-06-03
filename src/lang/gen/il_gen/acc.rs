@@ -13,6 +13,81 @@ use xir::util::path::IModPath;
 
 use std::ptr::NonNull;
 
+fn gen_instance_obj_acc(
+    ctx: &CodeGenCtx,
+    lhs: &Type,
+    rhs: &str,
+    expectation: ValExpectation,
+) -> ValType {
+    match expectation {
+        ValExpectation::None | ValExpectation::Callable => {
+            let ms = lhs.query_method(rhs);
+            let ms: Vec<NonNull<Method>> = ms
+                .into_iter()
+                .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
+                .map(|m| NonNull::new(m as *const Method as *mut Method).unwrap())
+                .collect();
+            if ms.is_empty() {
+                panic!("No instance method {} found in type {}", rhs, lhs);
+            }
+            ValType::Sym(SymType::Method(ms))
+        }
+        ValExpectation::RVal | ValExpectation::Instance => {
+            // unlike ValExpectation::Callable,
+            // xivm can handle instance field acc of value type correctly, as specified in CLI III.4.10
+            if let Some(f) = lhs.query_field(rhs) {
+                let field_ty = f.ty.clone();
+                let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);
+                let (field_idx, tok_tag) = ctx.module.builder.borrow_mut().add_const_member(
+                    unsafe { f.parent.as_ref().modname() },
+                    unsafe { &f.parent.as_ref().name },
+                    rhs,
+                    sig,
+                );
+
+                let loada = match expectation {
+                    ValExpectation::RVal => false,
+                    ValExpectation::Instance => {
+                        if let RValType::Type(_ty) = field_ty {
+                            // load addr if field is a value type
+                            unsafe { _ty.as_ref() }.is_value_type()
+                        } else {
+                            false
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+                ValType::RVal(if loada {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst(Inst::LdFldA(to_tok(field_idx, tok_tag)));
+                    RValType::ByRef(Box::new(field_ty))
+                } else {
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_inst(Inst::LdFld(to_tok(field_idx, tok_tag)));
+
+                    field_ty
+                })
+            } else {
+                panic!("no field \"{}\" in {}", rhs, lhs);
+            }
+        }
+        ValExpectation::Static => {
+            panic!("Type instance member cannot be static accessed")
+        }
+        ValExpectation::Assignable => {
+            if let Some(f) = lhs.query_field(rhs) {
+                ValType::Sym(SymType::Field(
+                    NonNull::new(f as *const Field as *mut Field).unwrap(),
+                ))
+            } else {
+                panic!("no field \"{}\" in {}", rhs, lhs);
+            }
+        }
+    }
+}
+
 pub fn gen_instance_acc(
     ctx: &CodeGenCtx,
     lhs: &AST,
@@ -41,7 +116,7 @@ pub fn gen_instance_acc(
             let type_ref = unsafe { ty.as_ref() };
             match expectation {
                 ValExpectation::None | ValExpectation::Callable => {
-                    if type_ref.is_struct() {
+                    if type_ref.is_value_type() {
                         // a value on top of the eval stack, this might be caused by method return
                         // compiler should create a new local var, save value to this local var and then ldloca
                         let loc_idx = ctx.locals.borrow_mut().add_tmp(
@@ -53,76 +128,10 @@ pub fn gen_instance_acc(
                         method_builder.add_inst_stloc(loc_idx);
                         method_builder.add_inst_ldloca(loc_idx);
                     }
-                    let ms = type_ref.query_method(rhs);
-                    let ms: Vec<NonNull<Method>> = ms
-                        .into_iter()
-                        .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
-                        .map(|m| NonNull::new(m as *const Method as *mut Method).unwrap())
-                        .collect();
-                    if ms.is_empty() {
-                        panic!("No instance method {} found in type {}", rhs, type_ref);
-                    }
-                    ValType::Sym(SymType::Method(ms))
                 }
-                ValExpectation::RVal | ValExpectation::Instance => {
-                    // unlike ValExpectation::Callable,
-                    // xivm can handle instance field acc of value type correctly, as specified in CLI III.4.10
-                    if let Some(f) = type_ref.query_field(rhs) {
-                        let field_ty = f.ty.clone();
-                        let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);
-                        let (field_idx, tok_tag) =
-                            ctx.module.builder.borrow_mut().add_const_member(
-                                unsafe { f.parent.as_ref().modname() },
-                                unsafe { &f.parent.as_ref().name },
-                                rhs,
-                                sig,
-                            );
-
-                        let loada = match expectation {
-                            ValExpectation::RVal => false,
-                            ValExpectation::Instance => {
-                                if let RValType::Type(_ty) = field_ty {
-                                    // load addr if field is a value type
-                                    unsafe { _ty.as_ref() }.is_struct()
-                                } else {
-                                    false
-                                }
-                            }
-                            _ => unreachable!(),
-                        };
-                        ValType::RVal(if loada {
-                            ctx.method_builder
-                                .borrow_mut()
-                                .add_inst(Inst::LdFldA(to_tok(field_idx, tok_tag)));
-                            RValType::ByRef(Box::new(field_ty))
-                        } else {
-                            ctx.method_builder
-                                .borrow_mut()
-                                .add_inst(Inst::LdFld(to_tok(field_idx, tok_tag)));
-
-                            field_ty
-                        })
-                    } else {
-                        panic!("no field \"{}\" in {}", rhs, lhs_ty);
-                    }
-                }
-                ValExpectation::Static => {
-                    panic!("Type instance member cannot be static accessed")
-                }
-                ValExpectation::Assignable => {
-                    if let Some(f) = type_ref.query_field(rhs) {
-                        ValType::Sym(SymType::Field(
-                            NonNull::new(f as *const Field as *mut Field).unwrap(),
-                        ))
-                    } else {
-                        panic!("no field \"{}\" in {}", rhs, lhs_ty);
-                    }
-                }
+                _ => {}
             }
-        }
-        RValType::ByRef(ty) => {
-            // gen guarantee that ty is a value type
-            unimplemented!();
+            gen_instance_obj_acc(ctx, type_ref, rhs, expectation)
         }
         RValType::Array(_) => {
             if rhs == "len" {
@@ -148,6 +157,17 @@ pub fn gen_instance_acc(
                 panic!("no field \"{}\" in {}", rhs, lhs_ty);
             }
         }
+        RValType::ByRef(ty) => match ty.as_ref() {
+            RValType::Type(_ty) => {
+                let _ty_ref = unsafe { _ty.as_ref() };
+                if _ty_ref.is_value_type() {
+                    gen_instance_obj_acc(ctx, _ty_ref, rhs, expectation)
+                } else {
+                    unreachable!();
+                }
+            }
+            _ => unimplemented!(),
+        },
         _ => panic!("no field \"{}\" in {}", rhs, lhs_ty),
     }
 }
@@ -223,7 +243,7 @@ pub fn gen_static_acc(
                             ValExpectation::Instance => {
                                 if let RValType::Type(_ty) = field_ty {
                                     // load addr if field is a value type
-                                    unsafe { _ty.as_ref() }.is_struct()
+                                    unsafe { _ty.as_ref() }.is_value_type()
                                 } else {
                                     false
                                 }
@@ -309,21 +329,27 @@ pub fn gen_arr_acc(ctx: &CodeGenCtx, lhs: &AST, rhs: &AST, expectation: ValExpec
         if let ValType::RVal(RValType::I32) = rhs_val {
             match expectation {
                 ValExpectation::RVal => {
-                    ctx.method_builder.borrow_mut().add_ldelem(&ele_ty);
+                    ctx.method_builder
+                        .borrow_mut()
+                        .add_ldelem(&ele_ty, &ctx.module.builder);
                     ValType::RVal(ele_ty.as_ref().clone())
                 }
                 ValExpectation::Instance => {
                     let loada = if let RValType::Type(_ty) = ele_ty.as_ref() {
                         // load addr if field is a value type
-                        unsafe { _ty.as_ref() }.is_struct()
+                        unsafe { _ty.as_ref() }.is_value_type()
                     } else {
                         false
                     };
                     if loada {
-                        ctx.method_builder.borrow_mut().add_ldelema(&ele_ty);
-                        ValType::RVal(ele_ty.as_ref().clone())
+                        ctx.method_builder
+                            .borrow_mut()
+                            .add_ldelema(&ele_ty, &ctx.module.builder);
+                        ValType::RVal(RValType::ByRef(Box::new(ele_ty.as_ref().clone())))
                     } else {
-                        ctx.method_builder.borrow_mut().add_ldelem(&ele_ty);
+                        ctx.method_builder
+                            .borrow_mut()
+                            .add_ldelem(&ele_ty, &ctx.module.builder);
                         ValType::RVal(ele_ty.as_ref().clone())
                     }
                 }

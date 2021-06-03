@@ -34,6 +34,11 @@ pub const INATIVE_SIZE: usize = size_of::<isize>();
 pub const R4_SIZE: usize = size_of::<f32>();
 pub const R8_SIZE: usize = size_of::<f64>();
 
+pub struct TypedAddr {
+    pub ty: NonNull<Type>,
+    pub addr: *mut u8,
+}
+
 /// VM representation of IrSig
 #[derive(PartialEq, Eq)]
 pub enum BuiltinType {

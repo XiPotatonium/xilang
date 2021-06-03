@@ -1,4 +1,4 @@
-use super::super::data::{BuiltinType, Local, MethodDesc, Param};
+use super::super::data::{BuiltinType, Local, MethodDesc, Param, TypedAddr};
 use super::{EvalStack, Slot, SlotTag};
 
 use std::mem;
@@ -100,15 +100,19 @@ impl<'m> ILocals for Locals<'m> {
     }
 
     fn store(&mut self, i: usize, stack: &mut EvalStack) {
-        {
-            let top = stack.peek().unwrap();
-            if let SlotTag::Value = top.tag {
-                unimplemented!();
-            } else {
-                self.store_slot(i, top.clone());
+        assert!(i < self.map.len());
+        if let BuiltinType::Class(ty) = self.map[i].ty {
+            let ty_ref = unsafe { ty.as_ref() };
+            if ty_ref.ee_class.is_value {
+                stack.pop(Some(TypedAddr {
+                    ty,
+                    addr: &mut self.data[self.map[i].offset] as *mut u8,
+                }));
+                return;
             }
         }
-        stack.pop();
+
+        self.store_slot(i, stack.pop(None));
     }
 
     fn store_slot(&mut self, i: usize, slot: Slot) {
@@ -164,7 +168,7 @@ impl<'m> Args<'m> {
     pub fn fill_args(&mut self, stack: &mut EvalStack) {
         self.fill_args_except_self(stack);
         if let Some(self_mut) = self.get_self_mut() {
-            *self_mut = unsafe { stack.pop_with_slot().expect_ref() };
+            *self_mut = stack.pop(None).expect_ref_or_ptr();
         }
     }
 
@@ -174,6 +178,28 @@ impl<'m> Args<'m> {
             self.store(i + self_offset, stack);
         }
     }
+
+    fn align_arg(&self, i: usize) -> ArgType {
+        let aligned = if self.has_self {
+            if i == 0 {
+                return ArgType::ArgSelf;
+            }
+            i - 1
+        } else {
+            i
+        };
+
+        if aligned >= self.map.len() {
+            panic!("Index arg {} but only has {} args", aligned, self.map.len());
+        }
+
+        ArgType::MethodArg(aligned)
+    }
+}
+
+enum ArgType {
+    ArgSelf,
+    MethodArg(usize),
 }
 
 impl<'m> ILocals for Args<'m> {
@@ -214,41 +240,46 @@ impl<'m> ILocals for Args<'m> {
         stack.push_managed(&self.data[self.map[i].offset] as *const u8 as *mut u8);
     }
 
-    /// if has self ptr, i == 0 means store self ptr
+    /// if method is instance method, args starts at index 1, and i == 0 means self ptr,
+    /// if method is static method, args starts at index 0
     fn store(&mut self, i: usize, stack: &mut EvalStack) {
         // same as Locals.store()
-        {
-            let top = stack.peek().unwrap();
-            if let SlotTag::Value = top.tag {
-                unimplemented!();
-            } else {
-                self.store_slot(i, top.clone());
+        let arg_i = self.align_arg(i);
+        if let ArgType::MethodArg(i) = arg_i {
+            if let BuiltinType::Class(ty) = self.map[i].ty {
+                let ty_ref = unsafe { ty.as_ref() };
+                if ty_ref.ee_class.is_value {
+                    stack.pop(Some(TypedAddr {
+                        ty,
+                        addr: &mut self.data[self.map[i].offset] as *mut u8,
+                    }));
+                    return;
+                }
             }
         }
-        stack.pop();
+
+        self.store_slot(i, stack.pop(None));
     }
 
     /// if has self ptr, i == 0 means store self ptr
     fn store_slot(&mut self, i: usize, slot: Slot) {
-        let i = if self.has_self {
-            if i == 0 {
+        let arg_i = self.align_arg(i);
+        match arg_i {
+            ArgType::ArgSelf => {
                 // store self
                 unsafe {
-                    *(&mut self.data[0] as *mut u8 as *mut *mut u8) = slot.expect_ref();
+                    *(&mut self.data[0] as *mut u8 as *mut *mut u8) = slot.expect_ref_or_ptr();
                 }
-                return;
             }
-            i - 1
-        } else {
-            i
-        };
-        assert!(i < self.map.len());
-        unsafe {
-            store_slot(
-                &self.map[i].ty,
-                &mut self.data[self.map[i].offset] as *mut u8,
-                slot,
-            )
-        };
+            ArgType::MethodArg(i) => {
+                unsafe {
+                    store_slot(
+                        &self.map[i].ty,
+                        &mut self.data[self.map[i].offset] as *mut u8,
+                        slot,
+                    )
+                };
+            }
+        }
     }
 }

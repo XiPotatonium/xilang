@@ -37,7 +37,7 @@ impl Type {
         unsafe { self.parent.as_ref().fullname() }
     }
 
-    pub fn is_struct(&self) -> bool {
+    pub fn is_value_type(&self) -> bool {
         let mut base = self.extends;
         while let Some(b) = unsafe { base.as_ref() } {
             if unsafe { b.parent.as_ref().fullname() == "std" && b.name == "ValueType" } {

@@ -12,6 +12,7 @@ fn restore_escape(s: &str) -> String {
         match char_it.next() {
             Some(ch) => match ch {
                 '\n' => ret.push_str("\\n"),
+                '"' => ret.push_str("\\\""),
                 _ => ret.push(ch),
             },
             None => break,

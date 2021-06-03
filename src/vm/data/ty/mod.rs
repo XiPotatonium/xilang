@@ -1,3 +1,5 @@
+pub mod arr;
+
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag, TypeAttrib};
 
 use super::super::util::ptr::NonNull;

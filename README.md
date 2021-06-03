@@ -5,20 +5,26 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 [Development Diary开发日志](https://xipotatonium.github.io/2021/04/04/XilangDev0/)
 
 
-* OOP:
-  * class
+* Class type:
   * static/non-static method/field
-  * cctor
-  * ctor
+  * cctor/ctor
   * Virtual method
   * overload
   * inheritance:
     * all classes except std::Object are derived from std::Object
     * accessing instance fields and methods of base classes
     * ctor of derived class call default ctor of base class automatically
+* Value type (struct):
+  * static/non-static method/field
+  * cctor/ctor
+  * value is sealed (cannot be inherited)
+  * all value types are derived from std::ValueType
 * Built-in type:
   * i32
-  * single-dim zero-based array: only reference type array
+  * string
+    * string.len
+  * single-dim zero-based array
+    * array.len
 * expr/stmt:
   * return
   * if
@@ -49,17 +55,9 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 
 ### 1.2 RoadMap
 
-#### Ver 0.4.0
-
-* String
-* InternalCall
-* struct
-* Array for struct type
-
 #### Ver 0.5.0
 
 * Generic
-* Incremental compilation possible
 * Refactor vm
   * lazy type loading
 * stdlib
@@ -74,7 +72,6 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
   * char
   * f32/f64
   * isize/usize
-* pub use
 * priv/pub flag
 
 #### Ver 0.6.0
@@ -95,7 +92,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * Built-in attribute:
   * cfg
 
-#### Ver 0.1.0
+#### Ver 0.7.0
 
 * GC
 

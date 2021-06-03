@@ -6,7 +6,9 @@ use super::super::super::gen::{
 use super::super::{Crate, Locals, Method, Type};
 use super::ModuleBuildCtx;
 
-use xir::attrib::{FieldAttribFlag, MethodAttribFlag, MethodImplAttribCodeTypeFlag};
+use xir::attrib::{
+    FieldAttribFlag, MethodAttribFlag, MethodImplAttribCodeTypeFlag, TypeAttribFlag,
+};
 use xir::{Inst, CCTOR_NAME, CTOR_NAME};
 
 use std::cell::RefCell;
@@ -101,6 +103,13 @@ impl ModuleBuildCtx {
             // find base class
             let base = self.resolve_user_define_type(p, mod_mgr, None);
             let base_ref = unsafe { base.as_ref() };
+
+            if base_ref.attrib.is(TypeAttribFlag::Sealed) {
+                panic!(
+                    "Class {} cannot inherit sealed class {}",
+                    class_mut, base_ref
+                );
+            }
 
             let (extends_idx, extends_idx_tag) =
                 builder.add_const_class(base_ref.modname(), &base_ref.name);

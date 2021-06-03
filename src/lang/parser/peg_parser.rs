@@ -659,6 +659,7 @@ fn build_literal(tree: Pair<Rule>) -> Box<AST> {
                                 // escape
                                 match chars.next().expect("Invalid string literal") {
                                     'n' => s.push('\n'),
+                                    '"' => s.push('"'),
                                     _ => unimplemented!("Unsupported escape char"),
                                 }
                             }

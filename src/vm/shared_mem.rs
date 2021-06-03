@@ -39,7 +39,7 @@ impl SharedMem {
 }
 
 impl SharedMem {
-    pub unsafe fn new_obj(&mut self, class: *const Type) -> *mut u8 {
+    pub unsafe fn new_obj(&mut self, class: &Type) -> *mut u8 {
         self.heap.new_obj(class)
     }
 
@@ -48,9 +48,18 @@ impl SharedMem {
             .new_str_from_str(self.str_class, &self.str_pool[s])
     }
 
-    pub unsafe fn new_arr(&mut self, _: *const Type, size: usize) -> *mut u8 {
+    pub unsafe fn new_arr(&mut self, ty: *const Type, size: usize) -> *mut u8 {
         // TODO: create corresponding array type, rather than using ele_ty
         // Now only ref array is supported
-        self.heap.new_arr(self.arr_class, REF_SIZE, size)
+        let ty_ref = ty.as_ref().unwrap();
+        self.heap.new_arr(
+            self.arr_class,
+            if ty_ref.ee_class.is_value {
+                ty_ref.basic_instance_size
+            } else {
+                REF_SIZE
+            },
+            size,
+        )
     }
 }

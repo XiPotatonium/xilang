@@ -1,8 +1,9 @@
 use std::fmt;
 use std::mem;
+use std::mem::size_of;
 use std::ptr;
 
-use super::super::data::{BuiltinType, Type};
+use super::super::data::{BuiltinType, Type, TypedAddr};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -22,6 +23,7 @@ pub enum SlotTag {
     F64,
     Managed,
     Ref,
+    /// SlotData.ptr_ stores *mut Type
     Value,
     Uninit,
 }
@@ -84,10 +86,25 @@ impl Slot {
             BuiltinType::UNative | BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::String
-            | BuiltinType::Class(_)
-            | BuiltinType::ByRef(_)
-            | BuiltinType::SZArray(_) => Slot {
+            BuiltinType::Class(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                if ty_ref.ee_class.is_value {
+                    Slot {
+                        tag: SlotTag::Value,
+                        data: SlotData {
+                            ptr_: ty.as_ptr() as *mut u8,
+                        },
+                    }
+                } else {
+                    Slot {
+                        tag: SlotTag::Ref,
+                        data: SlotData {
+                            ptr_: ptr::null_mut(),
+                        },
+                    }
+                }
+            }
+            BuiltinType::String | BuiltinType::ByRef(_) | BuiltinType::SZArray(_) => Slot {
                 tag: SlotTag::Ref,
                 data: SlotData {
                     ptr_: ptr::null_mut(),
@@ -118,6 +135,13 @@ impl Slot {
         }
     }
 
+    pub unsafe fn new_managed(addr: *mut u8) -> Slot {
+        Slot {
+            tag: SlotTag::Managed,
+            data: SlotData { ptr_: addr },
+        }
+    }
+
     pub unsafe fn expect_ref(&self) -> *mut u8 {
         if let SlotTag::Ref = self.tag {
             self.data.ptr_ as *mut u8
@@ -126,10 +150,10 @@ impl Slot {
         }
     }
 
-    pub unsafe fn expect_ref_or_ptr(&self) -> *mut u8 {
+    pub fn expect_ref_or_ptr(&self) -> *mut u8 {
         match self.tag {
-            SlotTag::INative => mem::transmute::<isize, *mut u8>(self.data.inative_),
-            SlotTag::Managed | SlotTag::Ref => self.data.ptr_,
+            SlotTag::INative => unsafe { mem::transmute::<isize, *mut u8>(self.data.inative_) },
+            SlotTag::Managed | SlotTag::Ref => unsafe { self.data.ptr_ },
             _ => panic!("Expect O or ptr but found {}", self.tag),
         }
     }
@@ -194,6 +218,20 @@ impl EvalStack {
         }
     }
 
+    pub fn peek_at(&self, at: usize) -> Option<&Slot> {
+        if self.size < at + 1 {
+            None
+        } else {
+            let mut addr = self.top_ptr();
+            for _ in 0..at {
+                let val_size = unsafe { addr.as_ref().unwrap() }.val_size();
+                addr = addr.wrapping_sub(1);
+                addr = (addr as *const u8).wrapping_sub(val_size) as *const Slot;
+            }
+            Some(unsafe { addr.as_ref().unwrap() })
+        }
+    }
+
     pub fn peek_mut(&mut self) -> Option<&mut Slot> {
         if self.is_empty() {
             None
@@ -202,40 +240,69 @@ impl EvalStack {
         }
     }
 
-    /// caller must guarantee it is a valid space
-    pub fn peek_value(&self, val_size: usize) -> &[u8] {
-        let tail = self.data.len() - mem::size_of::<Slot>();
-        let start = tail - val_size;
-        &self.data[start..tail]
+    pub fn peek_value(&self, ty: &Type) -> *mut u8 {
+        let header_slot = self.peek().unwrap();
+        if let SlotTag::Value = header_slot.tag {
+            let slot_ty = unsafe { header_slot.data.ptr_ as *const Type };
+            if slot_ty != ty {
+                panic!("Incompatible type");
+            }
+            &self.data[self.data.len() - mem::size_of::<Slot>() - ty.basic_instance_size]
+                as *const u8 as *mut u8
+        } else {
+            panic!("Stack top slot is not a value");
+        }
     }
 
+    /// pop top value, including appendix.
+    /// If target is not None, value type is expected and value will be stored at target.addr, type compliance will be checked
+    pub fn pop(&mut self, target: Option<TypedAddr>) -> Slot {
+        let ret = self.peek().unwrap().clone();
+
+        for _ in 0..mem::size_of::<Slot>() {
+            self.data.pop();
+        }
+        if let Some(target) = target {
+            ret.expect(SlotTag::Value);
+            unsafe {
+                let slot_ty = ret.data.ptr_ as *const Type;
+                if slot_ty != target.ty.as_ptr() {
+                    panic!("Incompatible value type");
+                }
+                for i in (0..target.ty.as_ref().basic_instance_size).rev() {
+                    *target.addr.wrapping_add(i) = self.data.pop().unwrap();
+                }
+            }
+            if let SlotTag::Value = ret.tag {
+            } else {
+                unreachable!();
+            }
+        } else {
+            for _ in 0..ret.val_size() {
+                self.data.pop();
+            }
+        }
+
+        self.size -= 1;
+
+        ret
+    }
+}
+
+// push
+impl EvalStack {
     /// dup top slot, including appendix (value)
     pub fn dup(&mut self) {
         // STABLE TODO: use extend_from_within after it becomes stable
         let slot = self.peek().unwrap().clone();
         let val_size = slot.val_size();
         if val_size != 0 {
-            let mut data = self.peek_value(val_size).to_vec();
-            self.data.append(&mut data);
+            let tail = self.data.len() - mem::size_of::<Slot>();
+            let start = tail - val_size;
+            // TODO: use extend_from_within
+            self.data.append(&mut self.data[start..tail].to_vec());
         }
         self.push_slot(slot);
-    }
-
-    /// pop top value, including appendix, but appendix is not returned
-    pub fn pop_with_slot(&mut self) -> Slot {
-        let ret = self.peek().unwrap().clone();
-        self.pop();
-        ret
-    }
-
-    /// pop top value, including appendix
-    pub fn pop(&mut self) {
-        let mut pop_size = mem::size_of::<Slot>();
-        pop_size += self.peek().unwrap().val_size();
-        for _ in 0..pop_size {
-            self.data.pop();
-        }
-        self.size -= 1;
     }
 
     /// alloc space for certain type as return value, space for value is also allocated
@@ -251,6 +318,31 @@ impl EvalStack {
         }
         self.push_slot(slot);
         self.top_mut_ptr()
+    }
+
+    /// return value addr, this addr should not be hold for long since eval stack is rapidly changing
+    ///
+    /// Drop that before mutate (push/pop) eval stack
+    ///
+    /// caller must guarantee init has same size with ty, or something unexpected will happen
+    pub unsafe fn alloc_value(&mut self, ty: &Type, init: *const u8) -> *mut u8 {
+        if init.is_null() {
+            for _ in 0..ty.basic_instance_size {
+                self.data.push(0); // any more efficient ways?
+            }
+        } else {
+            for i in 0..ty.basic_instance_size {
+                self.data.push(*init.wrapping_add(i)); // any more efficient ways?
+            }
+        }
+        self.push_slot(Slot {
+            tag: SlotTag::Value,
+            data: SlotData {
+                ptr_: ty as *const Type as *mut u8,
+            },
+        });
+        &self.data[self.data.len() - ty.basic_instance_size - size_of::<Slot>()] as *const u8
+            as *mut u8
     }
 
     /// Note: value space will not be allocated

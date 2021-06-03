@@ -75,8 +75,8 @@ macro_rules! exec_cmp_op {
 
 pub fn exec_beq(cur_state: &mut ActivationRecord) {
     let offset = cur_state.consume_i32();
-    let rhs = cur_state.eval_stack.pop_with_slot();
-    let lhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
+    let lhs = cur_state.eval_stack.pop(None);
     let b = exec_cmp_op!(==, lhs, rhs);
     if b {
         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -85,8 +85,8 @@ pub fn exec_beq(cur_state: &mut ActivationRecord) {
 
 pub fn exec_bge(cur_state: &mut ActivationRecord) {
     let offset = cur_state.consume_i32();
-    let rhs = cur_state.eval_stack.pop_with_slot();
-    let lhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
+    let lhs = cur_state.eval_stack.pop(None);
     let b = exec_cmp_op!(>=, lhs, rhs);
     if b {
         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -95,8 +95,8 @@ pub fn exec_bge(cur_state: &mut ActivationRecord) {
 
 pub fn exec_bgt(cur_state: &mut ActivationRecord) {
     let offset = cur_state.consume_i32();
-    let rhs = cur_state.eval_stack.pop_with_slot();
-    let lhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
+    let lhs = cur_state.eval_stack.pop(None);
     let b = exec_cmp_op!(>, lhs, rhs);
     if b {
         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -105,8 +105,8 @@ pub fn exec_bgt(cur_state: &mut ActivationRecord) {
 
 pub fn exec_ble(cur_state: &mut ActivationRecord) {
     let offset = cur_state.consume_i32();
-    let rhs = cur_state.eval_stack.pop_with_slot();
-    let lhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
+    let lhs = cur_state.eval_stack.pop(None);
     let b = exec_cmp_op!(<=, lhs, rhs);
     if b {
         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -115,8 +115,8 @@ pub fn exec_ble(cur_state: &mut ActivationRecord) {
 
 pub fn exec_blt(cur_state: &mut ActivationRecord) {
     let offset = cur_state.consume_i32();
-    let rhs = cur_state.eval_stack.pop_with_slot();
-    let lhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
+    let lhs = cur_state.eval_stack.pop(None);
     let b = exec_cmp_op!(<, lhs, rhs);
     if b {
         cur_state.ip = (cur_state.ip as i32 + offset) as usize;
@@ -124,7 +124,7 @@ pub fn exec_blt(cur_state: &mut ActivationRecord) {
 }
 
 pub fn exec_ceq(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     let t = exec_cmp_op!(==, lhs, rhs);
     lhs.data.i32_ = if t { 1 } else { 0 };
@@ -132,7 +132,7 @@ pub fn exec_ceq(cur_state: &mut ActivationRecord) {
 }
 
 pub fn exec_cgt(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     let t = exec_cmp_op!(>, lhs, rhs);
     lhs.data.i32_ = if t { 1 } else { 0 };
@@ -140,7 +140,7 @@ pub fn exec_cgt(cur_state: &mut ActivationRecord) {
 }
 
 pub fn exec_clt(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     let t = exec_cmp_op!(<, lhs, rhs);
     lhs.data.i32_ = if t { 1 } else { 0 };
@@ -148,31 +148,31 @@ pub fn exec_clt(cur_state: &mut ActivationRecord) {
 }
 
 pub fn exec_add(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     exec_numeric_op!(+, lhs, rhs);
 }
 
 pub fn exec_sub(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     exec_numeric_op!(-, lhs, rhs);
 }
 
 pub fn exec_mul(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     exec_numeric_op!(*, lhs, rhs);
 }
 
 pub fn exec_div(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     exec_numeric_op!(/, lhs, rhs);
 }
 
 pub fn exec_rem(cur_state: &mut ActivationRecord) {
-    let rhs = cur_state.eval_stack.pop_with_slot();
+    let rhs = cur_state.eval_stack.pop(None);
     let lhs = cur_state.eval_stack.peek_mut().unwrap();
     exec_numeric_op!(%, lhs, rhs);
 }
