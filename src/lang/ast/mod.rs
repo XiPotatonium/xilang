@@ -1,12 +1,14 @@
 mod class;
 mod disp;
+mod generic;
 mod method;
 mod ty;
 
 use xir::attrib::*;
-use xir::util::path::ModPath;
 
+use super::util::ItemPathBuf;
 pub use class::ASTClass;
+pub use generic::{ASTGenericParamDecl, ASTIdWithGenericParam};
 pub use method::{ASTCtor, ASTMethod, ASTMethodAttrib, ASTMethodAttribFlag};
 pub use ty::ASTType;
 
@@ -15,7 +17,7 @@ pub enum AST {
     File(Vec<String>, Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
 
     /// path, as
-    Use(ModPath, Option<String>),
+    Use(ItemPathBuf, Option<String>),
 
     /// attrib name, args
     CustomAttrib(String, Vec<Box<AST>>),
@@ -62,8 +64,8 @@ pub enum AST {
     OpLe(Box<AST>, Box<AST>),
     OpLt(Box<AST>, Box<AST>),
     OpAssign(Box<AST>, Box<AST>),
-    OpStaticAccess(Box<AST>, String),
-    OpObjAccess(Box<AST>, String),
+    OpStaticAccess(Box<AST>, ASTIdWithGenericParam),
+    OpObjAccess(Box<AST>, ASTIdWithGenericParam),
     OpArrayAccess(Box<AST>, Box<AST>),
     /// ty, val
     OpCast(Box<ASTType>, Box<AST>),
@@ -75,6 +77,7 @@ pub enum AST {
     OpNewArr(Box<ASTType>, Box<AST>),
 
     Id(String),
+    IdWithGenericParams(ASTIdWithGenericParam),
     TuplePattern(Vec<Box<AST>>),
 
     Type(Box<ASTType>),

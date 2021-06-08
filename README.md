@@ -22,7 +22,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * Built-in type:
   * i32
   * string
-    * string.len
+    * string.len()
   * single-dim zero-based array
     * array.len
 * expr/stmt:
@@ -52,6 +52,7 @@ A toy OOP programming language that runs on a simple CLR-like virtual machine.
 * 出现泛型之后，类型也是允许环形依赖的，目前的type loader算法有误
 * 研究一下Native部分使用LLVM工具来实现JIT的可能性，CLR-like的Native交互相比JNI-like的Native交互更加舒服
 * IrFile在读写时候需要检查一些内容（如attribute）是否是compliant的
+* 有时候执行时会触发`Exception 0x80000003 encountered at address 0x7ffcbea2a262`
 
 ### 1.2 RoadMap
 

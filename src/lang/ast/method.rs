@@ -1,7 +1,7 @@
 use xir::attrib::MethodAttrib;
 
 use super::disp::BoxASTVecWrapper;
-use super::{ASTType, AST};
+use super::{ASTGenericParamDecl, ASTType, AST};
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -36,10 +36,6 @@ pub struct ASTMethodAttrib {
 }
 
 impl ASTMethodAttrib {
-    pub fn from(attrib: u16) -> ASTMethodAttrib {
-        ASTMethodAttrib { attrib }
-    }
-
     pub fn is(&self, flag: ASTMethodAttribFlag) -> bool {
         self.attrib & u16::from(flag) != 0
     }
@@ -61,6 +57,7 @@ pub struct ASTMethod {
     /// ast attrib are some special built-in attribute that only work at compile time
     pub ast_attrib: ASTMethodAttrib,
     pub custom_attribs: Vec<Box<AST>>,
+    pub generic_params: Vec<ASTGenericParamDecl>,
     pub ret: Box<ASTType>,
     pub ps: Vec<Box<AST>>,
     pub body: Box<AST>,
@@ -68,22 +65,32 @@ pub struct ASTMethod {
 
 impl fmt::Display for ASTMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{\"name\":\"(method){}", self.name)?;
+        if !self.generic_params.is_empty() {
+            write!(f, "<")?;
+            for (i, generic_p) in self.generic_params.iter().enumerate() {
+                if i != 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", generic_p)?;
+            }
+        }
         write!(
-                f,
-                "{{\"name\":\"(method){}\",\"attrib\":\"{}\",\"custom-attribs\":{},\"ret\":{},\"ps\":{},\"body\":{}}}",
-                self.name,
-                self.attrib,
-                BoxASTVecWrapper(&self.custom_attribs),
-                self.ret,
-                BoxASTVecWrapper(&self.ps),
-                self.body,
-            )
+            f,
+            "\",\"attrib\":\"{}\",\"custom-attribs\":{},\"ret\":\"{}\",\"ps\":{},\"body\":{}}}",
+            self.attrib,
+            BoxASTVecWrapper(&self.custom_attribs),
+            self.ret,
+            BoxASTVecWrapper(&self.ps),
+            self.body,
+        )
     }
 }
 
 pub struct ASTCtor {
     pub attrib: MethodAttrib,
     pub custom_attribs: Vec<Box<AST>>,
+    pub generic_params: Vec<ASTGenericParamDecl>,
     pub base_args: Option<Vec<Box<AST>>>,
     pub ps: Vec<Box<AST>>,
     pub body: Box<AST>,
@@ -91,9 +98,19 @@ pub struct ASTCtor {
 
 impl fmt::Display for ASTCtor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{\"name\":\"(.ctor)")?;
+        if !self.generic_params.is_empty() {
+            write!(f, "<")?;
+            for (i, generic_p) in self.generic_params.iter().enumerate() {
+                if i != 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", generic_p)?;
+            }
+        }
         write!(
             f,
-            "{{\"name\":\"(.ctor)\",\"attrib\":\"{}\",\"custom-attribs\":{},\"base-args\":",
+            "\",\"attrib\":\"{}\",\"custom-attribs\":{},\"base-args\":",
             self.attrib,
             BoxASTVecWrapper(&self.custom_attribs),
         )?;

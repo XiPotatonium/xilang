@@ -11,7 +11,7 @@ use xir::attrib::*;
 use xir::file::*;
 use xir::member::MemberForwarded;
 use xir::sig::IrSig;
-use xir::util::path::{IModPath, ModPath};
+use xir::util::path::{IItemPath, ItemPathBuf};
 use xir::CCTOR_NAME;
 
 use std::collections::HashMap;
@@ -288,7 +288,7 @@ impl<'c> Loader<'c> {
             types.push(ty);
         }
 
-        let this_mod_path = ModPath::from_str(&self.mem.str_pool[this_mod_fullname_addr]);
+        let this_mod_path = ItemPathBuf::from_str(&self.mem.str_pool[this_mod_fullname_addr]);
         let mut this_mod = Box::new(Module::IL(ILModule {
             fullname: this_mod_fullname_addr,
 
@@ -344,12 +344,12 @@ impl<'c> Loader<'c> {
                     )),
                 );
             } else {
-                let path = ModPath::from_str(ext_mod_fullname);
+                let path = ItemPathBuf::from_str(ext_mod_fullname);
                 if path.get_root_name().unwrap() == this_mod_path.get_root_name().unwrap() {
                     // module in the same crate
                     let mut sub_mod_path = root_dir.to_owned();
-                    for seg in path.iter().skip(1) {
-                        sub_mod_path.push(seg);
+                    for seg_id in path.iter().skip(1) {
+                        sub_mod_path.push(seg_id);
                     }
 
                     sub_mod_path.set_extension("xibc");

@@ -10,7 +10,7 @@ lazy_static! {
     static ref PATH_RULE: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(/^[_a-zA-Z][_a-zA-Z0-9]*)*").unwrap();
 }
 
-pub trait IModPath {
+pub trait IItemPath {
     fn len(&self) -> usize;
     fn get_self_name(&self) -> Option<&str>;
     fn get_super_name(&self) -> Option<&str>;
@@ -18,37 +18,37 @@ pub trait IModPath {
     fn to_string(self) -> String;
     fn as_str(&self) -> &str;
     fn iter(&self) -> ModPathIter;
-    fn range(&self, start: usize, end: usize) -> ModPathSlice;
+    fn range(&self, start: usize, end: usize) -> ItemPath;
 }
 
 #[derive(Clone)]
-pub struct ModPath {
+pub struct ItemPathBuf {
     path: String,
     seg_tails: Vec<usize>,
 }
 
-pub struct ModPathSlice<'p> {
-    path: &'p ModPath,
+pub struct ItemPath<'p> {
+    path: &'p ItemPathBuf,
     root: usize,
     tail: usize,
 }
 
 // FIXME: UTF-8
-impl ModPath {
-    pub fn new() -> ModPath {
-        ModPath {
+impl ItemPathBuf {
+    pub fn new() -> ItemPathBuf {
+        ItemPathBuf {
             path: String::new(),
             seg_tails: Vec::new(),
         }
     }
 
-    pub fn from_str(p: &str) -> ModPath {
+    pub fn from_str(p: &str) -> ItemPathBuf {
         if !PATH_RULE.is_match(p) {
             panic!("Invalid path literal {}", p);
         }
 
         if p.len() == 0 {
-            ModPath::new()
+            ItemPathBuf::new()
         } else {
             let path = p.to_owned();
             let mut seg_tails = Vec::new();
@@ -60,7 +60,7 @@ impl ModPath {
             }
             seg_tails.push(path.len());
 
-            ModPath { path, seg_tails }
+            ItemPathBuf { path, seg_tails }
         }
     }
 
@@ -76,19 +76,19 @@ impl ModPath {
         self.seg_tails.push(self.path.len());
     }
 
-    pub fn as_slice(&self) -> ModPathSlice {
-        ModPathSlice {
+    pub fn as_slice(&self) -> ItemPath {
+        ItemPath {
             path: self,
             root: 0,
             tail: self.len(),
         }
     }
 
-    pub fn get_super(&self) -> ModPathSlice {
+    pub fn get_super(&self) -> ItemPath {
         if self.len() == 0 {
             panic!("Empty path has no super");
         } else {
-            ModPathSlice {
+            ItemPath {
                 path: self,
                 root: 0,
                 tail: self.len() - 1,
@@ -101,7 +101,7 @@ impl ModPath {
     /// A valid canonicalized path: `("crate"? | "super"*) ~ Id*`
     ///
     /// Return:
-    pub fn canonicalize(&self) -> (bool, usize, ModPath) {
+    pub fn canonicalize(&self) -> (bool, usize, ItemPathBuf) {
         let mut segs: Vec<&str> = Vec::new();
         let mut has_crate: bool = false;
         let mut super_count = 0;
@@ -136,7 +136,7 @@ impl ModPath {
                 segs.push(seg);
             }
         }
-        let mut path = ModPath::new();
+        let mut path = ItemPathBuf::new();
         for seg in segs.into_iter() {
             path.push(seg);
         }
@@ -144,7 +144,7 @@ impl ModPath {
     }
 }
 
-impl IModPath for ModPath {
+impl IItemPath for ItemPathBuf {
     fn len(&self) -> usize {
         self.seg_tails.len()
     }
@@ -204,7 +204,7 @@ impl IModPath for ModPath {
         }
     }
 
-    fn range(&self, start: usize, end: usize) -> ModPathSlice {
+    fn range(&self, start: usize, end: usize) -> ItemPath {
         assert!(end > start, "Invalid range [{}..{}]", start, end);
         assert!(
             end <= self.len(),
@@ -213,7 +213,7 @@ impl IModPath for ModPath {
             end,
             self.len()
         );
-        ModPathSlice {
+        ItemPath {
             path: self,
             root: start,
             tail: end,
@@ -221,7 +221,7 @@ impl IModPath for ModPath {
     }
 }
 
-impl Index<usize> for ModPath {
+impl Index<usize> for ItemPathBuf {
     type Output = str;
 
     fn index(&self, idx: usize) -> &Self::Output {
@@ -235,9 +235,9 @@ impl Index<usize> for ModPath {
     }
 }
 
-impl<'p> ModPathSlice<'p> {
-    pub fn to_owned(self) -> ModPath {
-        ModPath {
+impl<'p> ItemPath<'p> {
+    pub fn to_owned(self) -> ItemPathBuf {
+        ItemPathBuf {
             path: self.as_str().to_owned(),
             seg_tails: self.path.seg_tails[self.root..self.tail].to_vec(),
         }
@@ -252,7 +252,7 @@ impl<'p> ModPathSlice<'p> {
     }
 }
 
-impl<'p> IModPath for ModPathSlice<'p> {
+impl<'p> IItemPath for ItemPath<'p> {
     fn len(&self) -> usize {
         self.tail - self.root
     }
@@ -303,7 +303,7 @@ impl<'p> IModPath for ModPathSlice<'p> {
         }
     }
 
-    fn range(&self, start: usize, end: usize) -> ModPathSlice {
+    fn range(&self, start: usize, end: usize) -> ItemPath {
         assert!(end > start, "Invalid range [{}..{}]", start, end);
         assert!(
             end <= self.len(),
@@ -312,7 +312,7 @@ impl<'p> IModPath for ModPathSlice<'p> {
             end,
             self.len()
         );
-        ModPathSlice {
+        ItemPath {
             path: self.path,
             root: self.root + start,
             tail: self.tail + end,
@@ -321,7 +321,7 @@ impl<'p> IModPath for ModPathSlice<'p> {
 }
 
 pub struct ModPathIter<'p> {
-    path: &'p ModPath,
+    path: &'p ItemPathBuf,
     end: usize,
     cur: usize,
 }
@@ -339,13 +339,13 @@ impl<'p> Iterator for ModPathIter<'p> {
     }
 }
 
-impl fmt::Display for ModPath {
+impl fmt::Display for ItemPathBuf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.path)
     }
 }
 
-impl<'p> fmt::Display for ModPathSlice<'p> {
+impl<'p> fmt::Display for ItemPath<'p> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }

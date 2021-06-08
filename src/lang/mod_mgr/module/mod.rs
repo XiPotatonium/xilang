@@ -10,17 +10,17 @@ use std::path::PathBuf;
 use std::ptr::{self, NonNull};
 
 use xir::file::IrFile;
-use xir::util::path::{IModPath, ModPath};
 
 use super::super::super::XicCfg;
 use super::super::ast::{ASTType, AST};
 use super::super::gen::{Builder, RValType};
 use super::super::parser;
+use super::super::util::{IItemPath, ItemPathBuf};
 use super::external::load_external_crate;
 use super::{Crate, Type};
 
 pub struct Module {
-    pub mod_path: ModPath,
+    pub mod_path: ItemPathBuf,
     pub sub_mods: HashSet<String>,
     /// key: class_name
     pub classes: HashMap<String, Box<Type>>,
@@ -28,7 +28,7 @@ pub struct Module {
 
 impl Module {
     pub fn self_name(&self) -> &str {
-        self.mod_path.get_self_name().unwrap()
+        self.mod_path.get_self().unwrap().0
     }
 
     pub fn fullname(&self) -> &str {
@@ -49,7 +49,7 @@ impl fmt::Display for Module {
 pub struct ModuleBuildCtx {
     /// Vec<Box<AST::Class|AST::Struct>>
     class_asts: Vec<Box<AST>>,
-    pub use_map: HashMap<String, ModPath>,
+    pub use_map: HashMap<String, ItemPathBuf>,
 
     pub builder: RefCell<Builder>,
 
@@ -57,19 +57,19 @@ pub struct ModuleBuildCtx {
     module: *mut Module,
 }
 
-pub fn new_module(mod_path: ModPath, mgr: &mut Crate, cfg: &XicCfg) {
+pub fn new_module(mod_path: ItemPathBuf, mgr: &mut Crate, cfg: &XicCfg) {
     let mut output_dir = cfg.out_dir.clone();
     let mut input_dir = cfg.root_dir.clone();
     let fpath = if mod_path.len() == 1 {
         // for root module, fpath is specified in cfg
         cfg.root_path.clone()
     } else {
-        for seg in mod_path.iter().skip(1).take(mod_path.len() - 2) {
-            output_dir.push(seg);
-            input_dir.push(seg);
+        for (seg_id, _) in mod_path.iter().skip(1).take(mod_path.len() - 2) {
+            output_dir.push(seg_id);
+            input_dir.push(seg_id);
         }
-        let fpath1 = input_dir.join(format!("{}.xi", mod_path.get_self_name().unwrap()));
-        let mut fpath2 = input_dir.join(mod_path.get_self_name().unwrap());
+        let fpath1 = input_dir.join(format!("{}.xi", mod_path.get_self().unwrap().0));
+        let mut fpath2 = input_dir.join(mod_path.get_self().unwrap().0);
         fpath2.push("mod.xi");
         if fpath1.is_file() && fpath2.is_file() {
             panic!(
@@ -188,16 +188,16 @@ pub fn new_module(mod_path: ModPath, mgr: &mut Crate, cfg: &XicCfg) {
         }
 
         // process uses
-        let mut use_map: HashMap<String, ModPath> = HashMap::new();
+        let mut use_map: HashMap<String, ItemPathBuf> = HashMap::new();
         for use_ast in uses.iter() {
             if let AST::Use(raw_path, as_id) = use_ast.as_ref() {
                 let (path_has_crate, path_super_count, can_path) = raw_path.canonicalize();
 
                 let use_path = if path_has_crate {
-                    let mut use_path = ModPath::new();
+                    let mut use_path = ItemPathBuf::new();
                     use_path.push(&mgr.crate_name);
-                    for seg in can_path.range(1, can_path.len()).iter() {
-                        use_path.push(seg);
+                    for (seg_id, generic_ps) in can_path.range(1, can_path.len()).iter() {
+                        use_path.push_id_with_generic(seg_id, generic_ps.clone());
                     }
                     use_path
                 } else if path_super_count != 0 {
@@ -206,8 +206,10 @@ pub fn new_module(mod_path: ModPath, mgr: &mut Crate, cfg: &XicCfg) {
                         root_path.to_super();
                     }
                     let mut use_path = root_path.to_owned();
-                    for seg in can_path.range(path_super_count, can_path.len()).iter() {
-                        use_path.push(seg);
+                    for (seg_id, generic_ps) in
+                        can_path.range(path_super_count, can_path.len()).iter()
+                    {
+                        use_path.push_id_with_generic(seg_id, generic_ps.clone());
                     }
                     use_path
                 } else {
@@ -217,7 +219,7 @@ pub fn new_module(mod_path: ModPath, mgr: &mut Crate, cfg: &XicCfg) {
                 let as_id = if let Some(as_id) = as_id {
                     as_id.to_owned()
                 } else {
-                    use_path.get_self_name().unwrap().to_owned()
+                    use_path.get_self().unwrap().0.to_owned()
                 };
 
                 if use_map.contains_key(&as_id) {
@@ -261,11 +263,11 @@ impl ModuleBuildCtx {
         let mod_path = &self.get_module().mod_path;
         if mod_path.len() == 1 {
             // root module is output at {out_dir}/{root_name}.xibc
-            p.push(mod_path.get_self_name().unwrap());
+            p.push(mod_path.get_self().unwrap().0);
         } else {
             // other modules are output at {out_dir}/{mod_path_except_root}.xibc
             for seg in self.get_module().mod_path.iter().skip(1) {
-                p.push(seg);
+                p.push(seg.0);
             }
         }
         // dump ir
@@ -285,12 +287,12 @@ impl ModuleBuildCtx {
     /// item must exist
     pub fn resolve_user_define_type(
         &self,
-        path: &ModPath,
+        path: &ItemPathBuf,
         c: &Crate,
         class: Option<&Type>,
     ) -> NonNull<Type> {
         let (has_crate, super_cnt, canonicalized_path) = path.canonicalize();
-        let class_id = canonicalized_path.get_self_name().unwrap();
+        let (class_id, _) = canonicalized_path.get_self().unwrap();
         let mod_path = canonicalized_path.get_super();
         let module = self.get_module();
         if mod_path.len() == 0 {
@@ -310,10 +312,10 @@ impl ModuleBuildCtx {
         } else {
             let m = if has_crate {
                 // crate::...
-                let mut m = ModPath::new();
+                let mut m = ItemPathBuf::new();
                 m.push(&c.crate_name);
-                for seg in mod_path.iter().skip(1) {
-                    m.push(seg);
+                for (seg_id, seg_generic_ps) in mod_path.iter().skip(1) {
+                    m.push_id_with_generic(seg_id, seg_generic_ps.clone());
                 }
                 m
             } else if super_cnt != 0 {
@@ -323,24 +325,24 @@ impl ModuleBuildCtx {
                     m.to_super();
                 }
                 let mut m = m.to_owned();
-                for seg in mod_path.iter().skip(super_cnt) {
-                    m.push(seg);
+                for (seg_id, seg_generic_ps) in mod_path.iter().skip(super_cnt) {
+                    m.push_id_with_generic(seg_id, seg_generic_ps.clone());
                 }
                 m
             } else {
                 let mut mod_path_iter = mod_path.iter();
-                let r = mod_path_iter.next().unwrap();
+                let r = mod_path_iter.next().unwrap().0;
                 if let Some(m) = self.use_map.get(r) {
                     let mut m = m.clone();
-                    for seg in mod_path_iter {
-                        m.push(seg);
+                    for (seg_id, generic_ps) in mod_path_iter {
+                        m.push_id_with_generic(seg_id, generic_ps.clone());
                     }
                     m
                 } else if self.get_module().sub_mods.contains(r) {
                     let mut m = self.get_module().mod_path.clone();
                     m.push(r);
-                    for seg in mod_path_iter {
-                        m.push(seg);
+                    for (seg_id, generic_ps) in mod_path_iter {
+                        m.push_id_with_generic(seg_id, generic_ps.clone());
                     }
                     m
                 } else {

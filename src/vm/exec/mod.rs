@@ -39,7 +39,6 @@ impl<'m> TExecutor<'m> {
         il_impl: &'m MethodILImpl,
     ) {
         // Currently there is no verification of the arg type
-        // TODO: Generate locals with type info set
         self.states.push(ActivationRecord {
             method,
             method_impl: il_impl,

@@ -8,18 +8,21 @@ AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
 Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
 
 Class = { 
-    AttributeLst* ~ (KwClass | KwStruct | KwInterface) ~ Id ~ ExtendsOrImpls? ~
+    AttributeLst* ~ (KwClass | KwStruct | KwInterface) ~ Id ~ GenericParamsDecl? ~ ExtendsOrImpls? ~
     "{" ~ (AttributeLst* ~ (CCtor | Ctor | Method | StaticField | NonStaticField))* ~ "}" 
 }
 
 ExtendsOrImpls = { ":" ~ PathExpr ~ ("," ~ PathExpr)* }
+GenericParamsDecl = { "<" ~ GenericParamDecl ~ ("," ~ GenericParamDecl)* ~ ">" }
+GenericParamDecl = { Id ~ (":" ~ PathExpr ~ ("+" ~ PathExpr)*)? }
+IdWithGenericParams = { Id ~ ("<" ~ Type ~ ("," ~ Type)* ~ ">")? }
 
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
 CCtor = { "static" ~ BlockExpr }
-Ctor = { "Self" ~ Params ~ (":" ~ KwBase ~ Args )? ~ BlockExpr }
-Method = { (KwOverride | KwVirtual)* ~ "fn" ~ Id ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+Ctor = { "Self" ~ GenericParamsDecl? ~ Params ~ (":" ~ KwBase ~ Args )? ~ BlockExpr }
+Method = { (KwOverride | KwVirtual)* ~ "fn" ~ Id ~ GenericParamsDecl? ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
 Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
 
 Pattern = { Id | TuplePattern }
@@ -57,10 +60,11 @@ BreakExpr = { "break" ~ Expr? }
 ReturnExpr = { "return" ~ Expr? }
 
 GroupedExpr = { "(" ~ Expr ~ ")" }
-PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | Id | Type }
+// Actually Type here will not include PathExpr. Maybe only BasicType but I'm not sure for now
+PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | IdWithGenericParams | Type }
 Args = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
-ObjAccessExpr = { "." ~ Id }
-PathAccessExpr = { "::" ~ Id }
+ObjAccessExpr = { "." ~ IdWithGenericParams }
+PathAccessExpr = { "::" ~ IdWithGenericParams }
 ArrAccessExpr = { "[" ~ Expr ~ "]" }
 CallExpr = { PrimaryExpr ~ (Args | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
 NewExpr = { "new" ~ Type ~ (Args | ArrAccessExpr) | CallExpr }
@@ -92,7 +96,7 @@ FloatLiteral = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
 StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
-PathExpr = ${ (Id | KwCrate | KwSuper) ~ ("::" ~ (Id | KwSuper))* }
+PathExpr = { (IdWithGenericParams | KwCrate | KwSuper) ~ ("::" ~ (IdWithGenericParams | KwSuper))* }
 Id = @{ 
     KeyWord ~ (ASCII_ALPHANUMERIC | "_")+ 
     | !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* 

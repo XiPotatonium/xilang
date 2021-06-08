@@ -2,6 +2,7 @@ pub mod ast;
 mod gen;
 pub mod mod_mgr;
 pub mod parser;
+mod util;
 
 use std::path::PathBuf;
 

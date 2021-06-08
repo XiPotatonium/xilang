@@ -10,9 +10,9 @@ use xir::file::*;
 use xir::sig::{self, IrSig, TypeSig};
 use xir::tok::{get_tok_tag, TokTag};
 use xir::ty::{ResolutionScope, TypeDefOrRef};
-use xir::util::path::{IModPath, ModPath};
 
 use super::super::gen::RValType;
+use super::super::util::{IItemPath, ItemPathBuf};
 use super::{Field, Method, Module, Param, Type};
 
 fn to_param(sig: &sig::ParamType, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> Param {
@@ -98,7 +98,7 @@ pub fn load_external_crate(
         external_mods_mask[implmap.scope as usize - 1] = false;
     }
 
-    let this_mod_path = ModPath::from_str(file.mod_name());
+    let this_mod_path = ItemPathBuf::from_module(file.mod_name());
     let mut this_mod = Box::new(Module {
         sub_mods: HashSet::new(),
         mod_path: this_mod_path.clone(),
@@ -135,21 +135,21 @@ pub fn load_external_crate(
         }
 
         let external_mod_fullname = file.get_str(external_mod.name);
-        let path = ModPath::from_str(external_mod_fullname);
+        let path = ItemPathBuf::from_module(external_mod_fullname);
 
         if mod_tbl.contains_key(external_mod_fullname) {
             continue;
         }
 
-        if path.get_root_name().unwrap() == this_mod_path.get_root_name().unwrap() {
+        if path.get_root().unwrap().0 == this_mod_path.get_root().unwrap().0 {
             // only load direct external crates
             // external crates of imported crate is not loaded
             let mut sub_mod_path = ext_crate_dir.to_owned();
-            for seg in path.iter().skip(1) {
-                sub_mod_path.push(seg);
+            for (seg_id, _) in path.iter().skip(1) {
+                sub_mod_path.push(seg_id);
             }
             sub_mod_path.set_extension("xibc");
-            let sub_mod_name = path.get_self_name().unwrap();
+            let (sub_mod_name, _) = path.get_self().unwrap();
             unsafe {
                 this_mod_ptr
                     .as_mut()

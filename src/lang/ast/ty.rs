@@ -1,9 +1,8 @@
-use xir::util::path::{IModPath, ModPath};
-
-use super::disp::ASTVecWrapper;
+use super::super::util::{IItemPath, ItemPathBuf};
 
 use std::fmt;
 
+#[derive(Clone)]
 pub enum ASTType {
     Bool,
     Char,
@@ -14,7 +13,7 @@ pub enum ASTType {
     /// type
     Arr(Box<ASTType>),
     /// class names
-    Class(ModPath),
+    Class(ItemPathBuf),
     /// void or undetermined
     None,
 }
@@ -22,19 +21,15 @@ pub enum ASTType {
 impl fmt::Display for ASTType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ASTType::Bool => write!(f, "{{\"name\":\"(type)bool\"}}"),
-            ASTType::Char => write!(f, "{{\"name\":\"(type)char\"}}"),
-            ASTType::I32 => write!(f, "{{\"name\":\"(type)i32\"}}"),
-            ASTType::F64 => write!(f, "{{\"name\":\"(type)f64\"}}"),
-            ASTType::String => write!(f, "{{\"name\":\"(type)string\"}}"),
-            ASTType::Tuple(v) => write!(
-                f,
-                "{{\"name\":\"(type)tuple\",\"children\":{}}}",
-                ASTVecWrapper(v)
-            ),
-            ASTType::Arr(dtype) => write!(f, "{{\"name\":\"(type)array\",\"dtype\":{}}}", dtype),
-            ASTType::Class(names) => write!(f, "{{\"name\":\"(type){}\"}}", names.as_str()),
-            ASTType::None => write!(f, "{{\"name\":\"(type)none\"}}"),
+            ASTType::Bool => write!(f, "(type)bool"),
+            ASTType::Char => write!(f, "(type)char"),
+            ASTType::I32 => write!(f, "(type)i32"),
+            ASTType::F64 => write!(f, "(type)f64"),
+            ASTType::String => write!(f, "(type)string"),
+            ASTType::Tuple(_) => unimplemented!(),
+            ASTType::Arr(dtype) => write!(f, "(type){}[]", dtype),
+            ASTType::Class(names) => write!(f, "(type){}", names.as_str()),
+            ASTType::None => write!(f, "(type)none"),
         }
     }
 }

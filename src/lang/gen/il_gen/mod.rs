@@ -7,6 +7,7 @@ mod loop_expr;
 mod op;
 
 use super::super::ast::{ASTType, AST};
+use super::super::util::IItemPath;
 use op::BinOp;
 // use super::interpreter::constant_folding;
 use super::{CodeGenCtx, Field, Method, Module, RValType, SymType, Type, ValExpectation, ValType};
@@ -14,7 +15,6 @@ use super::{CodeGenCtx, Field, Method, Module, RValType, SymType, Type, ValExpec
 use xir::attrib::*;
 use xir::inst::Inst;
 use xir::tok::to_tok;
-use xir::util::path::IModPath;
 use xir::CTOR_NAME;
 
 use std::ptr::NonNull;
@@ -100,6 +100,10 @@ pub fn gen(ctx: &CodeGenCtx, ast: &AST, expectation: ValExpectation) -> ValType 
         AST::OpStaticAccess(lhs, rhs) => acc::gen_static_acc(ctx, lhs, rhs, expectation),
         AST::OpArrayAccess(lhs, rhs) => acc::gen_arr_acc(ctx, lhs, rhs, expectation),
         AST::Id(id) => gen_id(ctx, id, expectation),
+        AST::IdWithGenericParams(id_with_generic_ps) => {
+            assert!(id_with_generic_ps.generic_params.is_empty());
+            gen_id(ctx, &id_with_generic_ps.id, expectation)
+        }
         AST::Type(ty) => match expectation {
             ValExpectation::Callable
             | ValExpectation::RVal

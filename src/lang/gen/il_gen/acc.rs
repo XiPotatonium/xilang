@@ -1,6 +1,7 @@
 use core::panic;
 
-use super::super::super::ast::AST;
+use super::super::super::ast::{ASTIdWithGenericParam, AST};
+use super::super::super::util::IItemPath;
 use super::super::{
     CodeGenCtx, Field, Method, Module, RValType, SymType, Type, ValExpectation, ValType,
 };
@@ -9,19 +10,18 @@ use super::gen;
 use xir::attrib::{FieldAttribFlag, MethodAttribFlag};
 use xir::inst::Inst;
 use xir::tok::to_tok;
-use xir::util::path::IModPath;
 
 use std::ptr::NonNull;
 
 fn gen_instance_obj_acc(
     ctx: &CodeGenCtx,
     lhs: &Type,
-    rhs: &str,
+    rhs: &ASTIdWithGenericParam,
     expectation: ValExpectation,
 ) -> ValType {
     match expectation {
         ValExpectation::None | ValExpectation::Callable => {
-            let ms = lhs.query_method(rhs);
+            let ms = lhs.query_method(&rhs.id);
             let ms: Vec<NonNull<Method>> = ms
                 .into_iter()
                 .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
@@ -35,13 +35,13 @@ fn gen_instance_obj_acc(
         ValExpectation::RVal | ValExpectation::Instance => {
             // unlike ValExpectation::Callable,
             // xivm can handle instance field acc of value type correctly, as specified in CLI III.4.10
-            if let Some(f) = lhs.query_field(rhs) {
+            if let Some(f) = lhs.query_field(&rhs.id) {
                 let field_ty = f.ty.clone();
                 let sig = ctx.module.builder.borrow_mut().add_field_sig(&field_ty);
                 let (field_idx, tok_tag) = ctx.module.builder.borrow_mut().add_const_member(
                     unsafe { f.parent.as_ref().modname() },
                     unsafe { &f.parent.as_ref().name },
-                    rhs,
+                    &rhs.id,
                     sig,
                 );
 
@@ -77,7 +77,7 @@ fn gen_instance_obj_acc(
             panic!("Type instance member cannot be static accessed")
         }
         ValExpectation::Assignable => {
-            if let Some(f) = lhs.query_field(rhs) {
+            if let Some(f) = lhs.query_field(&rhs.id) {
                 ValType::Sym(SymType::Field(
                     NonNull::new(f as *const Field as *mut Field).unwrap(),
                 ))
@@ -91,7 +91,7 @@ fn gen_instance_obj_acc(
 pub fn gen_instance_acc(
     ctx: &CodeGenCtx,
     lhs: &AST,
-    rhs: &str,
+    rhs: &ASTIdWithGenericParam,
     expectation: ValExpectation,
 ) -> ValType {
     let lhs_ty = gen(ctx, lhs, ValExpectation::Instance).expect_rval();
@@ -134,7 +134,7 @@ pub fn gen_instance_acc(
             gen_instance_obj_acc(ctx, type_ref, rhs, expectation)
         }
         RValType::Array(_) => {
-            if rhs == "len" {
+            if rhs.id == "len" {
                 match expectation {
                     ValExpectation::Callable => {
                         panic!("arr.len is not callable");
@@ -175,7 +175,7 @@ pub fn gen_instance_acc(
 pub fn gen_static_acc(
     ctx: &CodeGenCtx,
     lhs: &AST,
-    rhs: &str,
+    rhs: &ASTIdWithGenericParam,
     expectation: ValExpectation,
 ) -> ValType {
     let lhs_ty = gen(ctx, lhs, ValExpectation::Static).expect_sym();
@@ -193,13 +193,13 @@ pub fn gen_static_acc(
             ValExpectation::Static => {
                 // Access a class or sub-module in module
                 let m = unsafe { m.as_ref() };
-                if let Some(c) = m.classes.get(rhs) {
+                if let Some(c) = m.classes.get(&rhs.id) {
                     ValType::Sym(SymType::Class(
                         NonNull::new(c.as_ref() as *const Type as *mut Type).unwrap(),
                     ))
-                } else if m.sub_mods.contains(rhs) {
+                } else if m.sub_mods.contains(&rhs.id) {
                     let mut path = m.mod_path.clone();
-                    path.push(rhs);
+                    path.push(&rhs.id);
                     ValType::Sym(SymType::Module(
                         NonNull::new(ctx.mgr.mod_tbl.get(path.as_str()).unwrap().as_ref()
                             as *const Module as *mut Module)
@@ -220,7 +220,7 @@ pub fn gen_static_acc(
             let c = unsafe { c.as_ref() };
             match expectation {
                 ValExpectation::None | ValExpectation::Callable => {
-                    let ms = c.query_method(rhs);
+                    let ms = c.query_method(&rhs.id);
                     let ms: Vec<NonNull<Method>> = ms
                         .into_iter()
                         .filter(|m| m.attrib.is(MethodAttribFlag::Static))
@@ -232,7 +232,7 @@ pub fn gen_static_acc(
                     ValType::Sym(SymType::Method(ms))
                 }
                 ValExpectation::RVal | ValExpectation::Instance => {
-                    if let Some(f) = c.query_field(rhs) {
+                    if let Some(f) = c.query_field(&rhs.id) {
                         if !f.attrib.is(FieldAttribFlag::Static) {
                             panic!("Field {} in {} is not static", rhs, lhs_ty);
                         }
@@ -256,7 +256,7 @@ pub fn gen_static_acc(
                             ctx.module.builder.borrow_mut().add_const_member(
                                 unsafe { f.parent.as_ref().modname() },
                                 unsafe { &f.parent.as_ref().name },
-                                rhs,
+                                &rhs.id,
                                 sig,
                             );
 
@@ -278,7 +278,7 @@ pub fn gen_static_acc(
                     }
                 }
                 ValExpectation::Assignable => {
-                    if let Some(f) = c.query_field(rhs) {
+                    if let Some(f) = c.query_field(&rhs.id) {
                         if !f.attrib.is(FieldAttribFlag::Static) {
                             panic!("Field {} in {} is not static", rhs, lhs_ty);
                         }

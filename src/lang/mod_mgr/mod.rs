@@ -11,8 +11,7 @@ pub use self::ty::Type;
 pub use self::var::{Locals, Var};
 
 use super::super::XicCfg;
-
-use xir::util::path::ModPath;
+use super::util::ItemPathBuf;
 
 use std::collections::HashMap;
 use std::fs;
@@ -28,7 +27,7 @@ pub struct Crate {
 
 impl Crate {
     pub fn new(cfg: &XicCfg) -> Crate {
-        let mut mod_path: ModPath = ModPath::new();
+        let mut mod_path: ItemPathBuf = ItemPathBuf::new();
         mod_path.push(&cfg.crate_name);
 
         // prepare output dir
