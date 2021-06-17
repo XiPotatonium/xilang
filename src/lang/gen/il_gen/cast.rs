@@ -17,8 +17,10 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
         RValType::F64 => unimplemented!(),
         RValType::Void => panic!("Cannot cast void type"),
         RValType::Never => panic!("Cannot cast never type"),
+        RValType::Value(_) => unimplemented!(),
+        RValType::GenericInst(_, _, _) => unimplemented!(),
         RValType::String => unimplemented!(),
-        RValType::Type(ty) => {
+        RValType::Class(ty) => {
             let lhs_ty = unsafe { ty.as_ref() };
             match &to_type {
                 RValType::Bool
@@ -32,10 +34,12 @@ pub fn gen_cast(ctx: &CodeGenCtx, ty: &ASTType, val: &AST) -> ValType {
                 | RValType::Array(_) => {
                     panic!("cast from {} to {} is not allowed", lhs_rval_ty, to_type)
                 }
+                RValType::Value(_) => unimplemented!(),
+                RValType::GenericInst(_, _, _) => unimplemented!(),
                 RValType::String => {
                     unimplemented!()
                 }
-                RValType::Type(ty) => {
+                RValType::Class(ty) => {
                     let rhs_ty = unsafe { ty.as_ref() };
 
                     if lhs_ty as *const Type != rhs_ty {

@@ -90,10 +90,6 @@ impl Inst {
                 write!(f, "initobj ")?;
                 fmt_tok(*tok, f, ctx)
             }
-            Inst::CpObj(tok) => {
-                write!(f, "cpobj ")?;
-                fmt_tok(*tok, f, ctx)
-            }
             Inst::NewObj(tok) => {
                 write!(f, "newobj ")?;
                 fmt_tok(*tok, f, ctx)

@@ -37,7 +37,35 @@ pub fn load(
     // load
     let root = loader.load(f, entry.parent().unwrap());
 
+    // allocate static space for classes
+    for module in loader.mem.mods.values_mut() {
+        if let Module::IL(module) = module.as_mut() {
+            for ty in module.types.iter_mut() {
+                linker::calc_type_mem_layout(ty, &loader.mem.str_pool);
+            }
+        }
+    }
+
+    // calc method size info
+    for module in loader.mem.mods.values_mut() {
+        if let Module::IL(module) = module.as_mut() {
+            for ty in module.types.iter_mut() {
+                linker::fill_type_method_info(ty);
+            }
+        }
+    }
+
+    // link memberref, we need type info to link member,
+    // so member should be linked after method/field info have been calculated
+    for module in loader.mem.mods.values_mut() {
+        if let Module::IL(module) = module.as_mut() {
+            linker::link_memberref(module, &loader.mem.str_pool);
+        }
+    }
+
+    // register internal calls
     register_internal_calls(loader.mem);
+
     (
         loader.cctors,
         mem.mods.get(&root).unwrap().expect_il().methods[entrypoint - 1].as_ref()
@@ -147,10 +175,13 @@ impl<'c> Loader<'c> {
                 let method_impl = match impl_flag.code_ty() {
                     MethodImplAttribCodeTypeFlag::IL => {
                         assert_ne!(method_entry.body, 0);
-                        let body = &file.codes[method_entry.body as usize - 1];
                         // Currently virtual method is not implemented
                         // Callvirt actually call non virtual method, which offset = 0
-                        MethodImpl::IL(MethodILImpl::new(body.insts.to_owned()))
+                        MethodImpl::IL(MethodILImpl {
+                            index: method_entry.body as usize - 1,
+                            locals: Vec::new(),
+                            locals_size: 0,
+                        })
                     }
                     MethodImplAttribCodeTypeFlag::Native => {
                         // O(N), might need optimization
@@ -206,6 +237,7 @@ impl<'c> Loader<'c> {
 
                 let mut method = Box::new(MethodDesc {
                     ctx: unsafe { NonNull::new_null() },
+                    index: method_i,
                     name,
                     slot: 0,
                     attrib: method_attrib,
@@ -250,6 +282,9 @@ impl<'c> Loader<'c> {
                     attrib: flag,
                     // fill in link stage
                     ty: BuiltinType::Unk,
+
+                    index: field_i,
+
                     offset: 0,
                     addr: ptr::null_mut(),
                 });
@@ -303,6 +338,9 @@ impl<'c> Loader<'c> {
             memberref: vec![],
             modrefs: vec![],
             typerefs: vec![],
+
+            ir_file: file,
+            str_heap,
         }));
         let this_mod_ptr = NonNull::new(this_mod.as_mut() as *mut Module).unwrap();
         for method in this_mod.expect_il_mut().methods.iter_mut() {
@@ -313,8 +351,15 @@ impl<'c> Loader<'c> {
             panic!("Duplicated module name");
         }
 
+        let str_heap = &unsafe { this_mod_ptr.as_ref() }.expect_il().str_heap;
         // 2. Recursive load dependencies
-        for (ext_mod, mask) in file.modref_tbl.iter().zip(ext_mods_mask.into_iter()) {
+        for (ext_mod, mask) in unsafe { this_mod_ptr.as_ref() }
+            .expect_il()
+            .ir_file
+            .modref_tbl
+            .iter()
+            .zip(ext_mods_mask.into_iter())
+        {
             let ext_mod_fullname_addr = str_heap[ext_mod.name as usize];
             if self.mem.mods.contains_key(&ext_mod_fullname_addr) {
                 continue;
@@ -403,22 +448,10 @@ impl<'c> Loader<'c> {
             }
         }
 
-        // 3. Link extenal symbols
-        let this_mod = NonNull::new(
-            self.mem
-                .mods
-                .get_mut(&this_mod_fullname_addr)
-                .unwrap()
-                .as_mut() as *mut Module,
-        )
-        .unwrap();
-
-        linker::link_modref(&file, this_mod, &str_heap, &mut self.mem.mods);
-        linker::link_typeref(&file, this_mod, &str_heap);
-        linker::link_member_ref(&file, this_mod, &str_heap, &self.mem.str_pool);
-        linker::fill_field_info(&file, this_mod);
-        linker::fill_method_info(&file, this_mod);
-        linker::fill_type_info(&file, this_mod);
+        // 3. link
+        linker::link_modref(this_mod_ptr, &self.mem.mods);
+        linker::link_typeref(this_mod_ptr);
+        linker::link_type_info(this_mod_ptr);
 
         this_mod_fullname_addr
     }

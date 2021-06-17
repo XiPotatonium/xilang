@@ -313,10 +313,24 @@ impl Builder {
             RValType::F64 => TypeSig::R8,
             RValType::Never => unreachable!(),
             RValType::String => TypeSig::String,
-            RValType::Type(ty) => {
+            RValType::Class(ty) => {
                 let ty_ref = unsafe { ty.as_ref() };
                 let (class_idx, class_tag) = self.add_const_class(ty_ref.modname(), &ty_ref.name);
                 TypeSig::Class(to_tok(class_idx, class_tag.to_tok_tag()))
+            }
+            RValType::Value(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                let (class_idx, class_tag) = self.add_const_class(ty_ref.modname(), &ty_ref.name);
+                TypeSig::ValueType(to_tok(class_idx, class_tag.to_tok_tag()))
+            }
+            RValType::GenericInst(is_class, ty, args) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                let (class_idx, class_tag) = self.add_const_class(ty_ref.modname(), &ty_ref.name);
+                TypeSig::GenericInst(
+                    *is_class,
+                    to_tok(class_idx, class_tag.to_tok_tag()),
+                    args.iter().map(|arg| self.to_sig_ty(arg)).collect(),
+                )
             }
             RValType::ByRef(_) => unimplemented!(),
             RValType::Array(ele_ty) => TypeSig::SZArray(Box::new(self.to_sig_ty(ele_ty))),

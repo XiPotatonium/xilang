@@ -50,8 +50,8 @@ fn to_rval(sig: &TypeSig, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> RV
         TypeSig::U => unimplemented!(),
         TypeSig::SZArray(_) => unimplemented!(),
         TypeSig::String => RValType::String,
+        TypeSig::ValueType(tok) => todo!(),
         TypeSig::Class(tok) => {
-            // tok is TypeRef or TypeDef
             let (tag, idx) = get_tok_tag(*tok);
             let idx = idx as usize - 1;
             match tag {
@@ -62,7 +62,7 @@ fn to_rval(sig: &TypeSig, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> RV
                         .classes
                         .get(f.get_str(f.typedef_tbl[idx].name))
                         .unwrap();
-                    RValType::Type(NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap())
+                    RValType::Class(NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap())
                 }
                 TokTag::TypeRef => {
                     let (parent_tag, parent_idx) = f.typeref_tbl[idx].get_parent();
@@ -75,16 +75,18 @@ fn to_rval(sig: &TypeSig, f: &IrFile, mods: &HashMap<String, Box<Module>>) -> RV
                                 .classes
                                 .get(f.get_str(f.typeref_tbl[idx].name))
                                 .unwrap();
-                            RValType::Type(
+                            RValType::Class(
                                 NonNull::new(ty.as_ref() as *const Type as *mut Type).unwrap(),
                             )
                         }
                         ResolutionScope::TypeRef => unreachable!(),
                     }
                 }
+                TokTag::TypeSpec => unimplemented!(),
                 _ => unreachable!(),
             }
         }
+        TypeSig::GenericInst(is_ref, tok, args) => todo!(),
     }
 }
 

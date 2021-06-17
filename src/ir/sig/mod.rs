@@ -27,7 +27,9 @@ enum EleType {
     R8,
     String,
     ByRef,
+    ValueType,
     Class,
+    GenericInst,
     SZArray,
     I,
     U,
@@ -52,7 +54,9 @@ impl TryFrom<u8> for EleType {
             ELEMENT_TYPE_R8 => Self::R8,
             ELEMENT_TYPE_STRING => Self::String,
             ELEMENT_TYPE_BYREF => Self::ByRef,
+            ELEMENT_TYPE_VALUETYPE => Self::ValueType,
             ELEMENT_TYPE_CLASS => Self::Class,
+            ELEMENT_TYPE_GENERICINST => Self::GenericInst,
             ELEMENT_TYPE_SZARRAY => Self::SZArray,
             ELEMENT_TYPE_I => Self::I,
             ELEMENT_TYPE_U => Self::U,
@@ -75,11 +79,15 @@ const ELEMENT_TYPE_R4: u8 = 0x0C;
 const ELEMENT_TYPE_R8: u8 = 0x0D;
 const ELEMENT_TYPE_STRING: u8 = 0x0E;
 const ELEMENT_TYPE_BYREF: u8 = 0x10;
+const ELEMENT_TYPE_VALUETYPE: u8 = 0x11;
 const ELEMENT_TYPE_CLASS: u8 = 0x12;
+const ELEMENT_TYPE_GENERICINST: u8 = 0x15;
 const ELEMENT_TYPE_I: u8 = 0x18;
 const ELEMENT_TYPE_U: u8 = 0x19;
 const ELEMENT_TYPE_OBJECT: u8 = 0x1C;
 const ELEMENT_TYPE_SZARRAY: u8 = 0x1D;
+
+impl_vec_serde!(TypeSig);
 
 /// II.23.2.12
 pub enum TypeSig {
@@ -98,7 +106,15 @@ pub enum TypeSig {
     /// No CustomMod for now
     SZArray(Box<TypeSig>),
     /// typedef or typeref or typespec
+    ValueType(u32),
+    /// typedef or typeref or typespec
     Class(u32),
+    /// Generic Instantiation
+    ///
+    /// .0: true for class, false for value type;
+    /// .1: typedef or typeref or typespec
+    /// .2: GenArgs
+    GenericInst(bool, u32, Vec<TypeSig>),
     String,
 }
 
@@ -120,6 +136,7 @@ pub struct ArrayShapeSig {
 /// II.23.2.14
 pub enum TypeSpecSig {
     SZArray(TypeSig),
+    GenericInst(bool, u32, Vec<TypeSig>),
 }
 
 pub enum InnerLocalVarType {
@@ -154,7 +171,25 @@ impl IrFmt for TypeSig {
             TypeSig::R8 => write!(f, "r8"),
             TypeSig::I => write!(f, "i"),
             TypeSig::U => write!(f, "u"),
+            TypeSig::ValueType(ty) => {
+                write!(f, "valuetype ")?;
+                fmt_tok(*ty, f, ctx)
+            }
             TypeSig::Class(t) => fmt_tok(*t, f, ctx),
+            TypeSig::GenericInst(is_ref, t, args) => {
+                if !*is_ref {
+                    write!(f, "valuetype ")?;
+                }
+                fmt_tok(*t, f, ctx)?;
+                write!(f, "<")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    arg.fmt(f, ctx)?;
+                }
+                write!(f, ">")
+            }
             TypeSig::SZArray(ty) => {
                 ty.fmt(f, ctx)?;
                 write!(f, "[]")
@@ -179,9 +214,24 @@ impl ISerializable for TypeSig {
             TypeSig::R8 => ELEMENT_TYPE_R8.serialize(buf),
             TypeSig::I => ELEMENT_TYPE_I.serialize(buf),
             TypeSig::U => ELEMENT_TYPE_U.serialize(buf),
+            TypeSig::ValueType(ty) => {
+                ELEMENT_TYPE_VALUETYPE.serialize(buf);
+                ty.serialize(buf);
+            }
             TypeSig::Class(t) => {
                 ELEMENT_TYPE_CLASS.serialize(buf);
                 t.serialize(buf);
+            }
+            TypeSig::GenericInst(is_class, ty, args) => {
+                ELEMENT_TYPE_GENERICINST.serialize(buf);
+                if *is_class {
+                    ELEMENT_TYPE_CLASS
+                } else {
+                    ELEMENT_TYPE_VALUETYPE
+                }
+                .serialize(buf);
+                ty.serialize(buf);
+                args.serialize(buf);
             }
             TypeSig::SZArray(ty) => {
                 ELEMENT_TYPE_SZARRAY.serialize(buf);
@@ -206,7 +256,19 @@ impl ISerializable for TypeSig {
             ELEMENT_TYPE_R8 => TypeSig::R8,
             ELEMENT_TYPE_I => TypeSig::I,
             ELEMENT_TYPE_U => TypeSig::U,
+            ELEMENT_TYPE_VALUETYPE => TypeSig::ValueType(u32::deserialize(buf)),
             ELEMENT_TYPE_CLASS => TypeSig::Class(u32::deserialize(buf)),
+            ELEMENT_TYPE_GENERICINST => {
+                let class_or_val = u8::deserialize(buf);
+                let is_class = match class_or_val {
+                    ELEMENT_TYPE_CLASS => true,
+                    ELEMENT_TYPE_VALUETYPE => false,
+                    _ => panic!("Invalid GenericInst sig"),
+                };
+                let ty = u32::deserialize(buf);
+                let args = Vec::deserialize(buf);
+                TypeSig::GenericInst(is_class, ty, args)
+            }
             ELEMENT_TYPE_SZARRAY => TypeSig::SZArray(Box::new(TypeSig::deserialize(buf))),
             ELEMENT_TYPE_STRING => TypeSig::String,
             _ => panic!("Cannot recognize TypeSig with code {:0X}", code),
@@ -316,6 +378,21 @@ impl IrFmt for IrSig {
                     ty.fmt(f, ctx)?;
                     write!(f, "[]")
                 }
+                TypeSpecSig::GenericInst(is_class, tok, args) => {
+                    // same as TypeSig::GenericInst
+                    if !*is_class {
+                        write!(f, "valuetype ")?;
+                    }
+                    fmt_tok(*tok, f, ctx)?;
+                    write!(f, "<")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i != 0 {
+                            write!(f, ", ")?;
+                        }
+                        arg.fmt(f, ctx)?;
+                    }
+                    write!(f, ">")
+                }
             },
         }
     }
@@ -346,6 +423,17 @@ impl ISerializable for IrSig {
                     ELEMENT_TYPE_SZARRAY.serialize(buf);
                     ty.serialize(buf);
                 }
+                TypeSpecSig::GenericInst(is_class, tok, args) => {
+                    ELEMENT_TYPE_GENERICINST.serialize(buf);
+                    if *is_class {
+                        ELEMENT_TYPE_CLASS
+                    } else {
+                        ELEMENT_TYPE_VALUETYPE
+                    }
+                    .serialize(buf);
+                    tok.serialize(buf);
+                    args.serialize(buf);
+                }
             },
         }
     }
@@ -363,7 +451,17 @@ impl ISerializable for IrSig {
                                 buf,
                             )));
                         }
-                        _ => {}
+                        EleType::GenericInst => {
+                            let is_class = match EleType::try_from(u8::deserialize(buf)).unwrap() {
+                                EleType::ValueType => false,
+                                EleType::Class => true,
+                                _ => unreachable!(),
+                            };
+                            let tok = u32::deserialize(buf);
+                            let args = Vec::deserialize(buf);
+                            return IrSig::TypeSpec(TypeSpecSig::GenericInst(is_class, tok, args));
+                        }
+                        _ => unimplemented!(),
                     }
                 }
                 // TODO: check flag validity

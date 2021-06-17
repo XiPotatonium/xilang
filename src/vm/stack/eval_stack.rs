@@ -86,30 +86,22 @@ impl Slot {
             BuiltinType::UNative | BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::Class(ty) => {
-                let ty_ref = unsafe { ty.as_ref() };
-                if ty_ref.ee_class.is_value {
-                    Slot {
-                        tag: SlotTag::Value,
-                        data: SlotData {
-                            ptr_: ty.as_ptr() as *mut u8,
-                        },
-                    }
-                } else {
-                    Slot {
-                        tag: SlotTag::Ref,
-                        data: SlotData {
-                            ptr_: ptr::null_mut(),
-                        },
-                    }
-                }
-            }
-            BuiltinType::String | BuiltinType::ByRef(_) | BuiltinType::SZArray(_) => Slot {
+            BuiltinType::Value(ty) => Slot {
+                tag: SlotTag::Value,
+                data: SlotData {
+                    ptr_: ty.as_ptr() as *mut u8,
+                },
+            },
+            BuiltinType::Class(_)
+            | BuiltinType::String
+            | BuiltinType::ByRef(_)
+            | BuiltinType::SZArray(_) => Slot {
                 tag: SlotTag::Ref,
                 data: SlotData {
                     ptr_: ptr::null_mut(),
                 },
             },
+            BuiltinType::GenericInst(_, _, _) => todo!(),
         }
     }
 

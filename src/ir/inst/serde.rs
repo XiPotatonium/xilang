@@ -135,10 +135,6 @@ impl ISerializable for Inst {
                 0x6Fu8.serialize(buf);
                 idx.serialize(buf);
             }
-            Inst::CpObj(tok) => {
-                0x70u8.serialize(buf);
-                tok.serialize(buf);
-            }
             Inst::LdStr(tok) => {
                 0x72u8.serialize(buf);
                 tok.serialize(buf);
@@ -269,7 +265,6 @@ impl ISerializable for Inst {
             0x65 => Inst::Neg,
 
             0x6F => Inst::CallVirt(u32::deserialize(buf)),
-            0x70 => Inst::CpObj(u32::deserialize(buf)),
             0x72 => Inst::LdStr(u32::deserialize(buf)),
             0x73 => Inst::NewObj(u32::deserialize(buf)),
             0x7B => Inst::LdFld(u32::deserialize(buf)),

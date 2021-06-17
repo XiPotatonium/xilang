@@ -3,18 +3,19 @@ extern crate pest_derive;
 
 mod ir;
 
-pub use self::ir::attrib;
-pub use self::ir::sig;
-pub use self::ir::tok;
-pub use self::ir::util;
+pub use ir::attrib;
+pub use ir::sig;
+pub use ir::tok;
+pub use ir::util;
 
-pub use self::ir::code;
-pub use self::ir::file;
-pub use self::ir::inst;
-pub use self::ir::member;
-pub use self::ir::module;
-pub use self::ir::stand_alone_sig;
-pub use self::ir::ty;
+pub use ir::code;
+pub use ir::file;
+pub use ir::generic;
+pub use ir::inst;
+pub use ir::member;
+pub use ir::module;
+pub use ir::stand_alone_sig;
+pub use ir::ty;
 
 pub use ir::inst::Inst;
 pub use ir::member::{Field, ImplMap, MemberRef, MethodDef};

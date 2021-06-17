@@ -1,14 +1,12 @@
 use super::super::super::super::XicCfg;
-use super::super::super::ast::{ASTClass, ASTMethodAttribFlag, AST};
+use super::super::super::ast::AST;
 use super::super::super::gen::{
     gen, gen_base_ctor, CodeGenCtx, MethodBuilder, RValType, ValExpectation, ValType,
 };
 use super::super::{Crate, Locals, Method, Type};
 use super::ModuleBuildCtx;
 
-use xir::attrib::{
-    FieldAttribFlag, MethodAttribFlag, MethodImplAttribCodeTypeFlag, TypeAttribFlag,
-};
+use xir::attrib::MethodImplAttribCodeTypeFlag;
 use xir::{Inst, CCTOR_NAME, CTOR_NAME};
 
 use std::cell::RefCell;
@@ -90,121 +88,10 @@ impl ModuleBuildCtx {
         ctx.done(optim_level);
     }
 
-    /// class extends is set in code gen pass because TypeDef in IrFile may not be set in member pass
-    pub fn set_class_extends(&self, mod_mgr: &Crate, class: &ASTClass) {
-        let mut builder = self.builder.borrow_mut();
-        let mut class_mut = self
-            .get_module_mut()
-            .classes
-            .get_mut(&class.name)
-            .unwrap()
-            .as_mut();
-        for p in class.extends_or_impls.iter() {
-            // find base class
-            let base = self.resolve_user_define_type(p, mod_mgr, None);
-            let base_ref = unsafe { base.as_ref() };
-
-            if base_ref.attrib.is(TypeAttribFlag::Sealed) {
-                panic!(
-                    "Class {} cannot inherit sealed class {}",
-                    class_mut, base_ref
-                );
-            }
-
-            let (extends_idx, extends_idx_tag) =
-                builder.add_const_class(base_ref.modname(), &base_ref.name);
-            if !class_mut.extends.is_null() {
-                panic!("Multiple inheritance for class {}", class.name);
-            }
-            class_mut.extends = base.as_ptr() as *const Type;
-            builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
-        }
-
-        if class_mut.extends.is_null() {
-            // no explicitly designated base class
-            // implicitly derived from std::Object
-            let class_fullname = format!("{}", class_mut);
-            if class_fullname != "std::Object" {
-                class_mut.extends = mod_mgr
-                    .mod_tbl
-                    .get("std")
-                    .unwrap()
-                    .classes
-                    .get("Object")
-                    .unwrap()
-                    .as_ref() as *const Type;
-                let (extends_idx, extends_idx_tag) = builder.add_const_class("std", "Object");
-                builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
-            }
-        } else {
-            // has base class, check extends
-            for (field_name, _) in class_mut
-                .fields
-                .iter()
-                .filter(|(_, f)| !f.attrib.is(FieldAttribFlag::Static))
-            {
-                let mut base = class_mut.extends;
-                while let Some(base_ref) = unsafe { base.as_ref() } {
-                    if base_ref.fields.contains_key(field_name) {
-                        println!("Warning: {} has an instance field {} that override field of base type {}", class_mut, field_name, base_ref);
-                        break;
-                    }
-
-                    base = base_ref.extends;
-                }
-            }
-
-            for (method_name, method_grp) in class_mut
-                .methods
-                .iter()
-                .filter(|(name, _)| *name != CCTOR_NAME && *name != CTOR_NAME)
-            {
-                for method in method_grp
-                    .iter()
-                    .filter(|m| !m.attrib.is(MethodAttribFlag::Static))
-                {
-                    let method_ast = method.ast.unwrap();
-                    let method_ast = if let AST::Method(method_ast) = unsafe { method_ast.as_ref() }
-                    {
-                        method_ast
-                    } else {
-                        unreachable!()
-                    };
-                    let mut has_override = false;
-                    let mut base = class_mut.extends;
-                    while let Some(base_ref) = unsafe { base.as_ref() } {
-                        if let Some(base_method_grp) = base_ref.methods.get(method_name) {
-                            for base_method in base_method_grp.iter() {
-                                if method.sig_match(base_method) {
-                                    has_override = true;
-                                    if !method_ast.ast_attrib.is(ASTMethodAttribFlag::Override) {
-                                        println!("Warning: {} has a instance method {} that override method of base type {}", class_mut, method_name, base_ref);
-                                    }
-                                    break;
-                                }
-                            }
-                            if has_override {
-                                break;
-                            }
-                        }
-
-                        base = base_ref.extends;
-                    }
-
-                    if method_ast.ast_attrib.is(ASTMethodAttribFlag::Override) && !has_override {
-                        panic!("Method {}.{} is marked override but no suitable method found to override", class_mut, method);
-                    }
-                }
-            }
-        }
-    }
-
     pub fn code_gen(&self, mod_mgr: &Crate, cfg: &XicCfg) {
         for class in self.class_asts.iter() {
             match class.as_ref() {
                 AST::Class(class) => {
-                    self.set_class_extends(mod_mgr, class);
-
                     let class_ref = self.get_module().classes.get(&class.name).unwrap().as_ref();
                     // gen static init
                     match class.cctor.as_ref() {
@@ -241,27 +128,6 @@ impl ModuleBuildCtx {
                     }
                 }
                 AST::Struct(class) => {
-                    {
-                        let class_mut = self
-                            .get_module_mut()
-                            .classes
-                            .get_mut(&class.name)
-                            .unwrap()
-                            .as_mut();
-                        class_mut.extends = mod_mgr
-                            .mod_tbl
-                            .get("std")
-                            .unwrap()
-                            .classes
-                            .get("ValueType")
-                            .unwrap()
-                            .as_ref() as *const Type;
-                        let mut builder = self.builder.borrow_mut();
-                        let (extends_idx, extends_idx_tag) =
-                            builder.add_const_class("std", "ValueType");
-                        builder.set_class_extends(class_mut.idx, extends_idx, extends_idx_tag);
-                    }
-
                     // Same as class
                     let class_ref = self.get_module().classes.get(&class.name).unwrap().as_ref();
                     // gen static init

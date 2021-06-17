@@ -48,9 +48,9 @@ fn gen_instance_obj_acc(
                 let loada = match expectation {
                     ValExpectation::RVal => false,
                     ValExpectation::Instance => {
-                        if let RValType::Type(_ty) = field_ty {
+                        if let RValType::Value(_ty) = field_ty {
                             // load addr if field is a value type
-                            unsafe { _ty.as_ref() }.is_value_type()
+                            true
                         } else {
                             false
                         }
@@ -96,27 +96,34 @@ pub fn gen_instance_acc(
 ) -> ValType {
     let lhs_ty = gen(ctx, lhs, ValExpectation::Instance).expect_rval();
     match &lhs_ty {
-        RValType::String | RValType::Type(_) => {
-            let ty = if let RValType::Type(ty) = &lhs_ty {
-                ty.clone()
-            } else {
-                NonNull::new(
-                    ctx.mgr
-                        .mod_tbl
-                        .get("std")
-                        .unwrap()
-                        .classes
-                        .get("String")
-                        .unwrap()
-                        .as_ref() as *const Type as *mut Type,
-                )
-                .unwrap()
+        RValType::String
+        | RValType::Class(_)
+        | RValType::Value(_)
+        | RValType::GenericInst(_, _, _) => {
+            let (ty, is_value) = match &lhs_ty {
+                RValType::String => (
+                    NonNull::new(
+                        ctx.mgr
+                            .mod_tbl
+                            .get("std")
+                            .unwrap()
+                            .classes
+                            .get("String")
+                            .unwrap()
+                            .as_ref() as *const Type as *mut Type,
+                    )
+                    .unwrap(),
+                    false,
+                ),
+                RValType::Value(ty) => (ty.clone(), true),
+                RValType::Class(ty) => (ty.clone(), false),
+                RValType::GenericInst(_, _, _) => todo!(),
+                _ => unreachable!(),
             };
 
-            let type_ref = unsafe { ty.as_ref() };
             match expectation {
                 ValExpectation::None | ValExpectation::Callable => {
-                    if type_ref.is_value_type() {
+                    if is_value {
                         // a value on top of the eval stack, this might be caused by method return
                         // compiler should create a new local var, save value to this local var and then ldloca
                         let loc_idx = ctx.locals.borrow_mut().add_tmp(
@@ -131,7 +138,7 @@ pub fn gen_instance_acc(
                 }
                 _ => {}
             }
-            gen_instance_obj_acc(ctx, type_ref, rhs, expectation)
+            gen_instance_obj_acc(ctx, unsafe { ty.as_ref() }, rhs, expectation)
         }
         RValType::Array(_) => {
             if rhs.id == "len" {
@@ -158,13 +165,9 @@ pub fn gen_instance_acc(
             }
         }
         RValType::ByRef(ty) => match ty.as_ref() {
-            RValType::Type(_ty) => {
+            RValType::Value(_ty) => {
                 let _ty_ref = unsafe { _ty.as_ref() };
-                if _ty_ref.is_value_type() {
-                    gen_instance_obj_acc(ctx, _ty_ref, rhs, expectation)
-                } else {
-                    unreachable!();
-                }
+                gen_instance_obj_acc(ctx, _ty_ref, rhs, expectation)
             }
             _ => unimplemented!(),
         },
@@ -241,9 +244,9 @@ pub fn gen_static_acc(
                         let loada = match expectation {
                             ValExpectation::RVal => false,
                             ValExpectation::Instance => {
-                                if let RValType::Type(_ty) = field_ty {
+                                if let RValType::Value(_) = field_ty {
                                     // load addr if field is a value type
-                                    unsafe { _ty.as_ref() }.is_value_type()
+                                    true
                                 } else {
                                     false
                                 }
@@ -335,9 +338,9 @@ pub fn gen_arr_acc(ctx: &CodeGenCtx, lhs: &AST, rhs: &AST, expectation: ValExpec
                     ValType::RVal(ele_ty.as_ref().clone())
                 }
                 ValExpectation::Instance => {
-                    let loada = if let RValType::Type(_ty) = ele_ty.as_ref() {
-                        // load addr if field is a value type
-                        unsafe { _ty.as_ref() }.is_value_type()
+                    let loada = if let RValType::Value(_) = ele_ty.as_ref() {
+                        // load addr if element is a value type
+                        true
                     } else {
                         false
                     };

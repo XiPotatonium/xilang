@@ -1,4 +1,5 @@
 use super::code::CorILMethod;
+use super::generic::{GenericParam, GenericParamConstraint};
 use super::member::{Field, ImplMap, MemberRef, MethodDef};
 use super::module::{Mod, ModRef};
 use super::param::Param;
@@ -31,6 +32,9 @@ pub struct IrFile {
     pub implmap_tbl: Vec<ImplMap>,
 
     pub param_tbl: Vec<Param>,
+    pub generic_param_tbl: Vec<GenericParam>,
+    pub generic_param_constraint_tbl: Vec<GenericParamConstraint>,
+
     pub stand_alone_sig_tbl: Vec<IrStandAloneSig>,
 
     /// index starts from 0
@@ -61,7 +65,11 @@ impl IrFile {
             memberref_tbl: vec![],
 
             implmap_tbl: vec![],
+
             param_tbl: vec![],
+            generic_param_tbl: vec![],
+            generic_param_constraint_tbl: vec![],
+
             stand_alone_sig_tbl: vec![],
 
             str_heap: vec![],

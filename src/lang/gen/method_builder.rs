@@ -191,18 +191,17 @@ impl MethodBuilder {
     pub fn add_stelem(&mut self, ele_ty: &RValType, builder: &RefCell<Builder>) -> &mut Self {
         match ele_ty {
             RValType::I32 => self.add_inst(Inst::StElemI4),
-            RValType::String | RValType::Array(_) => self.add_inst(Inst::StElemRef),
-            RValType::Type(ty) => {
-                let ty_ref = unsafe { ty.as_ref() };
-                if ty_ref.is_value_type() {
-                    let (idx, tag) = builder
-                        .borrow_mut()
-                        .add_const_class(ty_ref.modname(), &ty_ref.name);
-                    self.add_inst(Inst::StElem(to_tok(idx, tag.to_tok_tag())))
-                } else {
-                    self.add_inst(Inst::StElemRef)
-                }
+            RValType::String | RValType::Array(_) | RValType::Class(_) => {
+                self.add_inst(Inst::StElemRef)
             }
+            RValType::Value(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                let (idx, tag) = builder
+                    .borrow_mut()
+                    .add_const_class(ty_ref.modname(), &ty_ref.name);
+                self.add_inst(Inst::StElem(to_tok(idx, tag.to_tok_tag())))
+            }
+            RValType::GenericInst(_, _, _) => todo!(),
             _ => unimplemented!(),
         }
     }
@@ -210,18 +209,17 @@ impl MethodBuilder {
     pub fn add_ldelem(&mut self, ele_ty: &RValType, builder: &RefCell<Builder>) -> &mut Self {
         match ele_ty {
             RValType::I32 => self.add_inst(Inst::LdElemI4),
-            RValType::String | RValType::Array(_) => self.add_inst(Inst::LdElemRef),
-            RValType::Type(ty) => {
-                let ty_ref = unsafe { ty.as_ref() };
-                if ty_ref.is_value_type() {
-                    let (idx, tag) = builder
-                        .borrow_mut()
-                        .add_const_class(ty_ref.modname(), &ty_ref.name);
-                    self.add_inst(Inst::LdElem(to_tok(idx, tag.to_tok_tag())))
-                } else {
-                    self.add_inst(Inst::LdElemRef)
-                }
+            RValType::String | RValType::Array(_) | RValType::Class(_) => {
+                self.add_inst(Inst::LdElemRef)
             }
+            RValType::Value(ty) => {
+                let ty_ref = unsafe { ty.as_ref() };
+                let (idx, tag) = builder
+                    .borrow_mut()
+                    .add_const_class(ty_ref.modname(), &ty_ref.name);
+                self.add_inst(Inst::LdElem(to_tok(idx, tag.to_tok_tag())))
+            }
+            RValType::GenericInst(_, _, _) => todo!(),
             _ => unimplemented!(),
         }
     }
@@ -232,20 +230,16 @@ impl MethodBuilder {
                 let (idx, tag) = builder.borrow_mut().add_const_class("std", "Int32");
                 self.add_inst(Inst::LdElem(to_tok(idx, tag.to_tok_tag())))
             }
-            RValType::String | RValType::Array(_) => {
+            RValType::String | RValType::Array(_) | RValType::Class(_) => {
                 // ref types don't need ldelema
                 unreachable!();
             }
-            RValType::Type(ty) => {
+            RValType::Value(ty) => {
                 let ty_ref = unsafe { ty.as_ref() };
-                if ty_ref.is_value_type() {
-                    let (idx, tag) = builder
-                        .borrow_mut()
-                        .add_const_class(ty_ref.modname(), &ty_ref.name);
-                    self.add_inst(Inst::LdElemA(to_tok(idx, tag.to_tok_tag())))
-                } else {
-                    unreachable!()
-                }
+                let (idx, tag) = builder
+                    .borrow_mut()
+                    .add_const_class(ty_ref.modname(), &ty_ref.name);
+                self.add_inst(Inst::LdElemA(to_tok(idx, tag.to_tok_tag())))
             }
             _ => unimplemented!(),
         }

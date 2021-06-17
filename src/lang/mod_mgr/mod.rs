@@ -53,12 +53,17 @@ impl Crate {
     }
 
     pub fn build(&mut self, cfg: &XicCfg) {
-        // 1. member pass
+        // 1. class pass
         for ctx in self.mod_build_ctx.iter() {
-            ctx.member_pass(self);
+            ctx.class_pass(self);
         }
 
-        // 2. code gen
+        // 2. check extends
+        for ctx in self.mod_build_ctx.iter() {
+            ctx.set_extends2();
+        }
+
+        // 3. code gen
         for ctx in self.mod_build_ctx.iter() {
             ctx.code_gen(self, cfg);
         }

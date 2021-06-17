@@ -18,7 +18,7 @@ pub use self::method::{
     MethodNativeImpl, MethodRuntimeImpl, Param,
 };
 pub use self::module::{ILModule, MemberRef, Module};
-pub use self::ty::Type;
+pub use self::ty::{Type, TypeInitState};
 
 pub const REF_SIZE: usize = size_of::<*mut u8>();
 pub const BOOL_SIZE: usize = size_of::<i8>();
@@ -57,11 +57,27 @@ pub enum BuiltinType {
     R8,
     String,
     ByRef(Box<BuiltinType>),
-    /// ele_ty, rank, dim_sizes
     SZArray(Box<BuiltinType>),
+    Value(NonNull<Type>),
     Class(NonNull<Type>),
+    /// is_class, type, args
+    GenericInst(bool, NonNull<Type>, Vec<BuiltinType>),
     /// to be filled
     Unk,
+}
+
+/// tok: TypeDefOrRefOrSpec
+fn query_type_from_mod(tok: u32, ctx: &ILModule) -> NonNull<Type> {
+    let (tag, idx) = get_tok_tag(tok);
+    let idx = idx as usize - 1;
+    match tag {
+        TokTag::TypeDef => {
+            NonNull::new(ctx.types[idx].as_ref() as *const Type as *mut Type).unwrap()
+        }
+        TokTag::TypeRef => ctx.typerefs[idx],
+        TokTag::TypeSpec => unimplemented!(),
+        _ => unreachable!(),
+    }
 }
 
 impl BuiltinType {
@@ -111,21 +127,22 @@ impl BuiltinType {
                 BuiltinType::SZArray(Box::new(Self::from_type_sig(ele_ty, ctx)))
             }
             TypeSig::String => BuiltinType::String,
-            TypeSig::Class(tok) => {
-                // tok is TypeRef or TypeDef
-                let (tag, idx) = get_tok_tag(*tok);
-                let idx = idx as usize - 1;
-                BuiltinType::Class(match tag {
-                    TokTag::TypeDef => {
-                        NonNull::new(ctx.types[idx].as_ref() as *const Type as *mut Type).unwrap()
-                    }
-                    TokTag::TypeRef => ctx.typerefs[idx],
-                    _ => unreachable!(),
-                })
+            TypeSig::ValueType(tok) => BuiltinType::Value(query_type_from_mod(*tok, ctx)),
+            TypeSig::Class(tok) => BuiltinType::Class(query_type_from_mod(*tok, ctx)),
+            TypeSig::GenericInst(is_class, tok, args) => {
+                let ty = query_type_from_mod(*tok, ctx);
+                BuiltinType::GenericInst(
+                    *is_class,
+                    ty,
+                    args.iter()
+                        .map(|arg| Self::from_type_sig(arg, ctx))
+                        .collect(),
+                )
             }
         }
     }
 
+    /// must be called after ty info has been initialized
     pub fn byte_size(&self) -> usize {
         match self {
             BuiltinType::Void => panic!("Void type has no byte size"),
@@ -145,6 +162,14 @@ impl BuiltinType {
             | BuiltinType::ByRef(_)
             | BuiltinType::SZArray(_)
             | BuiltinType::Class(_) => REF_SIZE,
+            BuiltinType::Value(ty) => unsafe { ty.as_ref() }.basic_instance_size,
+            BuiltinType::GenericInst(is_class, ty, _) => {
+                if *is_class {
+                    REF_SIZE
+                } else {
+                    unsafe { ty.as_ref() }.basic_instance_size
+                }
+            }
             BuiltinType::Unk => unreachable!(),
         }
     }
@@ -165,12 +190,16 @@ pub fn builtin_ty_str_desc(ty: &BuiltinType, str_pool: &Vec<String>) -> String {
         BuiltinType::INative => String::from("n"),
         BuiltinType::R4 => String::from("F"),
         BuiltinType::R8 => String::from("D"),
-        BuiltinType::String => String::from("Ostd/String"),
+        BuiltinType::String => String::from("Ostd/String;"),
         BuiltinType::ByRef(inner) => format!("&{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::SZArray(inner) => format!("[{}", builtin_ty_str_desc(inner, str_pool)),
         BuiltinType::Class(ty) => {
             format!("O{};", unsafe { ty.as_ref().fullname(str_pool) })
         }
+        BuiltinType::Value(ty) => {
+            format!("o{};", unsafe { ty.as_ref().fullname(str_pool) })
+        }
+        BuiltinType::GenericInst(_, _, _) => todo!(),
         BuiltinType::Unk => unreachable!(),
     }
 }
@@ -190,20 +219,20 @@ fn type_sig_str_desc(ty: &TypeSig, ctx: &IrFile) -> String {
         TypeSig::I => String::from("n"),
         TypeSig::U => String::from("N"),
         TypeSig::SZArray(_) => unimplemented!(),
-        TypeSig::String => String::from("Ostd/String"),
+        TypeSig::String => String::from("Ostd/String;"),
         TypeSig::Class(tok) => {
             let (tag, idx) = get_tok_tag(*tok);
             let idx = idx as usize - 1;
             match tag {
                 TokTag::TypeDef => format!(
-                    "{}::{}",
+                    "O{}/{};",
                     ctx.mod_name(),
                     ctx.get_str(ctx.typedef_tbl[idx].name)
                 ),
                 TokTag::TypeRef => {
                     let (scope_tag, parent_idx) = ctx.typeref_tbl[idx].get_parent();
                     format!(
-                        "{}::{}",
+                        "O{}/{};",
                         ctx.get_str(match scope_tag {
                             ResolutionScope::Mod => ctx.mod_tbl[parent_idx].name,
                             ResolutionScope::ModRef => ctx.modref_tbl[parent_idx].name,
@@ -212,8 +241,37 @@ fn type_sig_str_desc(ty: &TypeSig, ctx: &IrFile) -> String {
                         ctx.get_str(ctx.typeref_tbl[idx].name)
                     )
                 }
+                TokTag::TypeSpec => unimplemented!(),
                 _ => unreachable!(),
             }
+        }
+        TypeSig::ValueType(tok) => {
+            let (tag, idx) = get_tok_tag(*tok);
+            let idx = idx as usize - 1;
+            match tag {
+                TokTag::TypeDef => format!(
+                    "o{}/{};",
+                    ctx.mod_name(),
+                    ctx.get_str(ctx.typedef_tbl[idx].name)
+                ),
+                TokTag::TypeRef => {
+                    let (scope_tag, parent_idx) = ctx.typeref_tbl[idx].get_parent();
+                    format!(
+                        "o{}/{};",
+                        ctx.get_str(match scope_tag {
+                            ResolutionScope::Mod => ctx.mod_tbl[parent_idx].name,
+                            ResolutionScope::ModRef => ctx.modref_tbl[parent_idx].name,
+                            ResolutionScope::TypeRef => unimplemented!(),
+                        }),
+                        ctx.get_str(ctx.typeref_tbl[idx].name)
+                    )
+                }
+                TokTag::TypeSpec => unimplemented!(),
+                _ => unreachable!(),
+            }
+        }
+        TypeSig::GenericInst(_, _, _) => {
+            todo!()
         }
     }
 }

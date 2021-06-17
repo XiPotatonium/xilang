@@ -112,9 +112,12 @@ pub enum RValType {
     Void,
     Never,
     String,
-    /// module fullname, class name,
-    /// byref if type is reference type, byval if type is value type
-    Type(NonNull<Type>),
+    Value(NonNull<Type>),
+    Class(NonNull<Type>),
+    /// .0: is_class, true for class, false for value;
+    /// .1: type;
+    /// .3: generic args.
+    GenericInst(bool, NonNull<Type>, Vec<RValType>),
     ByRef(Box<RValType>),
     /// elety
     Array(Box<RValType>),
@@ -136,10 +139,11 @@ impl PartialEq for RValType {
             | (Self::F64, Self::F64)
             | (Self::String, Self::String)
             | (Self::Void, Self::Void) => true,
-            (Self::Type(ty), Self::String) | (Self::String, Self::Type(ty)) => unsafe {
+            (Self::Class(ty), Self::String) | (Self::String, Self::Class(ty)) => unsafe {
                 ty.as_ref().modname() == "std" && ty.as_ref().name == "String"
             },
-            (Self::Type(ty1), Self::Type(ty2)) => ty1 == ty2,
+            (Self::Class(ty1), Self::Class(ty2)) => ty1 == ty2,
+            (Self::Value(ty1), Self::Value(ty2)) => ty1 == ty2,
             (Self::ByRef(ty0), Self::ByRef(ty1)) => ty0 == ty1,
             (Self::Array(ele_ty0), Self::Array(ele_ty1)) => ele_ty0 == ele_ty1,
             _ => false,
@@ -158,7 +162,9 @@ impl fmt::Display for RValType {
             Self::Void => write!(f, "V"),
             Self::Never => write!(f, "!"),
             Self::String => write!(f, "Ostd/String;"),
-            Self::Type(ty) => write!(f, "O{};", unsafe { ty.as_ref() }),
+            Self::Class(ty) => write!(f, "O{};", unsafe { ty.as_ref() }),
+            Self::Value(ty) => write!(f, "o{};", unsafe { ty.as_ref() }),
+            RValType::GenericInst(_, _, _) => todo!(),
             Self::ByRef(ty) => write!(f, "&{}", ty),
             Self::Array(ty) => write!(f, "[{}", ty),
         }

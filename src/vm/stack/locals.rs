@@ -31,6 +31,8 @@ unsafe fn load(ty: &BuiltinType, addr: *const u8, stack: &mut EvalStack) {
         | BuiltinType::Class(_)
         | BuiltinType::ByRef(_)
         | BuiltinType::SZArray(_) => stack.push_ptr(*(addr as *const *mut u8)),
+        BuiltinType::Value(_) => unimplemented!(),
+        BuiltinType::GenericInst(_, _, _) => todo!(),
         BuiltinType::Unk => unreachable!(),
     }
 }
@@ -63,6 +65,8 @@ unsafe fn store_slot(ty: &BuiltinType, addr: *mut u8, slot: Slot) {
         | BuiltinType::SZArray(_) => {
             *(addr as *mut *mut u8) = slot.expect_ref();
         }
+        BuiltinType::Value(_) => unimplemented!(),
+        BuiltinType::GenericInst(_, _, _) => todo!(),
     }
 }
 
@@ -101,15 +105,12 @@ impl<'m> ILocals for Locals<'m> {
 
     fn store(&mut self, i: usize, stack: &mut EvalStack) {
         assert!(i < self.map.len());
-        if let BuiltinType::Class(ty) = self.map[i].ty {
-            let ty_ref = unsafe { ty.as_ref() };
-            if ty_ref.ee_class.is_value {
-                stack.pop(Some(TypedAddr {
-                    ty,
-                    addr: &mut self.data[self.map[i].offset] as *mut u8,
-                }));
-                return;
-            }
+        if let BuiltinType::Value(ty) = self.map[i].ty {
+            stack.pop(Some(TypedAddr {
+                ty,
+                addr: &mut self.data[self.map[i].offset] as *mut u8,
+            }));
+            return;
         }
 
         self.store_slot(i, stack.pop(None));
@@ -246,15 +247,12 @@ impl<'m> ILocals for Args<'m> {
         // same as Locals.store()
         let arg_i = self.align_arg(i);
         if let ArgType::MethodArg(i) = arg_i {
-            if let BuiltinType::Class(ty) = self.map[i].ty {
-                let ty_ref = unsafe { ty.as_ref() };
-                if ty_ref.ee_class.is_value {
-                    stack.pop(Some(TypedAddr {
-                        ty,
-                        addr: &mut self.data[self.map[i].offset] as *mut u8,
-                    }));
-                    return;
-                }
+            if let BuiltinType::Value(ty) = self.map[i].ty {
+                stack.pop(Some(TypedAddr {
+                    ty,
+                    addr: &mut self.data[self.map[i].offset] as *mut u8,
+                }));
+                return;
             }
         }
 

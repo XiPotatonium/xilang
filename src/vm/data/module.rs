@@ -1,3 +1,5 @@
+use xir::file::IrFile;
+
 use super::super::native::VMDll;
 use super::super::util::ptr::NonNull;
 use super::{Field, MethodDesc, Type};
@@ -67,6 +69,10 @@ pub struct ILModule {
     pub memberref: Vec<MemberRef>,
 
     pub usr_str_heap: Vec<usize>,
+
+    pub ir_file: IrFile,
+    /// map of ir_file.str_heap
+    pub str_heap: Vec<usize>,
 }
 
 impl ILModule {

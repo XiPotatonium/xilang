@@ -200,12 +200,6 @@ pub enum Inst {
     /// `..., obj, arg1, ..., argN -> ..., retVal`
     CallVirt(u32),
 
-    /// 0x70, cpobj ty
-    ///
-    /// copy value from **src**: managed or unmanaged ptr to **dest**: managed or unmanaged ptr.
-    ///
-    /// `..., dest, src -> ...,`
-    CpObj(u32),
     /// 0x72, ldstr literal
     ///
     /// load **str**: std::String from with **literal**: idx into usr str heap.
@@ -358,7 +352,6 @@ impl Inst {
 
             Inst::CallVirt(_)
             | Inst::NewObj(_)
-            | Inst::CpObj(_)
             | Inst::LdFld(_)
             | Inst::LdFldA(_)
             | Inst::StFld(_)

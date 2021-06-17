@@ -29,8 +29,11 @@ impl Param {
 pub struct MethodDesc {
     /// module where method is declared
     pub ctx: NonNull<Module>,
+    /// index in the ctx.ir_file.method_tbl
+    pub index: usize,
 
     pub parent: *const Type,
+    // slot in parent.vtbl
     pub slot: usize,
 
     pub name: usize,
@@ -47,18 +50,6 @@ pub struct MethodDesc {
 }
 
 impl MethodDesc {
-    pub fn init_ps_ty(&mut self, ps_ty: &Vec<sig::ParamType>, ctx: &ILModule) {
-        assert_eq!(self.ps.len(), ps_ty.len());
-        let mut offset = if self.is_static() { 0 } else { REF_SIZE };
-        for (p, p_ty) in self.ps.iter_mut().zip(ps_ty.iter()) {
-            p.ty = BuiltinType::from_param(p_ty, ctx);
-            p.offset = offset;
-            // no alignment
-            offset += p.ty.byte_size();
-        }
-        self.ps_size = offset;
-    }
-
     pub fn is_static(&self) -> bool {
         self.attrib.is(MethodAttribFlag::Static)
     }
@@ -127,10 +118,10 @@ impl MethodImpl {
 }
 
 pub struct MethodILImpl {
-    pub offset: usize,
+    /// MethodDef.body
+    pub index: usize,
     pub locals: Vec<Local>,
     pub locals_size: usize,
-    pub insts: Vec<u8>,
 }
 
 pub struct MethodNativeImpl {
@@ -147,31 +138,4 @@ pub struct MethodRuntimeImpl {
 pub struct Local {
     pub ty: BuiltinType,
     pub offset: usize,
-}
-
-impl MethodILImpl {
-    pub fn new(insts: Vec<u8>) -> MethodILImpl {
-        MethodILImpl {
-            offset: 0,
-            locals: vec![],
-            locals_size: 0,
-            insts,
-        }
-    }
-
-    pub fn init_locals(&mut self, locals: &Vec<sig::InnerLocalVarType>, ctx: &ILModule) {
-        assert!(self.locals.is_empty());
-        let mut offset: usize = 0;
-        // no alignment
-        for local_ty in locals.iter() {
-            let local_ty = BuiltinType::from_local(local_ty, ctx);
-            let local_size = local_ty.byte_size();
-            self.locals.push(Local {
-                ty: local_ty,
-                offset,
-            });
-            offset += local_size;
-        }
-        self.locals_size = offset;
-    }
 }

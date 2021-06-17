@@ -12,8 +12,7 @@ pub enum ASTType {
     Tuple(Vec<Box<ASTType>>),
     /// type
     Arr(Box<ASTType>),
-    /// class names
-    Class(ItemPathBuf),
+    UsrType(ItemPathBuf),
     /// void or undetermined
     None,
 }
@@ -28,7 +27,7 @@ impl fmt::Display for ASTType {
             ASTType::String => write!(f, "(type)string"),
             ASTType::Tuple(_) => unimplemented!(),
             ASTType::Arr(dtype) => write!(f, "(type){}[]", dtype),
-            ASTType::Class(names) => write!(f, "(type){}", names.as_str()),
+            ASTType::UsrType(names) => write!(f, "(type){}", names.as_str()),
             ASTType::None => write!(f, "(type)none"),
         }
     }

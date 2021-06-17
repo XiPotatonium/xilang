@@ -133,36 +133,38 @@ pub fn gen_call(ctx: &CodeGenCtx, f: &Box<AST>, args: &Vec<Box<AST>>) -> RValTyp
 
 pub fn gen_new(ctx: &CodeGenCtx, ty: &ASTType, args: &Vec<Box<AST>>) -> RValType {
     let ret = ctx.get_ty(ty);
-    match &ret {
-        RValType::Type(ty) => {
-            let args_ty: Vec<RValType> = args
-                .iter()
-                .map(|arg| gen(ctx, arg, ValExpectation::RVal).expect_rval())
-                .collect();
-
-            let type_ref = unsafe { ty.as_ref() };
-
-            let ctors = type_ref.methods.get(CTOR_NAME).unwrap();
-
-            let ctor = pick_method_from_refs(ctors, &args_ty);
-            let ctor = if let Some(ctor) = ctor {
-                ctor
-            } else {
-                panic!("Cannot find ctor");
-            };
-
-            let mut builder = ctx.module.builder.borrow_mut();
-            let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
-            let (ctor_idx, tok_tag) =
-                builder.add_const_member(type_ref.modname(), &type_ref.name, CTOR_NAME, ctor_sig);
-
-            ctx.method_builder
-                .borrow_mut()
-                .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));
-        }
+    let ty = match &ret {
+        RValType::Value(ty) => ty,
+        RValType::Class(ty) => ty,
         RValType::String => unimplemented!("new string is not implemented"),
         _ => panic!("Cannot new {}", ret),
-    }
+    };
+
+    let args_ty: Vec<RValType> = args
+        .iter()
+        .map(|arg| gen(ctx, arg, ValExpectation::RVal).expect_rval())
+        .collect();
+
+    let type_ref = unsafe { ty.as_ref() };
+
+    let ctors = type_ref.methods.get(CTOR_NAME).unwrap();
+
+    let ctor = pick_method_from_refs(ctors, &args_ty);
+    let ctor = if let Some(ctor) = ctor {
+        ctor
+    } else {
+        panic!("Cannot find ctor");
+    };
+
+    let mut builder = ctx.module.builder.borrow_mut();
+    let ctor_sig = builder.add_method_sig(true, &ctor.ps, &RValType::Void);
+    let (ctor_idx, tok_tag) =
+        builder.add_const_member(type_ref.modname(), &type_ref.name, CTOR_NAME, ctor_sig);
+
+    ctx.method_builder
+        .borrow_mut()
+        .add_inst(Inst::NewObj(to_tok(ctor_idx, tok_tag)));
+
     ret
 }
 
@@ -180,7 +182,6 @@ pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
     let ele_ty = ctx.get_ty(ty);
 
     let ty_tok = match &ele_ty {
-        // TODO: convert to their std class/struct type
         RValType::Bool | RValType::U8 | RValType::Char | RValType::F64 => unimplemented!(),
         RValType::I32 => {
             let i32_ty = ctx
@@ -214,7 +215,7 @@ pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
                 .add_const_class(str_ty.modname(), &str_ty.name);
             to_tok(idx, tag.to_tok_tag())
         }
-        RValType::Type(ty) => {
+        RValType::Value(ty) | RValType::Class(ty) => {
             let ty_ref = unsafe { ty.as_ref() };
             let (idx, tag) = ctx
                 .module

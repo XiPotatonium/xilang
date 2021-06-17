@@ -23,32 +23,25 @@ fn do_load(addr: *const u8, ty: &BuiltinType, stack: &mut EvalStack) {
             BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::Class(ty) => {
-                let ty_ref = ty.as_ref();
-                if ty_ref.ee_class.is_value {
-                    unimplemented!();
-                } else {
-                    stack.push_ptr(*(addr as *const *mut u8))
-                }
-            }
-            BuiltinType::String | BuiltinType::ByRef(_) | BuiltinType::SZArray(_) => {
-                stack.push_ptr(*(addr as *const *mut u8))
-            }
+            BuiltinType::Value(_) => todo!(),
+            BuiltinType::GenericInst(_, _, _) => todo!(),
+            BuiltinType::Class(_)
+            | BuiltinType::String
+            | BuiltinType::ByRef(_)
+            | BuiltinType::SZArray(_) => stack.push_ptr(*(addr as *const *mut u8)),
         }
     }
 }
 
 fn do_store(addr: *mut u8, ty: &BuiltinType, stack: &mut EvalStack) {
-    if let BuiltinType::Class(_ty) = ty {
+    if let BuiltinType::Value(_ty) = ty {
         let _ty_ref = unsafe { _ty.as_ref() };
-        if _ty_ref.ee_class.is_value {
-            // for value type, copy value
-            stack.pop(Some(TypedAddr {
-                ty: _ty.clone(),
-                addr,
-            }));
-            return;
-        }
+        // for value type, copy value
+        stack.pop(Some(TypedAddr {
+            ty: _ty.clone(),
+            addr,
+        }));
+        return;
     }
 
     let v = stack.pop(None);
@@ -72,18 +65,15 @@ fn do_store(addr: *mut u8, ty: &BuiltinType, stack: &mut EvalStack) {
             BuiltinType::INative => unimplemented!(),
             BuiltinType::R4 => unimplemented!(),
             BuiltinType::R8 => unimplemented!(),
-            BuiltinType::String | BuiltinType::ByRef(_) | BuiltinType::SZArray(_) => {
+            BuiltinType::Class(_)
+            | BuiltinType::String
+            | BuiltinType::ByRef(_)
+            | BuiltinType::SZArray(_) => {
                 v.expect(SlotTag::Ref);
                 *(addr as *mut *mut u8) = v.data.ptr_;
             }
-            BuiltinType::Class(ty) => {
-                if ty.as_ref().ee_class.is_value {
-                    unimplemented!();
-                } else {
-                    v.expect(SlotTag::Ref);
-                    *(addr as *mut *mut u8) = v.data.ptr_;
-                }
-            }
+            BuiltinType::Value(_) => unreachable!(),
+            BuiltinType::GenericInst(_, _, _) => todo!(),
         }
     }
 }

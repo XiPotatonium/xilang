@@ -1,4 +1,5 @@
 mod field;
+mod generic;
 mod local;
 mod method;
 mod param;

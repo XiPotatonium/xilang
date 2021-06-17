@@ -360,12 +360,12 @@ fn _build_type(tree: Pair<Rule>) -> Box<ASTType> {
         Rule::KwI32 => ASTType::I32,
         Rule::KwF64 => ASTType::F64,
         Rule::KwString => ASTType::String,
-        Rule::KwUSelf => ASTType::Class({
+        Rule::KwUSelf => ASTType::UsrType({
             let mut path = ItemPathBuf::new();
             path.push("Self");
             path
         }),
-        Rule::PathExpr => ASTType::Class(build_pathexpr(tree)),
+        Rule::PathExpr => ASTType::UsrType(build_pathexpr(tree)),
         Rule::TupleType => ASTType::Tuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
         Rule::ArrType => {
             let inner = _build_type(tree.into_inner().next().unwrap());

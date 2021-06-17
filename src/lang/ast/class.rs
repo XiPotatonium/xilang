@@ -37,6 +37,7 @@ impl ASTClass {
                 }
                 write!(f, "{}", generic_p)?;
             }
+            write!(f, ">")?;
         }
         write!(
             f,

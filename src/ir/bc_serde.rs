@@ -4,6 +4,7 @@ use std::mem::transmute;
 
 use super::code::CorILMethod;
 use super::file::{IrFile, MAJOR_VERSION, MINOR_VERSION};
+use super::generic::{GenericParam, GenericParamConstraint};
 use super::member::{Field, ImplMap, MemberRef, MethodDef};
 use super::module::{Mod, ModRef};
 use super::param::Param;
@@ -92,7 +93,11 @@ impl IrFile {
         self.memberref_tbl.serialize(&mut buf);
 
         self.implmap_tbl.serialize(&mut buf);
+
         self.param_tbl.serialize(&mut buf);
+        self.generic_param_tbl.serialize(&mut buf);
+        self.generic_param_constraint_tbl.serialize(&mut buf);
+
         self.stand_alone_sig_tbl.serialize(&mut buf);
 
         self.str_heap.serialize(&mut buf);
@@ -129,7 +134,11 @@ impl IrFile {
         let memberref_tbl = Vec::deserialize(&mut buf);
 
         let implmap_tbl = Vec::deserialize(&mut buf);
+
         let param_tbl = Vec::deserialize(&mut buf);
+        let generic_param_tbl = Vec::deserialize(&mut buf);
+        let generic_param_constraint_tbl = Vec::deserialize(&mut buf);
+
         let stand_alone_sig_tbl = Vec::deserialize(&mut buf);
 
         let str_heap = Vec::deserialize(&mut buf);
@@ -154,7 +163,11 @@ impl IrFile {
             memberref_tbl,
 
             implmap_tbl,
+
             param_tbl,
+            generic_param_tbl,
+            generic_param_constraint_tbl,
+
             stand_alone_sig_tbl,
 
             str_heap,
@@ -285,6 +298,8 @@ impl_vec_serde!(MethodDef);
 impl_vec_serde!(MemberRef);
 impl_vec_serde!(ImplMap);
 impl_vec_serde!(Param);
+impl_vec_serde!(GenericParam);
+impl_vec_serde!(GenericParamConstraint);
 impl_vec_serde!(IrStandAloneSig);
 impl_vec_serde!(CorILMethod);
 impl_vec_serde!(IrSig);

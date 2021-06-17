@@ -11,7 +11,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use vm::data::Module;
 use vm::exec::TExecutor;
 use vm::loader::load;
 use vm::shared_mem::SharedMem;
@@ -89,15 +88,6 @@ fn main() {
         .duration_since(start_time)
         .unwrap()
         .as_secs_f32();
-
-    // allocate static space for classes
-    for module in m.mods.values_mut() {
-        if let Module::IL(module) = module.as_mut() {
-            for ty in module.types.iter_mut() {
-                ty.dispose_instance_info(&m.str_pool);
-            }
-        }
-    }
 
     // static inits
     let start_time = SystemTime::now();

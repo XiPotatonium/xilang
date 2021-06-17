@@ -74,6 +74,7 @@ impl fmt::Display for ASTMethod {
                 }
                 write!(f, "{}", generic_p)?;
             }
+            write!(f, ">")?;
         }
         write!(
             f,
@@ -107,6 +108,7 @@ impl fmt::Display for ASTCtor {
                 }
                 write!(f, "{}", generic_p)?;
             }
+            write!(f, ">")?;
         }
         write!(
             f,

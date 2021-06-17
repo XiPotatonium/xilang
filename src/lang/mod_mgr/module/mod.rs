@@ -1,5 +1,5 @@
+mod class_pass;
 mod code_gen_pass;
-mod member_pass;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -111,6 +111,7 @@ pub fn new_module(mod_path: ItemPathBuf, mgr: &mut Crate, cfg: &XicCfg) {
         write!(f, "{}", ast).unwrap();
     }
 
+    let builder = RefCell::new(Builder::new(this_mod.fullname()));
     if let AST::File(mods, exts, uses, classes) = *ast {
         if this_mod.is_root() {
             // load external modules specified in root module
@@ -240,7 +241,7 @@ pub fn new_module(mod_path: ItemPathBuf, mgr: &mut Crate, cfg: &XicCfg) {
 
             module: this_mod.as_mut() as *mut Module,
 
-            builder: RefCell::new(Builder::new(this_mod.fullname())),
+            builder,
         };
         mgr.mod_tbl.insert(this_mod.fullname().to_owned(), this_mod);
         mgr.mod_build_ctx.push(mod_build_ctx);
@@ -373,8 +374,14 @@ impl ModuleBuildCtx {
             ASTType::Tuple(_) => {
                 unimplemented!();
             }
-            ASTType::Class(class_path) => {
-                RValType::Type(self.resolve_user_define_type(class_path, mod_mgr, Some(class)))
+            ASTType::UsrType(class_path) => {
+                let ty = self.resolve_user_define_type(class_path, mod_mgr, Some(class));
+                let ty_ref = unsafe { ty.as_ref() };
+                if ty_ref.is_value_type() {
+                    RValType::Value(ty)
+                } else {
+                    RValType::Class(ty)
+                }
             }
             ASTType::Arr(dtype) => {
                 RValType::Array(Box::new(self.get_rval_type(dtype, mod_mgr, class)))

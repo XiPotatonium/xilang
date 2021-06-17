@@ -318,16 +318,14 @@ fn gen_id(ctx: &CodeGenCtx, id: &str, expectation: ValExpectation) -> ValType {
                 if is_instance_method {
                     // first argument
                     ctx.method_builder.borrow_mut().add_inst_ldarg(0);
-                    RValType::Type(NonNull::new(ctx.class as *const Type as *mut Type).unwrap())
+                    RValType::Class(NonNull::new(ctx.class as *const Type as *mut Type).unwrap())
                 } else {
                     panic!("Invalid self keyword in static method");
                 }
             } else if let Some(local_var) = locals.get(id) {
                 if let ValExpectation::Instance = expectation {
-                    if let RValType::Type(_ty) = local_var.ty {
-                        if unsafe { _ty.as_ref() }.is_value_type() {
-                            loada = true;
-                        }
+                    if let RValType::Value(_) = local_var.ty {
+                        loada = true;
                     }
                 }
 
@@ -345,10 +343,8 @@ fn gen_id(ctx: &CodeGenCtx, id: &str, expectation: ValExpectation) -> ValType {
             } else if let Some(arg_idx) = ctx.ps_map.get(id) {
                 let arg = &ctx.method.ps[*arg_idx];
                 if let ValExpectation::Instance = expectation {
-                    if let RValType::Type(_ty) = arg.ty {
-                        if unsafe { _ty.as_ref() }.is_value_type() {
-                            loada = true;
-                        }
+                    if let RValType::Value(_) = arg.ty {
+                        loada = true;
                     }
                 }
                 if loada {
@@ -436,7 +432,7 @@ fn gen_type(ctx: &CodeGenCtx, ty: &ASTType) -> SymType {
         ASTType::String => unimplemented!(),
         ASTType::Tuple(_) => unimplemented!(),
         ASTType::Arr(_) => unimplemented!(),
-        ASTType::Class(path) => {
+        ASTType::UsrType(path) => {
             assert!(path.len() == 1, "invalid path in lval gen \"{}\"", path);
             match path.as_str() {
                 "Self" => SymType::Class(

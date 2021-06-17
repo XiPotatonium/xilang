@@ -9,6 +9,7 @@ pub mod util;
 
 pub mod code;
 pub mod file;
+pub mod generic;
 pub mod inst;
 pub mod member;
 pub mod module;

@@ -39,9 +39,12 @@ impl<'m> TExecutor<'m> {
         il_impl: &'m MethodILImpl,
     ) {
         // Currently there is no verification of the arg type
+        let ctx = unsafe { method.ctx.as_ref() }.expect_il();
+        let insts = &ctx.ir_file.codes[il_impl.index].insts;
         self.states.push(ActivationRecord {
             method,
             method_impl: il_impl,
+            insts,
             args,
             ret_addr,
             eval_stack: EvalStack::new(),
@@ -281,20 +284,18 @@ impl<'m> TExecutor<'m> {
                                 *state.ret_addr = ret_v;
                             }
                         }
-                        BuiltinType::Class(ty) => {
-                            if unsafe { ty.as_ref().ee_class.is_value } {
-                                unimplemented!()
-                            } else {
-                                let ret_v = cur_state.eval_stack.pop(None);
-                                let state = self.states.pop().unwrap();
-                                if self.states.is_empty() {
-                                    return unsafe { ret_v.data.inative_ };
-                                }
-                                unsafe {
-                                    *state.ret_addr = ret_v;
-                                }
+                        BuiltinType::Class(_) => {
+                            let ret_v = cur_state.eval_stack.pop(None);
+                            let state = self.states.pop().unwrap();
+                            if self.states.is_empty() {
+                                return unsafe { ret_v.data.inative_ };
+                            }
+                            unsafe {
+                                *state.ret_addr = ret_v;
                             }
                         }
+                        BuiltinType::Value(_) => unimplemented!(),
+                        BuiltinType::GenericInst(_, _, _) => todo!(),
                         BuiltinType::Unk => unreachable!(),
                     }
                 }
@@ -380,37 +381,6 @@ impl<'m> TExecutor<'m> {
                         MethodImpl::Runtime(runtime_impl) => {
                             runtime_impl.func.call(args, ret_addr, mem);
                         }
-                    }
-                }
-                // cpobj
-                0x70 => {
-                    let cur_state = self.states.last_mut().unwrap();
-                    let tok = cur_state.consume_u32();
-                    let ctx = unsafe { cur_state.method.ctx.as_ref().expect_il() };
-
-                    let (tag, idx) = get_tok_tag(tok);
-
-                    let ty = match tag {
-                        TokTag::TypeDef => ctx.types[idx as usize - 1].as_ref(),
-                        TokTag::TypeRef => unsafe { ctx.typerefs[idx as usize - 1].as_ref() },
-                        TokTag::TypeSpec => unimplemented!(),
-                        _ => unimplemented!(),
-                    };
-
-                    let src = unsafe { cur_state.eval_stack.pop(None).expect_ptr() };
-                    let dest = unsafe { cur_state.eval_stack.pop(None).expect_ptr() };
-
-                    unsafe {
-                        // copy value if ty is value type, else copy ref
-                        ptr::copy(
-                            src,
-                            dest,
-                            if ty.ee_class.is_value {
-                                ty.basic_instance_size
-                            } else {
-                                REF_SIZE
-                            },
-                        );
                     }
                 }
                 // ldstr
