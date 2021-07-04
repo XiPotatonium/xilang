@@ -224,6 +224,9 @@ pub fn gen_new_arr(ctx: &CodeGenCtx, ty: &ASTType, dim: &AST) -> RValType {
                 .add_const_class(ty_ref.modname(), &ty_ref.name);
             to_tok(idx, tag.to_tok_tag())
         }
+        RValType::Array(elem_ty) => {
+            todo!()
+        }
         _ => {
             unimplemented!("{} array is not implemented", ele_ty)
         }

@@ -28,7 +28,7 @@ Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)
 Pattern = { Id | TuplePattern }
 TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
 
-Type = { ArrType | NonArrType }
+Type = { NonArrType ~ (LBracket ~ RBracket)* }
 BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwString }
 TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
 NonArrType = _{
@@ -37,7 +37,6 @@ NonArrType = _{
     | PathExpr
     | TupleType
 }
-ArrType = { NonArrType ~ "[" ~ "]" }
 
 Stmt = { LetStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
 LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ (Eq ~ Expr)? ~ Semi }
@@ -67,7 +66,7 @@ ObjAccessExpr = { "." ~ IdWithGenericParams }
 PathAccessExpr = { "::" ~ IdWithGenericParams }
 ArrAccessExpr = { "[" ~ Expr ~ "]" }
 CallExpr = { PrimaryExpr ~ (Args | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
-NewExpr = { "new" ~ Type ~ (Args | ArrAccessExpr) | CallExpr }
+NewExpr = { "new" ~ Type ~ (Args | ArrAccessExpr ~ (LBracket ~ RBracket)*) | CallExpr }
 UnaryExpr = { (Not | Plus | Minus)* ~ NewExpr }
 CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
 MulExpr = { CastExpr ~ ((Star | Slash | Percent) ~ CastExpr)* }
@@ -158,6 +157,8 @@ Slash = { "/" }
 Percent = { "%" }
 Not = { "!" }
 Semi = { ";" }
+LBracket = { "[" }
+RBracket = { "]" }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }

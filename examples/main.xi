@@ -36,11 +36,62 @@ struct MyPair {
         std::IO::write("\" }");
     }
 }
+/*
+class GenericPair<K, V> {
+    static DEFAULT_VAL: V;
 
+    let key: K;
+    let val: V;
+
+    Self(self, key: K) {
+        self.key = key;
+        self.val = Self::DEFAULT_VAL;
+    }
+
+    Self(self, key: K, val: V) {
+        self.key = key;
+        self.val = val;
+    }
+
+    fn erasure<V1: V>(key: K, val: V1) -> GenericPair<K, V> {
+        new Self(key, val as V)
+    }
+}
+
+class GenericList<T> {
+    let data: T[];
+
+    Self(self, len: i32) {
+        self.data = new T[len];
+    }
+
+    fn get_at(self, idx: i32) -> T {
+        self.data[idx]
+    }
+
+    fn set_at(self, idx: i32, val: T) {
+        self.data[idx] = val;
+    }
+}
+*/
 class Program: IOHelper::IOBase {
 
     static singleton: Program;
 
+/*
+    fn generic_test() {
+        std::IO::writeln("Generic Test:");
+
+        let lst = new GenericList<GenericPair<i32, Base>>(3);
+        GenericPair<i32, Base>::DEFAULT_VAL = new Derived() as Base;
+        lst.set_at(0, new GenericPair<i32, Base>(0, new Base()));
+        lst.set_at(1, GenericPair<i32, Base>::erasure<Derived>(1, new Derived()));
+        lst.set_at(2, new GenericPair<i32, Base>(2));
+        lst.get_at(0).val.say();    // base
+        lst.get_at(1).val.say();    // derived
+        lst.get_at(2).val.say();    // derived
+    }
+*/
     fn str_test() {
         std::IO::writeln("String Test:");
         let s: string = "Hello world!";
@@ -50,27 +101,9 @@ class Program: IOHelper::IOBase {
 
     fn arr_test() {
         std::IO::writeln("Array Test:");
-        let arr: i32[] = new i32[10];
-        let i = 0;
-        loop {
-            if i >= arr.len {
-                break;
-            }
-            arr[i] = i;
-            i = i + 1;
-        }
-        loop {
-            i = i - 1;
-            if i < 0 {
-                break;
-            }
-            std::IO::write(arr[i]);
-            std::IO::putchar(std::IO::SPACE);
-        }
-        std::IO::putchar(std::IO::NEW_LINE);
 
         let struct_arr = new MyPair[3]; 
-        i = 0;
+        let i = 0;
         loop {
             if i >= struct_arr.len {
                 break;
@@ -88,6 +121,42 @@ class Program: IOHelper::IOBase {
             std::IO::putchar(std::IO::SPACE);
         }
         std::IO::putchar(std::IO::NEW_LINE);
+
+        let matrix: i32[][] = new i32[5][];
+        i = 0;
+        loop {
+            if i >= matirx.len {
+                break;
+            }
+            let row = new i32[3];
+            let j = 0;
+            loop {
+                if j >= row.len {
+                    break;
+                }
+                row[j] = i * row.len + j;
+                j = j + 1;
+            }
+            matirx[i] = row;
+            i = i + 1;
+        }
+        i = 0;
+        loop {
+            if i >= matirx.len {
+                break;
+            }
+            let j = 0;
+            loop {
+                if j >= matirx[i].len {
+                    break;
+                }
+                std::IO::write(matrix[i][j]);
+                std::IO::putchar(std::IO::SPACE);
+                j = j + 1;
+            }
+            std::IO::putchar(std::IO::NEW_LINE);
+            i = i + 1;
+        }
     }
 
     fn value_type_test() {
@@ -139,5 +208,6 @@ class Program: IOHelper::IOBase {
         Self::str_test();
         Self::arr_test();
         Self::value_type_test();
+        // Self::generic_test();
     }
 }

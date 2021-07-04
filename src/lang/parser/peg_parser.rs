@@ -353,7 +353,7 @@ fn build_pathexpr(tree: Pair<Rule>) -> ItemPathBuf {
     ret
 }
 
-fn _build_type(tree: Pair<Rule>) -> Box<ASTType> {
+fn build_non_arr_type(tree: Pair<Rule>) -> Box<ASTType> {
     Box::new(match tree.as_rule() {
         Rule::KwBool => ASTType::Bool,
         Rule::KwChar => ASTType::Char,
@@ -367,18 +367,20 @@ fn _build_type(tree: Pair<Rule>) -> Box<ASTType> {
         }),
         Rule::PathExpr => ASTType::UsrType(build_pathexpr(tree)),
         Rule::TupleType => ASTType::Tuple(tree.into_inner().map(|ty| build_type(ty)).collect()),
-        Rule::ArrType => {
-            let inner = _build_type(tree.into_inner().next().unwrap());
-            ASTType::Arr(inner)
-        }
         _ => unreachable!(format!("Found {:?}", tree.as_rule())),
     })
 }
 
 /// tree: Type
 fn build_type(tree: Pair<Rule>) -> Box<ASTType> {
-    let tree = tree.into_inner().next().unwrap();
-    _build_type(tree)
+    let mut iter = tree.into_inner();
+    let mut ret = build_non_arr_type(iter.next().unwrap());
+
+    while let Some(_) = iter.next() {
+        iter.next().unwrap(); // RBracket
+        ret = Box::new(ASTType::Arr(ret));
+    }
+    ret
 }
 
 fn build_expr(tree: Pair<Rule>) -> Box<AST> {
@@ -641,7 +643,15 @@ fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
                         .collect(),
                 ),
                 Rule::ArrAccessExpr => {
-                    AST::OpNewArr(ty, build_expr(initializer.into_inner().next().unwrap()))
+                    let mut elem_ty = ty;
+                    while let Some(_) = iter.next() {
+                        iter.next().unwrap(); // RBracket
+                        elem_ty = Box::new(ASTType::Arr(elem_ty));
+                    }
+                    AST::OpNewArr(
+                        elem_ty,
+                        build_expr(initializer.into_inner().next().unwrap()),
+                    )
                 }
                 _ => unreachable!(),
             })
