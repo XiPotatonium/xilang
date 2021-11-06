@@ -1,0 +1,12 @@
+/.idea/
+.vscode
+/target
+
+./examples-build
+
+*.ast.json
+*.xibc
+*.xir
+
+/native/.vs
+/native/out

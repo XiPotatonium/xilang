@@ -1,0 +1,28 @@
+[package]
+name = "xilang"
+version = "0.4.0"
+authors = ["XiPotatonium <xipotatonium@outlook.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+clap = "~2.33"
+pest = "2.0"
+pest_derive = "2.0"
+regex = "1"
+lazy_static = "1.4.0"
+
+[lib]
+name = "ir"
+path = "src/lib.rs"
+
+[[bin]]
+name = "xic"
+path = "src/xic.rs"
+
+[[bin]]
+name = "xix"
+path = "src/xix.rs"
+

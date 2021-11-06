@@ -1,0 +1,159 @@
+File = { SOI ~ Modules* ~ Class* ~ EOI }
+
+Modules = { "mod" ~ Id ~ Semi }
+
+AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
+Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
+
+Class = { 
+    AttributeLst* ~ (KwClass | KwStruct | KwInterface) ~ Id ~ GenericParamsDecl? ~ Impls? ~
+    "{" ~ (CCtor | Method | StaticField | NonStaticField)* ~ "}" 
+}
+
+Impls = { ":" ~ PathExpr ~ ("," ~ PathExpr)* }
+GenericParamsDecl = { "<" ~ GenericParamDecl ~ ("," ~ GenericParamDecl)* ~ ">" }
+GenericParamDecl = { Id ~ (":" ~ PathExpr ~ ("+" ~ PathExpr)*)? }
+IdWithGenericParams = { Id ~ ("<" ~ Type ~ ("," ~ Type)* ~ ">")? }
+
+StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
+NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
+
+CCtor = { "static" ~ BlockExpr }
+Method = { AttributeLst* ~ (KwOverride | KwVirtual)* ~ "fn" ~ Id ~ GenericParamsDecl? ~  Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
+
+Pattern = { Id | TuplePattern }
+TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
+
+Type = { NonArrType ~ (LBracket ~ RBracket)* }
+BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwString }
+TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
+NonArrType = _{
+    BasicType
+    | KwUSelf
+    | PathExpr
+    | TupleType
+}
+
+Stmt = { LetStmt | UseStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
+LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ (Eq ~ Expr)? ~ Semi }
+UseStmt = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
+Expr = _{ ExprWithBlock | ExprWithoutBlock }
+ExprWithBlock = _{ BlockExpr | LoopExpr | IfExpr }
+ExprWithoutBlock = _{
+    ContinueExpr
+    | BreakExpr
+    | ReturnExpr
+    | AssignExpr
+    | OpExpr
+}
+
+LoopExpr = { "loop" ~ BlockExpr }
+IfExpr = { "if" ~ Expr ~ BlockExpr ~ ("else" ~ (BlockExpr | IfExpr))? }
+BlockExpr = { "{" ~ Stmt* ~ ExprWithoutBlock? ~ "}" }
+
+ContinueExpr = { "continue" }
+BreakExpr = { "break" ~ Expr? }
+ReturnExpr = { "return" ~ Expr? }
+
+GroupedExpr = { "(" ~ Expr ~ ")" }
+// Actually Type here will not include PathExpr. Maybe only BasicType but I'm not sure for now
+PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | IdWithGenericParams | Type }
+Args = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
+ObjAccessExpr = { "." ~ IdWithGenericParams }
+PathAccessExpr = { "::" ~ IdWithGenericParams }
+ArrAccessExpr = { "[" ~ Expr ~ "]" }
+StructFieldInitExpr =  { Id ~ (":" ~ Expr)? }
+StructFieldsInitExpr = {"{" ~ (StructFieldInitExpr ~ ",")* ~ StructFieldInitExpr? ~ "}"}
+CallExpr = { PrimaryExpr ~ (Args | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
+NewExpr = { "new" ~ Type ~ (StructFieldsInitExpr | ArrAccessExpr ~ (LBracket ~ RBracket)*) | CallExpr }
+UnaryExpr = { (Not | Plus | Minus)* ~ NewExpr }
+CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
+MulExpr = { CastExpr ~ ((Star | Slash | Percent) ~ CastExpr)* }
+AddExpr = { MulExpr ~ ((Plus | Minus) ~ MulExpr)* }
+CompExpr = { AddExpr ~ ((Le | Lt | Ge | Gt) ~ AddExpr)* }
+EqExpr = { CompExpr ~ ((EqEq | Ne) ~ CompExpr)* }
+LogAndExpr = { EqExpr ~ ("&&" ~ EqExpr)* }
+LogOrExpr = { LogAndExpr ~ ("||" ~ LogAndExpr)* }
+OpExpr = { LogOrExpr }
+AssignExpr = { LogOrExpr ~ Eq ~ LogOrExpr }
+
+LiteralExpr = {
+    KwTrue
+    | KwFalse
+    | KwNull
+    | EmptyLiteral
+    | IntLiteral
+    | FloatLiteral
+    | StringLiteral
+    | CharLiteral
+}
+
+EmptyLiteral = { "(" ~ ")" }
+IntLiteral = { ASCII_DIGIT+ }
+FloatLiteral = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
+StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
+CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
+
+PathExpr = { (IdWithGenericParams | KwCrate | KwSuper) ~ ("::" ~ (IdWithGenericParams | KwSuper))* }
+Id = @{ 
+    KeyWord ~ (ASCII_ALPHANUMERIC | "_")+ 
+    | !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* 
+}
+
+KwClass = { "class" }
+KwStruct = { "struct" }
+KwInterface = { "interface" }
+KwBase = { "base" }
+KwLSelf = { "self" }
+KwUSelf = { "Self" }
+KwVirtual = { "virtual" }
+KwOverride = { "override" }
+KwPub = { "pub" }
+KwPriv = { "priv" }
+KwSuper = { "super" }
+KwCrate = { "crate" }
+
+KwBool = { "bool" }
+KwChar = { "char" }
+KwU8 = { "u8" }
+KwU32 = { "u32" }
+KwI32 = { "i32" }
+KwUSize = { "usize" }
+KwISize = { "isize" }
+KwF64 = { "f64" }
+KwTrue = { "true" }
+KwFalse = { "false" }
+KwNull = { "null" }
+KwString = { "string" }
+
+KeyWord = @{ 
+    KwClass | KwStruct | KwInterface | "enum" | "union" | "fn" | "let" | "where" | "new"
+    | "static" | "const" | "mut" | KwPub | KwPriv | KwVirtual | KwOverride
+    | KwLSelf | KwUSelf | KwBase | KwSuper | KwCrate | "extern" | "mod" | "use"
+    | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
+    | KwBool | KwChar | KwU8 | KwU32 | KwI32 | KwUSize | KwISize | KwF64
+    | KwFalse | KwTrue | KwNull | KwString
+    | "yield" | "typeof"
+}
+
+Eq = { "=" }
+EqEq = { "==" }
+Ne = { "!=" }
+Ge = { ">=" }
+Gt = { ">" }
+Le = { "<=" }
+Lt = { "<" }
+Plus = { "+" }
+Minus = { "-" }
+Star = { "*" }
+Slash = { "/" }
+Percent = { "%" }
+Not = { "!" }
+Semi = { ";" }
+LBracket = { "[" }
+RBracket = { "]" }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }
+
