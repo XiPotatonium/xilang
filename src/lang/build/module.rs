@@ -8,17 +8,13 @@ use super::super::parser;
 use super::super::sym::{Module, Struct};
 use super::super::util::{IItemPath, ItemPathBuf};
 use super::super::XicCfg;
-use super::{ClassBuilder, CrateBuilder};
+use super::{CrateBuilder, StructBuilder};
 
 pub struct ModuleBuilder {
+    pub parent: NonNull<CrateBuilder>,
+    pub module: NonNull<Module>,
     pub use_map: HashMap<String, ItemPathBuf>,
-    pub class_builders: Vec<Box<ClassBuilder>>,
-}
-
-impl ModuleBuilder {
-    pub fn dump(&self, cfg: &XicCfg) {
-        unimplemented!()
-    }
+    strukt_builders: Vec<Box<StructBuilder>>,
 }
 
 pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: &XicCfg) {
@@ -62,11 +58,13 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
     let mut this_mod = Box::new(Module {
         mod_path,
         sub_mods: HashSet::new(),
-        classes: HashMap::new(),
+        structs: HashMap::new(),
     });
     let mut module_builder = Box::new(ModuleBuilder {
+        parent: NonNull::new(krate_builder as *mut CrateBuilder).unwrap(),
+        module: NonNull::new(this_mod.as_ref() as *const Module as *mut Module).unwrap(),
         use_map: HashMap::new(),
-        class_builders: Vec::new(),
+        strukt_builders: Vec::new(),
     });
 
     // Parse source file
@@ -79,7 +77,7 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
         write!(f, "{}", ast).unwrap();
     }
 
-    let (mods, classes) = if let AST::File(mods, classes) = *ast {
+    let (mods, strukts) = if let AST::File(mods, classes) = *ast {
         (mods, classes)
     } else {
         unreachable!()
@@ -101,35 +99,40 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
     }
 
     // generate all classes
-    for class in classes.into_iter() {
-        match class.as_ref() {
-            AST::Struct(ty) => {
-                if this_mod.sub_mods.contains(&ty.name) {
+    for strukt in strukts.into_iter() {
+        let strukt_sym = match strukt.as_ref() {
+            AST::Struct(strukt_ast) => {
+                if this_mod.sub_mods.contains(&strukt_ast.name) {
                     panic!(
                         "Ambiguous name {} in module {}. Both a sub-module and a class",
-                        ty.name,
+                        strukt_ast.name,
                         this_mod.fullname()
                     );
                 }
 
-                this_mod.classes.insert(
-                    ty.name.to_owned(),
-                    Box::new(Struct {
-                        name: ty.name.to_owned(),
-                        fields: HashMap::new(),
-                        methods: HashMap::new(),
-                        parent: NonNull::new(this_mod.as_ref() as *const Module as *mut Module)
-                            .unwrap(),
-                        idx: 0,
-                        attrib: ty.flags,
-                    }),
-                );
+                Box::new(Struct {
+                    name: strukt_ast.name.to_owned(),
+                    fields: HashMap::new(),
+                    methods: HashMap::new(),
+                    parent: NonNull::new(this_mod.as_ref() as *const Module as *mut Module)
+                        .unwrap(),
+                    idx: 0,
+                    flags: strukt_ast.flags,
+                })
             }
             _ => unreachable!(),
         };
         module_builder
-            .class_builders
-            .push(Box::new(ClassBuilder { ast: class }));
+            .strukt_builders
+            .push(Box::new(StructBuilder::new(
+                NonNull::new(module_builder.as_ref() as *const ModuleBuilder as *mut ModuleBuilder)
+                    .unwrap(),
+                NonNull::new(strukt_sym.as_ref() as *const Struct as *mut Struct).unwrap(),
+                strukt,
+            )));
+        this_mod
+            .structs
+            .insert(strukt_sym.name.to_owned(), strukt_sym);
     }
 
     krate_builder
@@ -137,4 +140,24 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
         .mod_tbl
         .insert(this_mod.fullname().to_owned(), this_mod);
     krate_builder.modules.push(module_builder);
+}
+
+impl ModuleBuilder {
+    pub fn member_pass(&mut self) {
+        for strukt_builder in self.strukt_builders.iter_mut() {
+            strukt_builder.member_pass();
+        }
+    }
+
+    pub fn code_gen(&mut self, cfg: &XicCfg) {
+        for strukt_builder in self.strukt_builders.iter_mut() {
+            strukt_builder.code_gen(cfg);
+        }
+    }
+
+    pub fn dump(&self, cfg: &XicCfg) {
+        for strukt_builder in self.strukt_builders.iter() {
+            strukt_builder.dump(cfg);
+        }
+    }
 }

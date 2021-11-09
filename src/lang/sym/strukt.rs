@@ -16,7 +16,7 @@ pub struct Struct {
     /// key: method_name, overload is not supported
     pub methods: HashMap<String, Box<Method>>,
 
-    pub attrib: ClassFlags,
+    pub flags: ClassFlags,
 
     /// index into typedef tbl
     pub idx: u32,

@@ -3,59 +3,11 @@ use ir::flags::MethodFlags;
 use super::disp::BoxASTVecWrapper;
 use super::{ASTGenericParamDecl, ASTType, AST};
 
-use std::convert::TryFrom;
 use std::fmt;
-
-const ASTMETHOD_OVERRIDE: u16 = 0x0001;
-
-pub enum ASTMethodFlag {
-    Override,
-}
-
-impl From<ASTMethodFlag> for u16 {
-    fn from(value: ASTMethodFlag) -> Self {
-        match value {
-            ASTMethodFlag::Override => ASTMETHOD_OVERRIDE,
-        }
-    }
-}
-
-impl TryFrom<u16> for ASTMethodFlag {
-    type Error = &'static str;
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        match value {
-            ASTMETHOD_OVERRIDE => Ok(ASTMethodFlag::Override),
-            _ => Err("Invalid value for ASTMethodAttribFlag"),
-        }
-    }
-}
-
-pub struct ASTMethodFlags {
-    attrib: u16,
-}
-
-impl ASTMethodFlags {
-    pub fn is(&self, flag: ASTMethodFlag) -> bool {
-        self.attrib & u16::from(flag) != 0
-    }
-
-    pub fn set(&mut self, flag: ASTMethodFlag) {
-        self.attrib |= u16::from(flag);
-    }
-}
-
-impl Default for ASTMethodFlags {
-    fn default() -> Self {
-        ASTMethodFlags { attrib: 0 }
-    }
-}
 
 pub struct ASTMethod {
     pub name: String,
     pub flags: MethodFlags,
-    /// ast attrib are some special built-in attribute that only work at compile time
-    pub ast_flags: ASTMethodFlags,
     pub custom_attribs: Vec<Box<AST>>,
     pub generic_params: Vec<ASTGenericParamDecl>,
     pub ret: Box<ASTType>,

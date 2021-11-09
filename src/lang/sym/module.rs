@@ -10,7 +10,7 @@ pub struct Module {
     pub mod_path: ItemPathBuf,
     pub sub_mods: HashSet<String>,
     /// key: class_name
-    pub classes: HashMap<String, Box<Struct>>,
+    pub structs: HashMap<String, Box<Struct>>,
 }
 
 impl Module {

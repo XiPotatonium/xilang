@@ -13,13 +13,18 @@ pub struct CrateBuilder {
 
 impl CrateBuilder {
     pub fn build(&mut self, cfg: &XicCfg) {
-        unimplemented!()
+        for module in self.modules.iter_mut() {
+            module.member_pass();
+        }
+        for module in self.modules.iter_mut() {
+            module.code_gen(cfg);
+        }
     }
 
     /// dump is done recursively
     pub fn dump(&self, cfg: &XicCfg) {
-        for ctx in self.modules.iter() {
-            ctx.dump(cfg);
+        for module in self.modules.iter() {
+            module.dump(cfg);
         }
     }
 }

@@ -27,7 +27,7 @@ lazy_static! {
 fn main() {
     let cfg = {
         let matches = App::new("xic")
-            .version("0.4.0")
+            .version("0.1.0")
             .author("Xi")
             .about("Hello world! This is xic")
             .arg(

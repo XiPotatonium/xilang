@@ -108,7 +108,7 @@ fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
 
     let ret = ASTStruct {
         name,
-        flags: ClassFlags::from(u16::from(ClassFlag::Public)),
+        flags: ClassFlags::from(u16::from(ClassFlag::Public) | u16::from(ClassFlag::Super)),
         custom_attribs,
         impls: extends_or_impls,
         generic_params,
@@ -148,29 +148,7 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
     let custom_attribs = build_attributes(&mut iter);
 
     // built-in attributes
-    let mut attrib = MethodFlags::from(u16::from(MethodFlag::Public));
-    let mut ast_attrib = ASTMethodFlags::default();
-    loop {
-        match iter.peek().unwrap().as_rule() {
-            Rule::KwOverride => {
-                iter.next();
-                if ast_attrib.is(ASTMethodFlag::Override) {
-                    panic!("Duplicated override modifier");
-                } else {
-                    ast_attrib.set(ASTMethodFlag::Override);
-                }
-            }
-            Rule::KwVirtual => {
-                iter.next();
-                if attrib.is(MethodFlag::Abstract) {
-                    panic!("Duplicated virtual modifier");
-                } else {
-                    attrib.set(MethodFlag::Abstract);
-                }
-            }
-            _ => break,
-        }
-    }
+    let mut flags = MethodFlags::from(u16::from(MethodFlag::Public));
 
     let name = build_id(iter.next().unwrap());
 
@@ -183,7 +161,7 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
 
     let (ps, has_self) = build_params(iter.next().unwrap());
     if !has_self {
-        attrib.set(MethodFlag::Static);
+        flags.set(MethodFlag::Static);
     }
 
     let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
@@ -201,8 +179,7 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
 
     Box::new(AST::Method(ASTMethod {
         name,
-        flags: attrib,
-        ast_flags: ast_attrib,
+        flags,
         custom_attribs,
         generic_params,
         ret: ty,

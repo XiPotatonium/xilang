@@ -8,7 +8,7 @@ use ir::flags::FieldFlags;
 
 use super::util::ItemPathBuf;
 pub use generic::{ASTGenericParamDecl, ASTIdWithGenericParam};
-pub use method::{ASTCtor, ASTMethod, ASTMethodFlag, ASTMethodFlags};
+pub use method::{ASTCtor, ASTMethod};
 pub use strukt::{ASTStruct, ASTStructFieldInit};
 pub use ty::ASTType;
 

@@ -10,17 +10,17 @@ pub struct Field {
 
     pub name: String,
 
-    pub attrib: FieldFlags,
+    pub flags: FieldFlags,
     pub ty: RValType,
 
     /// index into field tbl
-    pub idx: u32,
+    pub idx: usize,
 }
 
 impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", unsafe { self.parent.as_ref() })?;
-        if self.attrib.is(FieldFlag::Static) {
+        if self.flags.is(FieldFlag::Static) {
             write!(f, "::")?;
         } else {
             write!(f, ".")?;

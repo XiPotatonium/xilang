@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 pub use self::field::Field;
 pub use self::krate::Crate;
-pub use self::method::Method;
+pub use self::method::{method_descriptor1, method_descriptor2, Method, Param};
 pub use self::module::Module;
 pub use self::strukt::Struct;
 pub use self::ty::{RValType, SymType, ValExpectation, ValType};

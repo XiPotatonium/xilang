@@ -6,7 +6,7 @@ pub enum ClassFlag {
     Public,
     /// 0x0010
     Final,
-    /// 0x0020
+    /// 0x0020, Treat superclass methods specially when invoked by the invokespecial instruction.
     Super,
     /// 0x0200
     Interface,
@@ -68,7 +68,7 @@ impl From<ClassFlag> for u16 {
 }
 
 #[derive(Clone, Copy)]
-pub struct ClassFlags(u16);
+pub struct ClassFlags(pub u16);
 
 impl From<u16> for ClassFlags {
     fn from(value: u16) -> Self {
@@ -199,7 +199,7 @@ impl From<FieldFlag> for u16 {
 }
 
 #[derive(Clone, Copy)]
-pub struct FieldFlags(u16);
+pub struct FieldFlags(pub u16);
 
 impl From<u16> for FieldFlags {
     fn from(value: u16) -> Self {
@@ -340,7 +340,7 @@ impl From<MethodFlag> for u16 {
 }
 
 #[derive(Clone, Copy)]
-pub struct MethodFlags(u16);
+pub struct MethodFlags(pub u16);
 
 impl From<u16> for MethodFlags {
     fn from(value: u16) -> Self {

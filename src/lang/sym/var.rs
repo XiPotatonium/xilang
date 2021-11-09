@@ -22,7 +22,7 @@ impl Var {
 }
 
 pub struct Locals {
-    pub locals: Vec<Var>,
+    pub local_lst: Vec<Var>,
     /// map from id to index of local
     pub sym_tbl: Vec<HashMap<String, usize>>,
 }
@@ -30,7 +30,7 @@ pub struct Locals {
 impl Locals {
     pub fn new() -> Locals {
         Locals {
-            locals: Vec::new(),
+            local_lst: Vec::new(),
             sym_tbl: Vec::new(),
         }
     }
@@ -44,26 +44,26 @@ impl Locals {
     }
 
     pub fn add(&mut self, id: &str, ty: RValType, initialized: bool) -> u16 {
-        let idx = self.locals.len();
+        let idx = self.local_lst.len();
         let var = Var::new(id, ty, idx as u16, initialized);
         self.sym_tbl.last_mut().unwrap().insert(id.to_owned(), idx);
-        self.locals.push(var);
+        self.local_lst.push(var);
         idx as u16
     }
 
     pub fn add_tmp(&mut self, ty: RValType, initialized: bool) -> u16 {
-        let idx = self.locals.len();
+        let idx = self.local_lst.len();
         let id = format!("${}", idx);
         let var = Var::new(&id, ty, idx as u16, initialized);
         self.sym_tbl.last_mut().unwrap().insert(id, idx);
-        self.locals.push(var);
+        self.local_lst.push(var);
         idx as u16
     }
 
     pub fn get(&self, id: &str) -> Option<&Var> {
         for frame in self.sym_tbl.iter().rev() {
             if let Some(ret) = frame.get(id) {
-                return Some(&self.locals[*ret]);
+                return Some(&self.local_lst[*ret]);
             }
         }
         None

@@ -37,7 +37,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn size(&self) -> u8 {
+    pub fn size(&self) -> usize {
         match *self {
             Instruction::IconstM1 => 1,
             Instruction::Iconst0 => 1,
