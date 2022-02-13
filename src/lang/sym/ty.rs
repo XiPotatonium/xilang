@@ -50,25 +50,18 @@ pub enum RValType {
     I32,
     F64,
     Void,
-    /// Some builtin class like java::lang::Object java::lang::String
-    SpecialClassRef(String),
     StructRef(NonNull<Struct>),
     /// elety
     Array(Box<RValType>),
 }
 
 impl RValType {
-    pub fn descriptor(&self) -> String {
+    pub fn stack_size(&self) -> usize {
         match self {
-            Self::Bool => String::from("Z"),
-            Self::U8 => String::from("B"),
-            Self::Char => String::from("C"),
-            Self::I32 => String::from("I"),
-            Self::F64 => String::from("D"),
-            Self::Void => String::from("V"), // only in return value
-            Self::SpecialClassRef(path) => format!("O{};", path),
-            Self::StructRef(ty) => format!("O{};", unsafe { ty.as_ref() }),
-            Self::Array(ty) => format!("[{}", ty),
+            RValType::Bool | RValType::U8 | RValType::Char | RValType::I32 => 1,
+            RValType::F64 => 2,
+            RValType::Void => 0,
+            RValType::StructRef(_) | RValType::Array(_) => 1,
         }
     }
 }
@@ -82,7 +75,6 @@ impl PartialEq for RValType {
             | (Self::I32, Self::I32)
             | (Self::F64, Self::F64)
             | (Self::Void, Self::Void) => true,
-            (Self::SpecialClassRef(p1), Self::SpecialClassRef(p2)) => p1 == p2,
             (Self::StructRef(ty1), Self::StructRef(ty2)) => ty1 == ty2,
             (Self::Array(ele_ty0), Self::Array(ele_ty1)) => ele_ty0 == ele_ty1,
             _ => false,
@@ -99,8 +91,7 @@ impl fmt::Display for RValType {
             Self::I32 => write!(f, "I"),
             Self::F64 => write!(f, "D"),
             Self::Void => write!(f, "V"),
-            Self::SpecialClassRef(path) => write!(f, "O{};", path),
-            Self::StructRef(ty) => write!(f, "O{};", unsafe { ty.as_ref() }),
+            Self::StructRef(sym) => write!(f, "O{};", unsafe { sym.as_ref() }.path),
             Self::Array(ty) => write!(f, "[{}", ty),
         }
     }

@@ -1,11 +1,10 @@
+use core::Inst;
 use std::marker::PhantomData;
 use std::mem::swap;
 use std::ptr::null_mut;
 
-use ir::Instruction;
-
 pub struct BasicBlock {
-    pub insts: Vec<Instruction>,
+    pub insts: Vec<Inst>,
     pub offset: i32,
     pub size: usize,
     /// Branch target of the last inst,
@@ -22,7 +21,7 @@ impl BasicBlock {
         }
     }
 
-    pub fn push(&mut self, inst: Instruction) {
+    pub fn push(&mut self, inst: Inst) {
         self.size += inst.size();
         self.insts.push(inst);
     }

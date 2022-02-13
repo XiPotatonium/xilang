@@ -1,19 +1,16 @@
-use std::cell::RefCell;
+use core::{CCTOR_NAME, CTOR_NAME, STRING_CLASS_NAME};
 use std::ptr::NonNull;
 
-use super::super::ast::{ASTType, AST};
-use super::super::sym::{method_descriptor1, Field, Method, Param, RValType, Struct};
+use super::super::ast::{ASTType, MethodFlag, MethodFlags, AST};
+use super::super::sym::{Field, Method, Param, RValType, Struct};
 use super::super::util::{IItemPath, ItemPathBuf};
-use super::super::XicCfg;
-use super::{ClassFileHelper, MethodBuilder, ModuleBuilder};
-use ir::flags::{MethodFlag, MethodFlags};
-use ir::{CCTOR_NAME, CTOR_NAME, STRING_CLASS_NAME};
+use super::super::XiCfg;
+use super::{MethodBuilder, ModuleBuilder};
 
 pub struct StructBuilder {
     parent: NonNull<ModuleBuilder>,
     sym: NonNull<Struct>,
     ast: Box<AST>,
-    file: RefCell<ClassFileHelper>,
     pub methods: Vec<Box<MethodBuilder>>,
 }
 
@@ -23,20 +20,10 @@ impl StructBuilder {
         strukt: NonNull<Struct>,
         ast: Box<AST>,
     ) -> StructBuilder {
-        let file_helper = {
-            let strukt_ast = if let AST::Struct(ast) = ast.as_ref() {
-                ast
-            } else {
-                unreachable!()
-            };
-            ClassFileHelper::new(&strukt_ast.name, strukt_ast.flags)
-        };
-
         StructBuilder {
             parent,
             sym: strukt,
             ast,
-            file: RefCell::new(file_helper),
             methods: vec![],
         }
     }
@@ -101,18 +88,12 @@ impl StructBuilder {
             Vec::new()
         };
 
-        let method_idx =
-            self.file
-                .borrow_mut()
-                .add_method(name, method_descriptor1(&ps, &ret), flags);
-
         let method = Box::new(Method {
             parent: NonNull::new(strukt_mut as *mut Struct).unwrap(),
             name: name.to_owned(),
             ret,
             ps,
             flags,
-            idx: method_idx,
         });
 
         let ret = Box::new(MethodBuilder::new(
@@ -142,27 +123,27 @@ impl StructBuilder {
 
         // declare fields
         for field in strukt_ast.fields.iter() {
-            if let AST::Field(id, flags, ty) = field.as_ref() {
+            if let AST::Field(field_ast) = field.as_ref() {
                 // Field will have default initialization
-                let ty = self.get_rval_type(ty);
-
-                // Build Field in class file
-                let idx = self
-                    .file
-                    .borrow_mut()
-                    .add_field(id, ty.descriptor(), *flags);
+                let ty = self.get_rval_type(field_ast.ty.as_ref());
 
                 let field = Box::new(Field {
                     parent: self.sym,
-                    name: id.clone(),
-                    flags: *flags,
+                    name: field_ast.name.clone(),
+                    flags: field_ast.flags,
                     ty,
-                    idx,
                 });
 
-                if strukt_mut.fields.insert(id.to_owned(), field).is_some() {
+                if strukt_mut
+                    .fields
+                    .insert(field.name.to_owned(), field)
+                    .is_some()
+                {
                     // TODO: use expect_none once it becomes stable
-                    panic!("Dulicated field {} in class {}", id, strukt_mut.name);
+                    panic!(
+                        "Dulicated field {} in class {}",
+                        field_ast.name, strukt_mut.path
+                    );
                 }
             }
         }
@@ -191,14 +172,24 @@ impl StructBuilder {
         }
     }
 
-    pub fn code_gen(&mut self, cfg: &XicCfg) {
+    pub fn code_gen(&mut self, cfg: &XiCfg) {
         for method_builder in self.methods.iter_mut() {
             method_builder.code_gen(cfg);
         }
     }
 
-    pub fn dump(&self, cfg: &XicCfg) {
-        unimplemented!()
+    pub fn dump(&self, cfg: &XiCfg) {
+        let mut p = cfg.out_dir.clone();
+        // output at {out_dir}/{mod_path_except_root}/{class_name}.xibc
+        for seg in unsafe { self.sym.as_ref() }.path.iter().skip(1) {
+            p.push(seg);
+        }
+
+        // dump byte code
+        p.set_extension("xibc");
+        // let buf = self.file.borrow().file.to_binary();
+        // let mut f = fs::File::create(&p).unwrap();
+        // f.write_all(&buf).unwrap();
     }
 }
 
@@ -206,7 +197,7 @@ impl StructBuilder {
     /// item must exist
     pub fn resolve_struct_type(&self, path: &ItemPathBuf) -> NonNull<Struct> {
         let (has_crate, super_cnt, canonicalized_path) = path.canonicalize();
-        let (struct_id, _) = canonicalized_path.get_self().unwrap();
+        let struct_id = canonicalized_path.get_self().unwrap();
         let mod_path = canonicalized_path.get_super();
         let module_builder = unsafe { self.parent.as_ref() };
         let module = unsafe { module_builder.module.as_ref() };
@@ -228,8 +219,8 @@ impl StructBuilder {
                 // crate::...
                 let mut m = ItemPathBuf::new();
                 m.push(&crate_builder.krate.crate_name);
-                for (seg_id, seg_generic_ps) in mod_path.iter().skip(1) {
-                    m.push_id_with_generic(seg_id, seg_generic_ps.clone());
+                for seg_id in mod_path.iter().skip(1) {
+                    m.push(seg_id);
                 }
                 m
             } else if super_cnt != 0 {
@@ -239,26 +230,26 @@ impl StructBuilder {
                     m.to_super();
                 }
                 let mut m = m.to_owned();
-                for (seg_id, seg_generic_ps) in mod_path.iter().skip(super_cnt) {
-                    m.push_id_with_generic(seg_id, seg_generic_ps.clone());
+                for seg_id in mod_path.iter().skip(super_cnt) {
+                    m.push(seg_id);
                 }
                 m
             } else {
                 let mut mod_path_iter = mod_path.iter();
-                let r = mod_path_iter.next().unwrap().0;
+                let r = mod_path_iter.next().unwrap();
                 if let Some(m) = module_builder.use_map.get(r) {
                     // try use map
                     let mut m = m.clone();
-                    for (seg_id, generic_ps) in mod_path_iter {
-                        m.push_id_with_generic(seg_id, generic_ps.clone());
+                    for seg_id in mod_path_iter {
+                        m.push(seg_id);
                     }
                     m
                 } else if module.sub_mods.contains(r) {
                     // try sub modules
                     let mut m = module.mod_path.clone();
                     m.push(r);
-                    for (seg_id, generic_ps) in mod_path_iter {
-                        m.push_id_with_generic(seg_id, generic_ps.clone());
+                    for seg_id in mod_path_iter {
+                        m.push(seg_id);
                     }
                     m
                 } else {
@@ -285,7 +276,10 @@ impl StructBuilder {
             ASTType::Bool => RValType::Bool,
             ASTType::None => RValType::Void,
             ASTType::Char => RValType::Char,
-            ASTType::String => RValType::SpecialClassRef(String::from(STRING_CLASS_NAME)),
+            ASTType::String => {
+                let ty = self.resolve_struct_type(&ItemPathBuf::from_ir_path(STRING_CLASS_NAME));
+                RValType::StructRef(ty)
+            }
             ASTType::Tuple(_) => unimplemented!(),
             ASTType::UsrType(class_path) => {
                 let ty = self.resolve_struct_type(class_path);

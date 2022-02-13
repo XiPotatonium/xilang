@@ -47,11 +47,7 @@ impl fmt::Display for AST {
             ),
             Self::Struct(strukt) => strukt.ast_fmt(f),
             Self::Method(method) => method.fmt(f),
-            Self::Field(id, flag, ty) => write!(
-                f,
-                "{{\"name\":\"(field){}\",\"flag\":\"{}\",\"type\":\"{}\"}}",
-                id, flag, ty
-            ),
+            Self::Field(field) => field.fmt(f),
             Self::Param(id, ty) => write!(f, "{{\"name\":\"(param){}\",\"type\":\"{}\"}}", id, ty),
             Self::Let(pattern, ty, init) => write!(
                 f,
@@ -126,9 +122,6 @@ impl fmt::Display for AST {
                 ty, dim,
             ),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
-            Self::IdWithGenericParams(id_with_generic_ps) => {
-                write!(f, "{{\"name\":\"(id){}\"}}", id_with_generic_ps)
-            }
             Self::TuplePattern(p) => write!(
                 f,
                 "{{\"name\":\"(TuplePattern)\",\"children\":{}}}",

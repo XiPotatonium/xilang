@@ -1,5 +1,4 @@
-use ir::flags::{FieldFlag, FieldFlags};
-
+use super::super::ast::{FieldFlag, FieldFlags};
 use super::{RValType, Struct};
 
 use std::fmt;
@@ -12,9 +11,6 @@ pub struct Field {
 
     pub flags: FieldFlags,
     pub ty: RValType,
-
-    /// index into field tbl
-    pub idx: usize,
 }
 
 impl fmt::Display for Field {

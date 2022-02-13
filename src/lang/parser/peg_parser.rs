@@ -1,8 +1,6 @@
 use super::super::ast::*;
 use super::super::util::ItemPathBuf;
 
-use ir::flags::*;
-
 use std::fs;
 use std::path::Path;
 
@@ -50,34 +48,12 @@ fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
     ret
 }
 
-fn build_generic_params_decl(tree: Pair<Rule>, decls: &mut Vec<ASTGenericParamDecl>) {
-    for decl in tree.into_inner() {
-        assert_eq!(Rule::GenericParamDecl, decl.as_rule());
-        let mut decl_iter = decl.into_inner();
-        let mut ast_decl = ASTGenericParamDecl {
-            id: build_id(decl_iter.next().unwrap()),
-            constraints: Vec::new(),
-        };
-        for constraint in decl_iter {
-            ast_decl.constraints.push(build_pathexpr(constraint));
-        }
-        decls.push(ast_decl);
-    }
-}
-
 fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let custom_attribs = build_attributes(&mut iter);
     let sem = iter.next().unwrap().as_rule();
     let name = build_id(iter.next().unwrap());
     let mut extends_or_impls: Vec<ItemPathBuf> = Vec::new();
-
-    let mut generic_params = Vec::new();
-    if let Some(try_generic) = iter.peek() {
-        if let Rule::GenericParamsDecl = try_generic.as_rule() {
-            build_generic_params_decl(iter.next().unwrap(), &mut generic_params);
-        }
-    }
 
     if let Some(try_impls) = iter.peek() {
         if let Rule::Impls = try_impls.as_rule() {
@@ -111,7 +87,6 @@ fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
         flags: ClassFlags::from(u16::from(ClassFlag::Public) | u16::from(ClassFlag::Super)),
         custom_attribs,
         impls: extends_or_impls,
-        generic_params,
         methods,
         fields,
         cctor: if let Some(v) = cctor {
@@ -134,13 +109,17 @@ fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
 
 fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
     let mut iter = tree.into_inner();
-    let id = build_id(iter.next().unwrap());
-    let mut flag = FieldFlags::from(u16::from(FieldFlag::Public));
+    let name = build_id(iter.next().unwrap());
+    let mut flags = FieldFlags::from(u16::from(FieldFlag::Public));
     if is_static {
-        flag.set(FieldFlag::Static);
+        flags.set(FieldFlag::Static);
     }
 
-    Box::new(AST::Field(id, flag, build_type(iter.next().unwrap())))
+    Box::new(AST::Field(ASTField {
+        name,
+        flags,
+        ty: build_type(iter.next().unwrap()),
+    }))
 }
 
 fn build_method(tree: Pair<Rule>) -> Box<AST> {
@@ -151,13 +130,6 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
     let mut flags = MethodFlags::from(u16::from(MethodFlag::Public));
 
     let name = build_id(iter.next().unwrap());
-
-    let mut generic_params = Vec::new();
-    if let Some(try_generic) = iter.peek() {
-        if let Rule::GenericParamsDecl = try_generic.as_rule() {
-            build_generic_params_decl(iter.next().unwrap(), &mut generic_params);
-        }
-    }
 
     let (ps, has_self) = build_params(iter.next().unwrap());
     if !has_self {
@@ -181,7 +153,6 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
         name,
         flags,
         custom_attribs,
-        generic_params,
         ret: ty,
         ps,
         body,
@@ -226,17 +197,7 @@ fn build_pathexpr(tree: Pair<Rule>) -> ItemPathBuf {
     let mut ret = ItemPathBuf::new();
     for seg in tree.into_inner() {
         match seg.as_rule() {
-            Rule::IdWithGenericParams => {
-                let ast_generic_ps = build_id_with_generic_params(seg);
-                ret.push_id_with_generic(
-                    &ast_generic_ps.id,
-                    if ast_generic_ps.generic_params.is_empty() {
-                        None
-                    } else {
-                        Some(ast_generic_ps.generic_params)
-                    },
-                );
-            }
+            Rule::Id => ret.push(&build_id(seg)),
             Rule::KwCrate => ret.push("crate"),
             Rule::KwSuper => ret.push("super"),
             _ => unreachable!(),
@@ -555,14 +516,12 @@ fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
     for rhs in iter {
         ret = Box::new(match rhs.as_rule() {
             Rule::Args => AST::OpCall(ret, rhs.into_inner().map(build_expr).collect()),
-            Rule::ObjAccessExpr => AST::OpObjAccess(
-                ret,
-                build_id_with_generic_params(rhs.into_inner().next().unwrap()),
-            ),
-            Rule::PathAccessExpr => AST::OpStaticAccess(
-                ret,
-                build_id_with_generic_params(rhs.into_inner().next().unwrap()),
-            ),
+            Rule::ObjAccessExpr => {
+                AST::OpObjAccess(ret, build_id(rhs.into_inner().next().unwrap()))
+            }
+            Rule::PathAccessExpr => {
+                AST::OpStaticAccess(ret, build_id(rhs.into_inner().next().unwrap()))
+            }
             Rule::ArrAccessExpr => {
                 AST::OpArrayAccess(ret, build_expr(rhs.into_inner().next().unwrap()))
             }
@@ -578,9 +537,7 @@ fn build_primary_expr(tree: Pair<Rule>) -> Box<AST> {
         Rule::GroupedExpr => build_expr(tree.into_inner().next().unwrap()),
         Rule::LiteralExpr => build_literal(tree),
         Rule::KwLSelf => Box::new(AST::Id(String::from("self"))),
-        Rule::IdWithGenericParams => {
-            Box::new(AST::IdWithGenericParams(build_id_with_generic_params(tree)))
-        }
+        Rule::Id => Box::new(AST::Id(build_id(tree))),
         Rule::Type => Box::new(AST::Type(build_type(tree))),
         // Actually only expr with block
         _ => build_expr(tree),
@@ -659,17 +616,4 @@ fn build_pattern(tree: Pair<Rule>) -> Box<AST> {
 fn build_id(tree: Pair<Rule>) -> String {
     assert_eq!(tree.as_rule(), Rule::Id);
     String::from(tree.as_span().as_str().trim())
-}
-
-/// Same as GenericParamDecl
-fn build_id_with_generic_params(tree: Pair<Rule>) -> ASTIdWithGenericParam {
-    let mut param_iter = tree.into_inner();
-    let mut ret = ASTIdWithGenericParam {
-        id: build_id(param_iter.next().unwrap()),
-        generic_params: Vec::new(),
-    };
-    for param in param_iter {
-        ret.generic_params.push(build_type(param));
-    }
-    ret
 }

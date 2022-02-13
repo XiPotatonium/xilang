@@ -1,14 +1,11 @@
 mod disp;
-mod generic;
-mod method;
+mod member;
 mod strukt;
 mod ty;
 
-use ir::flags::FieldFlags;
-
 use super::util::ItemPathBuf;
-pub use generic::{ASTGenericParamDecl, ASTIdWithGenericParam};
-pub use method::{ASTCtor, ASTMethod};
+pub use core::flags::{ClassFlag, ClassFlags, FieldFlag, FieldFlags, MethodFlag, MethodFlags};
+pub use member::{ASTCtor, ASTField, ASTMethod};
 pub use strukt::{ASTStruct, ASTStructFieldInit};
 pub use ty::ASTType;
 
@@ -23,10 +20,10 @@ pub enum AST {
     CustomAttrib(String, Vec<Box<AST>>),
 
     Struct(ASTStruct),
-    Method(ASTMethod),
 
-    /// id, attrib, ty
-    Field(String, FieldFlags, Box<ASTType>),
+    Method(ASTMethod),
+    Field(ASTField),
+
     Param(String, Box<ASTType>),
     /// pattern, attrib, ty, init: Box<AST>
     Let(Box<AST>, Box<ASTType>, Box<AST>),
@@ -62,8 +59,8 @@ pub enum AST {
     OpLe(Box<AST>, Box<AST>),
     OpLt(Box<AST>, Box<AST>),
     OpAssign(Box<AST>, Box<AST>),
-    OpStaticAccess(Box<AST>, ASTIdWithGenericParam),
-    OpObjAccess(Box<AST>, ASTIdWithGenericParam),
+    OpStaticAccess(Box<AST>, String),
+    OpObjAccess(Box<AST>, String),
     OpArrayAccess(Box<AST>, Box<AST>),
     /// ty, val
     OpCast(Box<ASTType>, Box<AST>),
@@ -75,7 +72,6 @@ pub enum AST {
     OpNewArr(Box<ASTType>, Box<AST>),
 
     Id(String),
-    IdWithGenericParams(ASTIdWithGenericParam),
     TuplePattern(Vec<Box<AST>>),
 
     Type(Box<ASTType>),

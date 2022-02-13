@@ -1,30 +1,8 @@
-use ir::flags::{MethodFlag, MethodFlags};
-
+use super::super::ast::{MethodFlag, MethodFlags};
 use super::{RValType, Struct};
 
 use std::fmt;
 use std::ptr::NonNull;
-
-/// TODO: rename
-pub fn method_descriptor1(ps: &Vec<Param>, ret: &RValType) -> String {
-    let mut buf = String::from("(");
-    for p in ps.iter() {
-        buf.push_str(&p.ty.descriptor());
-    }
-    buf.push(')');
-    buf.push_str(&ret.descriptor());
-    buf
-}
-
-pub fn method_descriptor2(ps_ty: &Vec<RValType>, ret: &RValType) -> String {
-    let mut buf = String::from("(");
-    for p in ps_ty.iter() {
-        buf.push_str(&p.descriptor());
-    }
-    buf.push(')');
-    buf.push_str(&ret.descriptor());
-    buf
-}
 
 pub struct Method {
     pub parent: NonNull<Struct>,
@@ -35,9 +13,6 @@ pub struct Method {
     /// self is not included
     pub ps: Vec<Param>,
     pub flags: MethodFlags,
-
-    /// index into methoddef tbl
-    pub idx: usize,
 }
 
 impl Method {

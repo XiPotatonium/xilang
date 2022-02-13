@@ -7,7 +7,7 @@ use super::super::ast::AST;
 use super::super::parser;
 use super::super::sym::{Module, Struct};
 use super::super::util::{IItemPath, ItemPathBuf};
-use super::super::XicCfg;
+use super::super::XiCfg;
 use super::{CrateBuilder, StructBuilder};
 
 pub struct ModuleBuilder {
@@ -17,19 +17,19 @@ pub struct ModuleBuilder {
     strukt_builders: Vec<Box<StructBuilder>>,
 }
 
-pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: &XicCfg) {
+pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: &XiCfg) {
     let mut output_dir = cfg.out_dir.clone();
     let mut input_dir = cfg.root_dir.clone();
     let fpath = if mod_path.len() == 1 {
         // for root module, fpath is specified in cfg
         cfg.root_path.clone()
     } else {
-        for (seg_id, _) in mod_path.iter().skip(1).take(mod_path.len() - 2) {
+        for seg_id in mod_path.iter().skip(1).take(mod_path.len() - 2) {
             output_dir.push(seg_id);
             input_dir.push(seg_id);
         }
-        let fpath1 = input_dir.join(format!("{}.xi", mod_path.get_self().unwrap().0));
-        let mut fpath2 = input_dir.join(mod_path.get_self().unwrap().0);
+        let fpath1 = input_dir.join(format!("{}.xi", mod_path.get_self().unwrap()));
+        let mut fpath2 = input_dir.join(mod_path.get_self().unwrap());
         fpath2.push("mod.xi");
         if fpath1.is_file() && fpath2.is_file() {
             panic!(
@@ -56,7 +56,7 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
     fs::create_dir_all(&output_dir).unwrap();
 
     let mut this_mod = Box::new(Module {
-        mod_path,
+        mod_path: mod_path.clone(),
         sub_mods: HashSet::new(),
         structs: HashMap::new(),
     });
@@ -70,7 +70,7 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
     // Parse source file
     let ast = parser::parse(&fpath).unwrap();
 
-    if cfg.verbose >= 2 {
+    if cfg.dump_ast {
         // save ast to .json file
         let mut f = fs::File::create(output_dir.join(format!("{}.ast.json", this_mod.self_name())))
             .unwrap();
@@ -92,7 +92,7 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
             );
         }
 
-        let mut sub_mod_path = this_mod.mod_path.clone();
+        let mut sub_mod_path = mod_path.clone();
         sub_mod_path.push(&sub_mod_name);
 
         new_module(sub_mod_path, krate_builder, cfg);
@@ -110,13 +110,12 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
                     );
                 }
 
+                let mut struct_path = mod_path.clone();
+                struct_path.push(&strukt_ast.name);
                 Box::new(Struct {
-                    name: strukt_ast.name.to_owned(),
+                    path: struct_path,
                     fields: HashMap::new(),
                     methods: HashMap::new(),
-                    parent: NonNull::new(this_mod.as_ref() as *const Module as *mut Module)
-                        .unwrap(),
-                    idx: 0,
                     flags: strukt_ast.flags,
                 })
             }
@@ -132,7 +131,7 @@ pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: 
             )));
         this_mod
             .structs
-            .insert(strukt_sym.name.to_owned(), strukt_sym);
+            .insert(strukt_sym.name().to_owned(), strukt_sym);
     }
 
     krate_builder
@@ -149,13 +148,13 @@ impl ModuleBuilder {
         }
     }
 
-    pub fn code_gen(&mut self, cfg: &XicCfg) {
+    pub fn code_gen(&mut self, cfg: &XiCfg) {
         for strukt_builder in self.strukt_builders.iter_mut() {
             strukt_builder.code_gen(cfg);
         }
     }
 
-    pub fn dump(&self, cfg: &XicCfg) {
+    pub fn dump(&self, cfg: &XiCfg) {
         for strukt_builder in self.strukt_builders.iter() {
             strukt_builder.dump(cfg);
         }

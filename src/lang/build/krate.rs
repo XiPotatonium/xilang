@@ -3,7 +3,7 @@ use std::fs;
 
 use super::super::sym::Crate;
 use super::super::util::ItemPathBuf;
-use super::super::XicCfg;
+use super::super::XiCfg;
 use super::ModuleBuilder;
 
 pub struct CrateBuilder {
@@ -12,7 +12,7 @@ pub struct CrateBuilder {
 }
 
 impl CrateBuilder {
-    pub fn build(&mut self, cfg: &XicCfg) {
+    pub fn build(&mut self, cfg: &XiCfg) {
         for module in self.modules.iter_mut() {
             module.member_pass();
         }
@@ -22,14 +22,14 @@ impl CrateBuilder {
     }
 
     /// dump is done recursively
-    pub fn dump(&self, cfg: &XicCfg) {
+    pub fn dump(&self, cfg: &XiCfg) {
         for module in self.modules.iter() {
             module.dump(cfg);
         }
     }
 }
 
-pub fn prepare_crate_for_build(cfg: &XicCfg) -> CrateBuilder {
+pub fn prepare_crate_for_build(cfg: &XiCfg) -> CrateBuilder {
     let mut mod_path: ItemPathBuf = ItemPathBuf::new();
     mod_path.push(&cfg.crate_name);
 

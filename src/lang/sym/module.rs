@@ -15,7 +15,7 @@ pub struct Module {
 
 impl Module {
     pub fn self_name(&self) -> &str {
-        self.mod_path.get_self().unwrap().0
+        self.mod_path.get_self().unwrap()
     }
 
     pub fn fullname(&self) -> &str {

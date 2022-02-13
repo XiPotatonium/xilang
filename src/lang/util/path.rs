@@ -3,8 +3,6 @@ use std::fmt;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use super::super::ast::ASTType;
-
 const ID_RULE: &str = r"^[_a-zA-Z][_a-zA-Z0-9]*";
 
 lazy_static! {
@@ -16,14 +14,13 @@ lazy_static! {
 #[derive(Clone)]
 struct PathSegment {
     id_tail: usize,
-    generic_params: Option<Vec<Box<ASTType>>>,
 }
 
 pub trait IItemPath {
     fn len(&self) -> usize;
-    fn get_self(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)>;
-    fn get_super(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)>;
-    fn get_root(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)>;
+    fn get_self(&self) -> Option<&str>;
+    fn get_super(&self) -> Option<&str>;
+    fn get_root(&self) -> Option<&str>;
     fn to_string(self) -> String;
     fn as_str(&self) -> &str;
     fn iter(&self) -> ItemPathIter;
@@ -53,7 +50,7 @@ impl ItemPathBuf {
     }
 
     /// p must be module fullname, no generic parameter
-    pub fn from_module(p: &str) -> ItemPathBuf {
+    pub fn from_ir_path(p: &str) -> ItemPathBuf {
         if !PATH_RULE.is_match(p) {
             panic!("Invalid path literal {}", p);
         }
@@ -66,15 +63,11 @@ impl ItemPathBuf {
 
             for (i, c) in path.char_indices() {
                 if c == '/' {
-                    segs.push(PathSegment {
-                        id_tail: i,
-                        generic_params: None,
-                    });
+                    segs.push(PathSegment { id_tail: i });
                 }
             }
             segs.push(PathSegment {
                 id_tail: path.len(),
-                generic_params: None,
             });
 
             ItemPathBuf { path, segs }
@@ -92,22 +85,6 @@ impl ItemPathBuf {
         self.path.push_str(seg);
         self.segs.push(PathSegment {
             id_tail: self.path.len(),
-            generic_params: None,
-        });
-    }
-
-    pub fn push_id_with_generic(&mut self, id: &str, generic_params: Option<Vec<Box<ASTType>>>) {
-        if !SEG_RULE.is_match(id) {
-            panic!("Invalid segment {} in path", id);
-        }
-
-        if self.len() != 0 {
-            self.path.push('/');
-        }
-        self.path.push_str(id);
-        self.segs.push(PathSegment {
-            id_tail: self.path.len(),
-            generic_params,
         });
     }
 
@@ -139,13 +116,13 @@ impl ItemPathBuf {
     pub fn canonicalize(&self) -> (bool, usize, ItemPathBuf) {
         let mut has_crate: bool = false;
         let mut super_count = 0;
-        let mut segs: Vec<(&str, Option<Vec<Box<ASTType>>>)> = Vec::new();
+        let mut segs: Vec<&str> = Vec::new();
         for (i, seg) in self.segs.iter().enumerate() {
-            let (id, _) = self.index(i);
+            let id = self.index(i);
             if id == "crate" {
                 if i == 0 {
                     has_crate = true;
-                    segs.push(("crate", None));
+                    segs.push("crate");
                 } else {
                     panic!(
                         "crate should be the first segment in path {}",
@@ -155,12 +132,12 @@ impl ItemPathBuf {
             } else if id == "super" {
                 if segs.is_empty() {
                     super_count += 1;
-                    segs.push(("super", None));
-                } else if segs.last().unwrap().0 == "crate" {
+                    segs.push("super");
+                } else if *segs.last().unwrap() == "crate" {
                     panic!("Super of crate is invalid");
-                } else if segs.last().unwrap().0 == "super" {
+                } else if *segs.last().unwrap() == "super" {
                     super_count += 1;
-                    segs.push(("super", None));
+                    segs.push("super");
                 } else {
                     // remove last
                     segs.remove(segs.len() - 1);
@@ -168,24 +145,24 @@ impl ItemPathBuf {
             } else if id == "self" {
                 continue;
             } else {
-                segs.push((id, seg.generic_params.clone()));
+                segs.push(id);
             }
         }
         let mut path = ItemPathBuf::new();
-        for (id, generic_params) in segs.into_iter() {
-            path.push_id_with_generic(id, generic_params);
+        for id in segs.into_iter() {
+            path.push(id);
         }
         (has_crate, super_count, path)
     }
 
-    fn index(&self, idx: usize) -> (&str, &Option<Vec<Box<ASTType>>>) {
+    fn index(&self, idx: usize) -> &str {
         let start = if idx == 0 {
             0
         } else {
             self.segs[idx - 1].id_tail + 1
         };
         let tail = &self.segs[idx];
-        (&self.path[start..tail.id_tail], &tail.generic_params)
+        &self.path[start..tail.id_tail]
     }
 }
 
@@ -194,22 +171,19 @@ impl IItemPath for ItemPathBuf {
         self.segs.len()
     }
 
-    fn get_self(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)> {
+    fn get_self(&self) -> Option<&str> {
         match self.len() {
             0 => None,
-            1 => Some((&self.path, &self.segs[0].generic_params)),
+            1 => Some(&self.path),
             _ => {
                 let start = self.segs[self.segs.len() - 2].id_tail + 1;
                 let end = self.segs[self.segs.len() - 1].id_tail;
-                Some((
-                    &self.path[start..end],
-                    &self.segs[self.segs.len() - 1].generic_params,
-                ))
+                Some(&self.path[start..end])
             }
         }
     }
 
-    fn get_super(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)> {
+    fn get_super(&self) -> Option<&str> {
         match self.len() {
             0 | 1 => None,
             _ => {
@@ -220,21 +194,18 @@ impl IItemPath for ItemPathBuf {
                     self.segs[self.segs.len() - 3].id_tail + 1
                 };
                 let end = self.segs[self.segs.len() - 2].id_tail;
-                Some((
-                    &self.path[start..end],
-                    &self.segs[self.segs.len() - 1].generic_params,
-                ))
+                Some(&self.path[start..end])
             }
         }
     }
 
-    fn get_root(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)> {
+    fn get_root(&self) -> Option<&str> {
         match self.len() {
             0 => None,
-            1 => Some((&self.path, &self.segs[0].generic_params)),
+            1 => Some(&self.path),
             _ => {
                 let end = &self.segs[0];
-                Some((&self.path[0..end.id_tail], &end.generic_params))
+                Some(&self.path[0..end.id_tail])
             }
         }
     }
@@ -273,7 +244,7 @@ impl IItemPath for ItemPathBuf {
 }
 
 impl<'p> ItemPath<'p> {
-    pub fn to_owned(self) -> ItemPathBuf {
+    pub fn to_owned(&self) -> ItemPathBuf {
         ItemPathBuf {
             path: self.as_str().to_owned(),
             segs: self.path.segs[self.start..self.to].to_vec(),
@@ -294,7 +265,7 @@ impl<'p> IItemPath for ItemPath<'p> {
         self.to - self.start
     }
 
-    fn get_self(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)> {
+    fn get_self(&self) -> Option<&str> {
         if self.to > self.path.len() {
             None
         } else {
@@ -302,7 +273,7 @@ impl<'p> IItemPath for ItemPath<'p> {
         }
     }
 
-    fn get_super(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)> {
+    fn get_super(&self) -> Option<&str> {
         if self.to > self.path.len() || self.to <= 1 {
             None
         } else {
@@ -310,7 +281,7 @@ impl<'p> IItemPath for ItemPath<'p> {
         }
     }
 
-    fn get_root(&self) -> Option<(&str, &Option<Vec<Box<ASTType>>>)> {
+    fn get_root(&self) -> Option<&str> {
         if self.start >= self.path.len() {
             None
         } else {
@@ -364,7 +335,7 @@ pub struct ItemPathIter<'p> {
 }
 
 impl<'p> Iterator for ItemPathIter<'p> {
-    type Item = (&'p str, &'p Option<Vec<Box<ASTType>>>);
+    type Item = &'p str;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cur >= self.end {

@@ -1,15 +1,13 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::ptr::NonNull;
 
-use ir::flags::ClassFlags;
+use super::super::ast::ClassFlags;
+use super::super::util::{IItemPath, ItemPathBuf};
 
-use super::{Field, Method, Module};
+use super::{Field, Method};
 
 pub struct Struct {
-    pub parent: NonNull<Module>,
-
-    pub name: String,
+    pub path: ItemPathBuf,
 
     /// key: field_name
     pub fields: HashMap<String, Box<Field>>,
@@ -17,19 +15,16 @@ pub struct Struct {
     pub methods: HashMap<String, Box<Method>>,
 
     pub flags: ClassFlags,
-
-    /// index into typedef tbl
-    pub idx: u32,
 }
 
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}::{}", self.modname(), self.name)
+        write!(f, "{}", self.path)
     }
 }
 
 impl Struct {
-    pub fn modname(&self) -> &str {
-        unsafe { self.parent.as_ref().fullname() }
+    pub fn name(&self) -> &str {
+        self.path.get_self().unwrap()
     }
 }
