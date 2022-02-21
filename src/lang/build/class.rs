@@ -4,22 +4,18 @@ use std::ptr::NonNull;
 use super::super::ast::{ASTClass, AST};
 use super::super::sym::{Class, TypeLinkContext};
 use super::super::XiCfg;
-use super::{FieldBuilder, FuncBuilder};
+use super::{FieldBuilder, FuncBuilder, ModuleBuilder};
 use core::util::ItemPathBuf;
 
 pub struct ClassBuilder {
     pub sym: NonNull<Class>,
-    methods: Vec<Box<FuncBuilder>>,
-    fields: Vec<Box<FieldBuilder>>,
+    pub methods: Vec<Box<FuncBuilder>>,
+    pub fields: Vec<Box<FieldBuilder>>,
     impl_ast: Vec<ItemPathBuf>,
 }
 
 impl ClassBuilder {
-    pub fn load(
-        path: ItemPathBuf,
-        builders: &mut Vec<Box<ClassBuilder>>,
-        ast: ASTClass,
-    ) -> Box<Class> {
+    pub fn load(path: ItemPathBuf, parent: &mut ModuleBuilder, ast: ASTClass) -> Box<Class> {
         let ASTClass {
             name,
             flags,
@@ -29,6 +25,7 @@ impl ClassBuilder {
             methods,
         } = ast;
         let mut class_sym = Box::new(Class {
+            parent: parent.sym,
             path,
             flags,
             impls: Vec::new(),
@@ -56,7 +53,7 @@ impl ClassBuilder {
                 field_path.push(&field_name);
                 class_sym.fields.insert(
                     field_name,
-                    FieldBuilder::load(field_path, &mut class_builder.fields, field_ast),
+                    FieldBuilder::load(field_path, &mut class_builder, field_ast),
                 );
             } else {
                 unreachable!()
@@ -78,14 +75,14 @@ impl ClassBuilder {
                 method_path.push(&method_name);
                 class_sym.methods.insert(
                     method_name,
-                    FuncBuilder::load(method_path, &mut class_builder.methods, method_ast),
+                    FuncBuilder::load_method(method_path, class_builder.as_mut(), method_ast),
                 );
             } else {
                 unreachable!()
             }
         }
 
-        builders.push(class_builder);
+        parent.classes.push(class_builder);
         class_sym
     }
 

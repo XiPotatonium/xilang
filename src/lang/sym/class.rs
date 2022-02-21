@@ -5,9 +5,10 @@ use core::flags::ClassFlags;
 use core::util::{IItemPath, ItemPathBuf};
 use std::ptr::NonNull;
 
-use super::{Field, Func};
+use super::{Field, Func, Module};
 
 pub struct Class {
+    pub parent: NonNull<Module>,
     pub path: ItemPathBuf,
     pub flags: ClassFlags,
 

@@ -1,10 +1,12 @@
-use super::RValType;
+use super::{Class, RValType};
 use core::flags::FieldFlags;
 use core::util::{IItemPath, ItemPathBuf};
 
 use std::fmt;
+use std::ptr::NonNull;
 
 pub struct Field {
+    pub parent: NonNull<Class>,
     pub path: ItemPathBuf,
 
     pub flags: FieldFlags,

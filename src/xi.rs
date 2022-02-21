@@ -77,5 +77,5 @@ fn main() {
         );
     }
 
-    runtime::exec();
+    runtime::exec(&loader);
 }

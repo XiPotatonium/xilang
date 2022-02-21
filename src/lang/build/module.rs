@@ -147,7 +147,7 @@ impl ModuleBuilder {
                         class_path.push(&class_name);
                         this_mod.classes.insert(
                             class_name,
-                            ClassBuilder::load(class_path, &mut module_builder.classes, class_ast),
+                            ClassBuilder::load(class_path, module_builder.as_mut(), class_ast),
                         );
                     }
                     AST::Func(func_ast) => {
@@ -157,7 +157,7 @@ impl ModuleBuilder {
                         func_path.push(&func_name);
                         this_mod.funcs.insert(
                             func_name,
-                            FuncBuilder::load(func_path, &mut module_builder.funcs, func_ast),
+                            FuncBuilder::load_func(func_path, module_builder.as_mut(), func_ast),
                         );
                     }
                     _ => unreachable!(),

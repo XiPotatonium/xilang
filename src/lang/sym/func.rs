@@ -2,11 +2,12 @@ use core::flags::FuncFlags;
 use core::util::{IItemPath, ItemPathBuf};
 
 use super::super::ast::AST;
-use super::RValType;
+use super::{RValType, Symbol};
 
 use std::fmt;
 
 pub struct Func {
+    pub parent: Symbol,
     pub path: ItemPathBuf,
 
     pub ret: RValType,

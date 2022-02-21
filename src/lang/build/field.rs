@@ -3,6 +3,7 @@ use std::ptr::NonNull;
 
 use super::super::ast::{ASTField, ASTType};
 use super::super::sym::{Field, RValType, TypeLinkContext};
+use super::ClassBuilder;
 
 pub struct FieldBuilder {
     pub sym: NonNull<Field>,
@@ -10,23 +11,20 @@ pub struct FieldBuilder {
 }
 
 impl FieldBuilder {
-    pub fn load(
-        path: ItemPathBuf,
-        builders: &mut Vec<Box<FieldBuilder>>,
-        ast: ASTField,
-    ) -> Box<Field> {
+    pub fn load(path: ItemPathBuf, parent: &mut ClassBuilder, ast: ASTField) -> Box<Field> {
         let ASTField {
             name: _,
             flags,
             ty: ty_ast,
         } = ast;
         let method_sym = Box::new(Field {
+            parent: parent.sym,
             path,
             flags,
             ty: RValType::UnInit,
         });
 
-        builders.push(Box::new(FieldBuilder {
+        parent.fields.push(Box::new(FieldBuilder {
             sym: NonNull::new(method_sym.as_ref() as *const Field as *mut Field).unwrap(),
             ty_ast,
         }));

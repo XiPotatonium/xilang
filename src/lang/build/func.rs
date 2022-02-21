@@ -3,8 +3,9 @@ use core::util::ItemPathBuf;
 use std::ptr::NonNull;
 
 use super::super::ast::{ASTFunc, ASTType, AST};
-use super::super::sym::{Func, Param, RValType, TypeLinkContext};
+use super::super::sym::{Func, Param, RValType, Symbol, TypeLinkContext};
 use super::super::XiCfg;
+use super::{ClassBuilder, ModuleBuilder};
 
 pub struct FuncBuilder {
     pub sym: NonNull<Func>,
@@ -13,8 +14,9 @@ pub struct FuncBuilder {
 }
 
 impl FuncBuilder {
-    pub fn load(
+    fn load(
         path: ItemPathBuf,
+        parent: Symbol,
         builders: &mut Vec<Box<FuncBuilder>>,
         ast: ASTFunc,
     ) -> Box<Func> {
@@ -41,6 +43,7 @@ impl FuncBuilder {
         }
 
         let method_sym = Box::new(Func {
+            parent,
             path,
             ret: RValType::UnInit,
             ps: Vec::new(),
@@ -55,6 +58,14 @@ impl FuncBuilder {
         }));
 
         method_sym
+    }
+
+    pub fn load_method(path: ItemPathBuf, parent: &mut ClassBuilder, ast: ASTFunc) -> Box<Func> {
+        Self::load(path, Symbol::Class(parent.sym), &mut parent.methods, ast)
+    }
+
+    pub fn load_func(path: ItemPathBuf, parent: &mut ModuleBuilder, ast: ASTFunc) -> Box<Func> {
+        Self::load(path, Symbol::Module(parent.sym), &mut parent.funcs, ast)
     }
 
     pub fn link_type(&mut self, ctx: &TypeLinkContext) {
