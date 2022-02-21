@@ -1,5 +1,5 @@
-use super::super::util::IItemPath;
 use super::*;
+use core::util::IItemPath;
 
 use std::fmt;
 
@@ -22,15 +22,22 @@ impl fmt::Display for AST {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // write!(f, "({}, {})", self.x, self.y)
         match self {
-            Self::File(mods, classes) => {
+            Self::File(extern_module_declare, module_declares, uses, defs) => {
                 write!(
                     f,
-                    "{{\"name\":\"(file)\",\"mods\":[{}],\"classes\":{}}}",
-                    mods.iter()
+                    "{{\"name\":\"(file)\",\"extern-module-declare\":[{}],\"module-declares\":[{}],\"uses\":{},\"items\":{}}}",
+                    extern_module_declare
+                        .iter()
                         .map(|m| format!("\"{}\"", m))
                         .collect::<Vec<String>>()
                         .join(","),
-                    BoxASTVecWrapper(classes),
+                    module_declares
+                        .iter()
+                        .map(|m| format!("\"{}\"", m))
+                        .collect::<Vec<String>>()
+                        .join(","),
+                    BoxASTVecWrapper(uses),
+                    BoxASTVecWrapper(defs),
                 )
             }
             Self::Use(path, as_id) => write!(
@@ -41,12 +48,12 @@ impl fmt::Display for AST {
             ),
             Self::CustomAttrib(id, args) => write!(
                 f,
-                "{{\"name\":\"(Attr){}\",\"args\":{}}}",
+                "{{\"name\":\"(custom-attrib){}\",\"args\":{}}}",
                 id,
                 BoxASTVecWrapper(args)
             ),
-            Self::Struct(strukt) => strukt.ast_fmt(f),
-            Self::Method(method) => method.fmt(f),
+            Self::Class(class) => class.ast_fmt(f),
+            Self::Func(func) => func.fmt(f),
             Self::Field(field) => field.fmt(f),
             Self::Param(id, ty) => write!(f, "{{\"name\":\"(param){}\",\"type\":\"{}\"}}", id, ty),
             Self::Let(pattern, ty, init) => write!(
@@ -54,7 +61,7 @@ impl fmt::Display for AST {
                 "{{\"name\":\"(let)\",\"id\":{},\"type\":\"{}\",\"init\":{}}}",
                 pattern, ty, init
             ),
-            Self::ExprStmt(stmt) => write!(f, "{{\"name\":\"(ExprStmt)\",\"stmt\":{}}}", stmt),
+            Self::ExprStmt(stmt) => write!(f, "{{\"name\":\"(expr-stmt)\",\"stmt\":{}}}", stmt),
             Self::Block(children) => write!(
                 f,
                 "{{\"name\":\"(block)\",\"children\":{}}}",
@@ -65,9 +72,9 @@ impl fmt::Display for AST {
                 "{{\"name\":\"(if)\",\"cond\":{},\"then\":{},\"els\":{}}}",
                 cond, then, els
             ),
-            Self::Continue => write!(f, "{{\"name\":\"continue\"}}"),
-            Self::Break(val) => write!(f, "{{\"name\":\"break\",\"val\":{}}}", val),
-            Self::Return(val) => write!(f, "{{\"name\":\"return\",\"val\":{}}}", val),
+            Self::Continue => write!(f, "{{\"name\":\"(continue)\"}}"),
+            Self::Break(val) => write!(f, "{{\"name\":\"(break)\",\"cal\":{}}}", val),
+            Self::Return(val) => write!(f, "{{\"name\":\"(return)\",\"val\":{}}}", val),
             Self::Loop(body) => write!(f, "{{\"name\":\"(loop)\",\"body\":{}}}", body),
             Self::OpPos(o) => write!(f, "{{\"name\":\"+\",\"lhs\":{}}}", o),
             Self::OpNeg(o) => write!(f, "{{\"name\":\"-\",\"lhs\":{}}}", o),
@@ -100,7 +107,7 @@ impl fmt::Display for AST {
             Self::OpCast(ty, expr) => {
                 write!(
                     f,
-                    "{{\"name\":\"(cast)\",\"ty\":\"{}\",\"val\":{}}}",
+                    "{{\"name\":\"(cast)\",\"type\":\"{}\",\"val\":{}}}",
                     ty, expr
                 )
             }
@@ -112,23 +119,23 @@ impl fmt::Display for AST {
             ),
             Self::OpNewStruct(ty, fields) => write!(
                 f,
-                "{{\"name\":\"new\",\"type\":\"{}\",\"fields\":{}}}",
+                "{{\"name\":\"(new)\",\"type\":\"{}\",\"fields\":{}}}",
                 ty,
                 BoxASTVecWrapper(fields)
             ),
             Self::OpNewArr(ty, dim) => write!(
                 f,
-                "{{\"name\":\"newarr\",\"type\":\"{}\",\"dim\":{}}}",
+                "{{\"name\":\"(newarr)\",\"type\":\"{}\",\"dim\":{}}}",
                 ty, dim,
             ),
             Self::Id(id) => write!(f, "{{\"name\":\"(id){}\"}}", id),
             Self::TuplePattern(p) => write!(
                 f,
-                "{{\"name\":\"(TuplePattern)\",\"children\":{}}}",
+                "{{\"name\":\"(tuple-pattern)\",\"children\":{}}}",
                 BoxASTVecWrapper(p)
             ),
-            Self::Type(ty) => write!(f, "{{\"name\":\"{}\"}}", ty),
-            Self::Null => write!(f, "{{\"name\":\"null\"}}"),
+            Self::Type(ty) => write!(f, "{{\"name\":\"(type){}\"}}", ty),
+            Self::Null => write!(f, "{{\"name\":\"(null)\"}}"),
             Self::Bool(val) => write!(f, "{{\"name\":\"(bool){}\"}}", val),
             Self::Int(val) => write!(f, "{{\"name\":\"(int){}\"}}", val),
             Self::Float(val) => write!(f, "{{\"name\":\"(float){}\"}}", val),

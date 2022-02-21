@@ -2,15 +2,16 @@ pub mod ast;
 pub mod build;
 pub mod parser;
 pub mod sym;
-mod util;
 
 use std::path::PathBuf;
 
+pub const SYS_NAME: &str = "sys";
+pub const STRING_CLASS_NAME: &str = "sys/String";
+pub const SYS_PATH: &str = "../../sys/mod.xi";
+
 pub struct XiCfg {
-    pub crate_name: String,
-    pub root_dir: PathBuf,
-    pub root_path: PathBuf,
-    pub out_dir: PathBuf,
+    pub entry_path: PathBuf,
     pub dump_ast: bool,
     pub compile: bool,
+    pub no_sys: bool,
 }

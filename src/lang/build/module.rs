@@ -1,162 +1,216 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 
 use super::super::ast::AST;
 use super::super::parser;
-use super::super::sym::{Module, Struct};
-use super::super::util::{IItemPath, ItemPathBuf};
-use super::super::XiCfg;
-use super::{CrateBuilder, StructBuilder};
+use super::super::sym::Module;
+use super::super::{XiCfg, SYS_NAME, SYS_PATH};
+use super::{ClassBuilder, FileLoader, FuncBuilder, TypeLinkContext};
+use core::util::{IItemPath, ItemPathBuf};
+
+static CACHE_DIRNAME: &str = ".xicache";
 
 pub struct ModuleBuilder {
-    pub parent: NonNull<CrateBuilder>,
-    pub module: NonNull<Module>,
-    pub use_map: HashMap<String, ItemPathBuf>,
-    strukt_builders: Vec<Box<StructBuilder>>,
-}
-
-pub fn new_module(mod_path: ItemPathBuf, krate_builder: &mut CrateBuilder, cfg: &XiCfg) {
-    let mut output_dir = cfg.out_dir.clone();
-    let mut input_dir = cfg.root_dir.clone();
-    let fpath = if mod_path.len() == 1 {
-        // for root module, fpath is specified in cfg
-        cfg.root_path.clone()
-    } else {
-        for seg_id in mod_path.iter().skip(1).take(mod_path.len() - 2) {
-            output_dir.push(seg_id);
-            input_dir.push(seg_id);
-        }
-        let fpath1 = input_dir.join(format!("{}.xi", mod_path.get_self().unwrap()));
-        let mut fpath2 = input_dir.join(mod_path.get_self().unwrap());
-        fpath2.push("mod.xi");
-        if fpath1.is_file() && fpath2.is_file() {
-            panic!(
-                "Ambiguous module {}. {} or {}?",
-                mod_path,
-                fpath1.display(),
-                fpath2.display()
-            );
-        }
-        if fpath1.is_file() {
-            fpath1
-        } else if fpath2.is_file() {
-            fpath2
-        } else {
-            panic!(
-                "Cannot find module {} (Consider create {} or {})",
-                mod_path,
-                fpath1.display(),
-                fpath2.display()
-            );
-        }
-    };
-
-    fs::create_dir_all(&output_dir).unwrap();
-
-    let mut this_mod = Box::new(Module {
-        mod_path: mod_path.clone(),
-        sub_mods: HashSet::new(),
-        structs: HashMap::new(),
-    });
-    let mut module_builder = Box::new(ModuleBuilder {
-        parent: NonNull::new(krate_builder as *mut CrateBuilder).unwrap(),
-        module: NonNull::new(this_mod.as_ref() as *const Module as *mut Module).unwrap(),
-        use_map: HashMap::new(),
-        strukt_builders: Vec::new(),
-    });
-
-    // Parse source file
-    let ast = parser::parse(&fpath).unwrap();
-
-    if cfg.dump_ast {
-        // save ast to .json file
-        let mut f = fs::File::create(output_dir.join(format!("{}.ast.json", this_mod.self_name())))
-            .unwrap();
-        write!(f, "{}", ast).unwrap();
-    }
-
-    let (mods, strukts) = if let AST::File(mods, classes) = *ast {
-        (mods, classes)
-    } else {
-        unreachable!()
-    };
-
-    for sub_mod_name in mods.into_iter() {
-        if !this_mod.sub_mods.insert(sub_mod_name.clone()) {
-            panic!(
-                "Sub-module {} is defined multiple times in {}",
-                sub_mod_name,
-                this_mod.fullname()
-            );
-        }
-
-        let mut sub_mod_path = mod_path.clone();
-        sub_mod_path.push(&sub_mod_name);
-
-        new_module(sub_mod_path, krate_builder, cfg);
-    }
-
-    // generate all classes
-    for strukt in strukts.into_iter() {
-        let strukt_sym = match strukt.as_ref() {
-            AST::Struct(strukt_ast) => {
-                if this_mod.sub_mods.contains(&strukt_ast.name) {
-                    panic!(
-                        "Ambiguous name {} in module {}. Both a sub-module and a class",
-                        strukt_ast.name,
-                        this_mod.fullname()
-                    );
-                }
-
-                let mut struct_path = mod_path.clone();
-                struct_path.push(&strukt_ast.name);
-                Box::new(Struct {
-                    path: struct_path,
-                    fields: HashMap::new(),
-                    methods: HashMap::new(),
-                    flags: strukt_ast.flags,
-                })
-            }
-            _ => unreachable!(),
-        };
-        module_builder
-            .strukt_builders
-            .push(Box::new(StructBuilder::new(
-                NonNull::new(module_builder.as_ref() as *const ModuleBuilder as *mut ModuleBuilder)
-                    .unwrap(),
-                NonNull::new(strukt_sym.as_ref() as *const Struct as *mut Struct).unwrap(),
-                strukt,
-            )));
-        this_mod
-            .structs
-            .insert(strukt_sym.name().to_owned(), strukt_sym);
-    }
-
-    krate_builder
-        .krate
-        .mod_tbl
-        .insert(this_mod.fullname().to_owned(), this_mod);
-    krate_builder.modules.push(module_builder);
+    pub fpath: PathBuf,
+    pub sym: NonNull<Module>,
+    use_map: HashMap<String, ItemPathBuf>,
+    pub classes: Vec<Box<ClassBuilder>>,
+    /// no overload
+    pub funcs: Vec<Box<FuncBuilder>>,
 }
 
 impl ModuleBuilder {
-    pub fn member_pass(&mut self) {
-        for strukt_builder in self.strukt_builders.iter_mut() {
-            strukt_builder.member_pass();
+    pub fn load(
+        mod_path: ItemPathBuf,
+        fpath: PathBuf,
+        loader: &mut FileLoader,
+        cfg: &XiCfg,
+    ) -> Box<Module> {
+        let mut this_mod = Box::new(Module {
+            path: mod_path.clone(),
+            sub_mods: HashMap::new(),
+            use_map: HashMap::new(),
+            classes: HashMap::new(),
+            funcs: HashMap::new(),
+        });
+        let this_mod_nonnull =
+            NonNull::new(this_mod.as_ref() as *const Module as *mut Module).unwrap();
+        let mut module_builder = Box::new(ModuleBuilder {
+            sym: this_mod_nonnull,
+            fpath,
+            use_map: HashMap::new(),
+            classes: Vec::new(),
+            funcs: Vec::new(),
+        });
+
+        // Parse source file
+        let ast = parser::parse(&module_builder.fpath).unwrap();
+
+        if cfg.dump_ast {
+            let mut cache_dir = module_builder.fpath.parent().unwrap().to_owned();
+            cache_dir.push(CACHE_DIRNAME);
+            fs::create_dir_all(&cache_dir).unwrap();
+            // save ast to .json file
+            let mut f = fs::File::create(&cache_dir.join(format!(
+                "{}.ast.json",
+                module_builder.fpath.file_stem().unwrap().to_str().unwrap()
+            )))
+            .unwrap();
+            write!(f, "{}", ast).unwrap();
+        }
+
+        if let AST::File(extern_module_declares, module_declares, uses, items) = *ast {
+            // load all sub modules
+            for sub_mod_name in module_declares.into_iter() {
+                if this_mod.sub_mods.contains_key(&sub_mod_name) {
+                    panic!(
+                        "Sub-module {} is defined multiple times in {}",
+                        sub_mod_name,
+                        module_builder.fpath.display()
+                    );
+                }
+
+                let mut sub_mod_path = mod_path.clone();
+                sub_mod_path.push(&sub_mod_name);
+
+                // add sub-module to use map
+                module_builder
+                    .use_map
+                    .insert(sub_mod_name.to_owned(), sub_mod_path.clone());
+
+                // locate sub module
+                let mut input_dir = cfg.entry_path.parent().unwrap().to_owned();
+                for seg_id in mod_path.iter().skip(1) {
+                    input_dir.push(seg_id);
+                }
+                let fpath1 = input_dir.with_extension("xi"); // entry/.../mod_name.xi
+                let fpath2 = input_dir.join("mod.xi"); // entry/.../mod_name/mod.xi
+                if fpath1.is_file() && fpath2.is_file() {
+                    panic!(
+                        "Ambiguous module {}. {} or {}?",
+                        mod_path,
+                        fpath1.display(),
+                        fpath2.display()
+                    );
+                }
+                let sub_mod_fpath = if fpath1.is_file() {
+                    fpath1
+                } else if fpath2.is_file() {
+                    fpath2
+                } else {
+                    panic!("Cannot find module {}", mod_path,);
+                };
+
+                this_mod.sub_mods.insert(
+                    sub_mod_name.to_owned(),
+                    Self::load(sub_mod_path, sub_mod_fpath, loader, cfg),
+                );
+            }
+
+            // process uses
+            for use_stmt in uses.iter() {
+                if let AST::Use(path, alias) = use_stmt.as_ref() {
+                    let alias = if let Some(alias) = alias {
+                        alias.clone()
+                    } else {
+                        path.to_string()
+                    };
+                    if this_mod.sub_mods.contains_key(&alias) {
+                        panic!(
+                            "{} is a sub-module but also a used symbol in file {}",
+                            alias,
+                            module_builder.fpath.display()
+                        );
+                    } else if this_mod.use_map.contains_key(&alias) {
+                        panic!(
+                            "{} is ambiguous in used symbols of file {}",
+                            alias,
+                            module_builder.fpath.display()
+                        );
+                    }
+                    module_builder.use_map.insert(alias, path.clone());
+                } else {
+                    unreachable!()
+                }
+            }
+
+            // declare all items
+            for item in items.into_iter() {
+                match *item {
+                    AST::Class(class_ast) => {
+                        let class_name = class_ast.name.clone();
+                        module_builder.check_item_ambiguity(&class_name).unwrap();
+                        let mut class_path = this_mod.path.clone();
+                        class_path.push(&class_name);
+                        this_mod.classes.insert(
+                            class_name,
+                            ClassBuilder::load(class_path, &mut module_builder.classes, class_ast),
+                        );
+                    }
+                    AST::Func(func_ast) => {
+                        let func_name = func_ast.name.clone();
+                        module_builder.check_item_ambiguity(&func_name).unwrap();
+                        let mut func_path = this_mod.path.clone();
+                        func_path.push(&func_name);
+                        this_mod.funcs.insert(
+                            func_name,
+                            FuncBuilder::load(func_path, &mut module_builder.funcs, func_ast),
+                        );
+                    }
+                    _ => unreachable!(),
+                };
+            }
+
+            loader.builders.push(module_builder);
+            loader
+                .module_map
+                .insert(mod_path.to_string(), this_mod_nonnull);
+
+            this_mod
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn check_item_ambiguity(&self, name: &str) -> Result<(), String> {
+        let sym = unsafe { self.sym.as_ref() };
+        if sym.sub_mods.contains_key(name) {
+            Err(format!("Already exists a sub module named {}", name))
+        } else if sym.classes.contains_key(name) {
+            Err(format!("Already exists a class named {}", name))
+        } else if sym.funcs.contains_key(name) {
+            Err(format!("Already exists a function named {}", name))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn link_type(&mut self, ctx: TypeLinkContext) {
+        let mut ctx = ctx;
+        for (alias, path) in self.use_map.iter() {
+            unsafe { self.sym.as_mut() }
+                .use_map
+                .insert(alias.clone(), ctx.resolve(path));
+        }
+        for func_builder in self.funcs.iter_mut() {
+            func_builder.link_type(&ctx);
+        }
+        for class_builder in self.classes.iter_mut() {
+            ctx.class = class_builder.sym.as_ptr();
+            class_builder.link_type(&ctx);
         }
     }
 
     pub fn code_gen(&mut self, cfg: &XiCfg) {
-        for strukt_builder in self.strukt_builders.iter_mut() {
-            strukt_builder.code_gen(cfg);
+        for class_builder in self.classes.iter_mut() {
+            class_builder.code_gen(cfg);
         }
     }
 
-    pub fn dump(&self, cfg: &XiCfg) {
-        for strukt_builder in self.strukt_builders.iter() {
-            strukt_builder.dump(cfg);
-        }
+    pub fn dump(&self, _: &XiCfg) {
+        unimplemented!();
     }
 }

@@ -258,7 +258,7 @@ impl fmt::Display for FieldFlags {
 }
 
 /// JVMs 4.6 Methods
-pub enum MethodFlag {
+pub enum FuncFlag {
     /// 0x0001
     Public,
     /// 0x0002
@@ -298,111 +298,111 @@ const METHOD_ACC_ABSTRACT: u16 = 0x0400;
 const METHOD_ACC_STRICT: u16 = 0x0800;
 const METHOD_ACC_SYNTHETIC: u16 = 0x1000;
 
-impl TryFrom<u16> for MethodFlag {
+impl TryFrom<u16> for FuncFlag {
     type Error = &'static str;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
         match value {
-            METHOD_ACC_PUBLIC => Ok(MethodFlag::Public),
-            METHOD_ACC_PRIVATE => Ok(MethodFlag::Private),
-            METHOD_ACC_PROTECTED => Ok(MethodFlag::Protected),
-            METHOD_ACC_STATIC => Ok(MethodFlag::Static),
-            METHOD_ACC_FINAL => Ok(MethodFlag::Final),
-            METHOD_ACC_SYNCHRONIZED => Ok(MethodFlag::Synchronized),
-            METHOD_ACC_BRIDGE => Ok(MethodFlag::Bridge),
-            METHOD_ACC_VARARGS => Ok(MethodFlag::VarArgs),
-            METHOD_ACC_NATIVE => Ok(MethodFlag::Native),
-            METHOD_ACC_ABSTRACT => Ok(MethodFlag::Abstract),
-            METHOD_ACC_STRICT => Ok(MethodFlag::Strict),
-            METHOD_ACC_SYNTHETIC => Ok(MethodFlag::Synthetic),
+            METHOD_ACC_PUBLIC => Ok(FuncFlag::Public),
+            METHOD_ACC_PRIVATE => Ok(FuncFlag::Private),
+            METHOD_ACC_PROTECTED => Ok(FuncFlag::Protected),
+            METHOD_ACC_STATIC => Ok(FuncFlag::Static),
+            METHOD_ACC_FINAL => Ok(FuncFlag::Final),
+            METHOD_ACC_SYNCHRONIZED => Ok(FuncFlag::Synchronized),
+            METHOD_ACC_BRIDGE => Ok(FuncFlag::Bridge),
+            METHOD_ACC_VARARGS => Ok(FuncFlag::VarArgs),
+            METHOD_ACC_NATIVE => Ok(FuncFlag::Native),
+            METHOD_ACC_ABSTRACT => Ok(FuncFlag::Abstract),
+            METHOD_ACC_STRICT => Ok(FuncFlag::Strict),
+            METHOD_ACC_SYNTHETIC => Ok(FuncFlag::Synthetic),
             _ => Err("Invalid value for MethodFlag"),
         }
     }
 }
 
-impl From<MethodFlag> for u16 {
-    fn from(value: MethodFlag) -> Self {
+impl From<FuncFlag> for u16 {
+    fn from(value: FuncFlag) -> Self {
         match value {
-            MethodFlag::Public => METHOD_ACC_PUBLIC,
-            MethodFlag::Private => METHOD_ACC_PRIVATE,
-            MethodFlag::Protected => METHOD_ACC_PROTECTED,
-            MethodFlag::Static => METHOD_ACC_STATIC,
-            MethodFlag::Final => METHOD_ACC_FINAL,
-            MethodFlag::Synchronized => METHOD_ACC_SYNCHRONIZED,
-            MethodFlag::Bridge => METHOD_ACC_BRIDGE,
-            MethodFlag::VarArgs => METHOD_ACC_VARARGS,
-            MethodFlag::Native => METHOD_ACC_NATIVE,
-            MethodFlag::Abstract => METHOD_ACC_ABSTRACT,
-            MethodFlag::Strict => METHOD_ACC_STRICT,
-            MethodFlag::Synthetic => METHOD_ACC_SYNTHETIC,
+            FuncFlag::Public => METHOD_ACC_PUBLIC,
+            FuncFlag::Private => METHOD_ACC_PRIVATE,
+            FuncFlag::Protected => METHOD_ACC_PROTECTED,
+            FuncFlag::Static => METHOD_ACC_STATIC,
+            FuncFlag::Final => METHOD_ACC_FINAL,
+            FuncFlag::Synchronized => METHOD_ACC_SYNCHRONIZED,
+            FuncFlag::Bridge => METHOD_ACC_BRIDGE,
+            FuncFlag::VarArgs => METHOD_ACC_VARARGS,
+            FuncFlag::Native => METHOD_ACC_NATIVE,
+            FuncFlag::Abstract => METHOD_ACC_ABSTRACT,
+            FuncFlag::Strict => METHOD_ACC_STRICT,
+            FuncFlag::Synthetic => METHOD_ACC_SYNTHETIC,
         }
     }
 }
 
 #[derive(Clone, Copy)]
-pub struct MethodFlags(pub u16);
+pub struct FuncFlags(pub u16);
 
-impl From<u16> for MethodFlags {
+impl From<u16> for FuncFlags {
     fn from(value: u16) -> Self {
         Self(value)
     }
 }
 
-impl MethodFlags {
-    pub fn is(&self, flag: MethodFlag) -> bool {
+impl FuncFlags {
+    pub fn is(&self, flag: FuncFlag) -> bool {
         (self.0 & u16::from(flag)) != 0
     }
 
-    pub fn set(&mut self, flag: MethodFlag) {
+    pub fn set(&mut self, flag: FuncFlag) {
         self.0 |= u16::from(flag);
     }
 }
 
-impl fmt::Display for MethodFlags {
+impl fmt::Display for FuncFlags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is(MethodFlag::Public) {
+        if self.is(FuncFlag::Public) {
             write!(f, "public")?;
-        } else if self.is(MethodFlag::Private) {
+        } else if self.is(FuncFlag::Private) {
             write!(f, "private")?;
-        } else if self.is(MethodFlag::Protected) {
+        } else if self.is(FuncFlag::Protected) {
             write!(f, "protected")?;
         } else {
             unreachable!();
         }
 
-        if self.is(MethodFlag::Static) {
+        if self.is(FuncFlag::Static) {
             write!(f, " static")?;
         }
 
-        if self.is(MethodFlag::Final) {
+        if self.is(FuncFlag::Final) {
             write!(f, " final")?;
         }
 
-        if self.is(MethodFlag::Synchronized) {
+        if self.is(FuncFlag::Synchronized) {
             write!(f, " sync")?;
         }
 
-        if self.is(MethodFlag::Bridge) {
+        if self.is(FuncFlag::Bridge) {
             write!(f, " bridge")?;
         }
 
-        if self.is(MethodFlag::VarArgs) {
+        if self.is(FuncFlag::VarArgs) {
             write!(f, " varargs")?;
         }
 
-        if self.is(MethodFlag::Native) {
+        if self.is(FuncFlag::Native) {
             write!(f, " native")?;
         }
 
-        if self.is(MethodFlag::Abstract) {
+        if self.is(FuncFlag::Abstract) {
             write!(f, " abstract")?;
         }
 
-        if self.is(MethodFlag::Strict) {
+        if self.is(FuncFlag::Strict) {
             write!(f, " strict")?;
         }
 
-        if self.is(MethodFlag::Synthetic) {
+        if self.is(FuncFlag::Synthetic) {
             write!(f, " synthetic")?;
         }
 

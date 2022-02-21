@@ -1,29 +1,28 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 
-use super::super::util::{IItemPath, ItemPathBuf};
-use super::Struct;
+use super::{Class, Func, Symbol};
+use core::util::{IItemPath, ItemPathBuf};
 
 /// There is no need for module to store parent module.
 /// We can use module path to determine the parent module path.
 pub struct Module {
-    pub mod_path: ItemPathBuf,
-    pub sub_mods: HashSet<String>,
+    pub path: ItemPathBuf,
+    pub sub_mods: HashMap<String, Box<Module>>,
+    pub use_map: HashMap<String, Symbol>,
     /// key: class_name
-    pub structs: HashMap<String, Box<Struct>>,
+    pub classes: HashMap<String, Box<Class>>,
+    /// key: function name, overload not allowed
+    pub funcs: HashMap<String, Box<Func>>,
 }
 
 impl Module {
-    pub fn self_name(&self) -> &str {
-        self.mod_path.get_self().unwrap()
+    pub fn name(&self) -> &str {
+        self.path.get_self().unwrap()
     }
 
     pub fn fullname(&self) -> &str {
-        self.mod_path.as_str()
-    }
-
-    pub fn is_root(&self) -> bool {
-        self.mod_path.len() == 1
+        self.path.as_str()
     }
 }
 

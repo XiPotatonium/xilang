@@ -1,17 +1,19 @@
+mod class;
 mod disp;
-mod member;
-mod strukt;
+mod field;
+mod func;
 mod ty;
 
-use super::util::ItemPathBuf;
-pub use core::flags::{ClassFlag, ClassFlags, FieldFlag, FieldFlags, MethodFlag, MethodFlags};
-pub use member::{ASTCtor, ASTField, ASTMethod};
-pub use strukt::{ASTStruct, ASTStructFieldInit};
+pub use class::{ASTClass, ASTFieldInit};
+pub use core::flags::{ClassFlag, ClassFlags, FieldFlag, FieldFlags, FuncFlag, FuncFlags};
+use core::util::ItemPathBuf;
+pub use field::ASTField;
+pub use func::ASTFunc;
 pub use ty::ASTType;
 
 pub enum AST {
-    /// mods, classes/interfaces
-    File(Vec<String>, Vec<Box<AST>>),
+    /// extern-module-declare, module-declare, use, classe/interface/func
+    File(Vec<String>, Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
 
     /// path, as
     Use(ItemPathBuf, Option<String>),
@@ -19,9 +21,9 @@ pub enum AST {
     /// attrib name, args
     CustomAttrib(String, Vec<Box<AST>>),
 
-    Struct(ASTStruct),
+    Class(ASTClass),
 
-    Method(ASTMethod),
+    Func(ASTFunc),
     Field(ASTField),
 
     Param(String, Box<ASTType>),
@@ -67,7 +69,7 @@ pub enum AST {
     /// f: Box<Expr>, ps: Vec<Expr>
     OpCall(Box<AST>, Vec<Box<AST>>),
     /// ty, ps: Vec<Expr>
-    OpNewStruct(Box<ASTType>, Vec<Box<ASTStructFieldInit>>),
+    OpNewStruct(Box<ASTType>, Vec<Box<ASTFieldInit>>),
     /// elem_ty, dim: Expr
     OpNewArr(Box<ASTType>, Box<AST>),
 

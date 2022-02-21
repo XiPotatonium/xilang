@@ -3,7 +3,7 @@ use std::fmt;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-const ID_RULE: &str = r"^[_a-zA-Z][_a-zA-Z0-9]*";
+const ID_RULE: &str = r"^[^/]*";
 
 lazy_static! {
     // Same as identifier
@@ -18,6 +18,7 @@ struct PathSegment {
 
 pub trait IItemPath {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
     fn get_self(&self) -> Option<&str>;
     fn get_super(&self) -> Option<&str>;
     fn get_root(&self) -> Option<&str>;
@@ -27,7 +28,7 @@ pub trait IItemPath {
     fn range(&self, start: usize, end: usize) -> ItemPath;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ItemPathBuf {
     path: String,
     segs: Vec<PathSegment>,
@@ -42,21 +43,16 @@ pub struct ItemPath<'p> {
 
 // FIXME: UTF-8
 impl ItemPathBuf {
-    pub fn new() -> ItemPathBuf {
-        ItemPathBuf {
-            path: String::new(),
-            segs: Vec::new(),
-        }
-    }
-
     /// p must be module fullname, no generic parameter
+    ///
+    /// TODO: rename
     pub fn from_ir_path(p: &str) -> ItemPathBuf {
         if !PATH_RULE.is_match(p) {
             panic!("Invalid path literal {}", p);
         }
 
         if p.is_empty() {
-            ItemPathBuf::new()
+            ItemPathBuf::default()
         } else {
             let path = p.to_owned();
             let mut segs = Vec::new();
@@ -79,7 +75,7 @@ impl ItemPathBuf {
             panic!("Invalid segment {} in path", seg);
         }
 
-        if self.len() != 0 {
+        if !self.is_empty() {
             self.path.push('/');
         }
         self.path.push_str(seg);
@@ -97,7 +93,7 @@ impl ItemPathBuf {
     }
 
     pub fn get_super(&self) -> ItemPath {
-        if self.len() == 0 {
+        if self.is_empty() {
             panic!("Empty path has no super");
         } else {
             ItemPath {
@@ -106,53 +102,6 @@ impl ItemPathBuf {
                 to: self.len() - 1,
             }
         }
-    }
-
-    /// Canonicalize path
-    ///
-    /// A valid canonicalized path: `("crate"? | "super"*) ~ Id*`
-    ///
-    /// Return:
-    pub fn canonicalize(&self) -> (bool, usize, ItemPathBuf) {
-        let mut has_crate: bool = false;
-        let mut super_count = 0;
-        let mut segs: Vec<&str> = Vec::new();
-        for (i, seg) in self.segs.iter().enumerate() {
-            let id = self.index(i);
-            if id == "crate" {
-                if i == 0 {
-                    has_crate = true;
-                    segs.push("crate");
-                } else {
-                    panic!(
-                        "crate should be the first segment in path {}",
-                        self.as_str()
-                    );
-                }
-            } else if id == "super" {
-                if segs.is_empty() {
-                    super_count += 1;
-                    segs.push("super");
-                } else if *segs.last().unwrap() == "crate" {
-                    panic!("Super of crate is invalid");
-                } else if *segs.last().unwrap() == "super" {
-                    super_count += 1;
-                    segs.push("super");
-                } else {
-                    // remove last
-                    segs.remove(segs.len() - 1);
-                }
-            } else if id == "self" {
-                continue;
-            } else {
-                segs.push(id);
-            }
-        }
-        let mut path = ItemPathBuf::new();
-        for id in segs.into_iter() {
-            path.push(id);
-        }
-        (has_crate, super_count, path)
     }
 
     fn index(&self, idx: usize) -> &str {
@@ -164,11 +113,25 @@ impl ItemPathBuf {
         let tail = &self.segs[idx];
         &self.path[start..tail.id_tail]
     }
+
+    pub fn pop(&mut self) -> Result<(), &'static str> {
+        if self.is_empty() {
+            Err("Too short path")
+        } else {
+            self.segs.remove(self.len() - 1);
+            self.path.truncate(self.segs.last().unwrap().id_tail);
+            Ok(())
+        }
+    }
 }
 
 impl IItemPath for ItemPathBuf {
     fn len(&self) -> usize {
         self.segs.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.segs.is_empty()
     }
 
     fn get_self(&self) -> Option<&str> {
@@ -263,6 +226,10 @@ impl<'p> ItemPath<'p> {
 impl<'p> IItemPath for ItemPath<'p> {
     fn len(&self) -> usize {
         self.to - self.start
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn get_self(&self) -> Option<&str> {

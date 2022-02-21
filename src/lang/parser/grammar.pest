@@ -1,22 +1,24 @@
-File = { SOI ~ Modules* ~ Class* ~ EOI }
+File = { SOI ~ (ExternModuleDeclare | ModuleDeclare | UseStmt)* ~ (Class | Func)* ~ EOI }
 
-Modules = { "mod" ~ Id ~ Semi }
+ExternModuleDeclare = { "extern" ~ Id ~ Semi }
+ModuleDeclare = { "mod" ~ Id ~ Semi }
+UseStmt = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
 
 AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
 Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
 
 Class = { 
     AttributeLst* ~ (KwClass | KwStruct | KwInterface) ~ Id ~ Impls? ~
-    "{" ~ (CCtor | Method | StaticField | NonStaticField)* ~ "}" 
+    "{" ~ (CCtor | Func | StaticField | NonStaticField)* ~ "}" 
 }
 
 Impls = { ":" ~ PathExpr ~ ("," ~ PathExpr)* }
 
+CCtor = { "static" ~ BlockExpr }
 StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
 NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
 
-CCtor = { "static" ~ BlockExpr }
-Method = { AttributeLst* ~ (KwOverride | KwVirtual)* ~ "fn" ~ Id ~ Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+Func = { AttributeLst* ~ "fn" ~ Id ~ Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
 Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
 
 Pattern = { Id | TuplePattern }
@@ -32,9 +34,8 @@ NonArrType = _{
     | TupleType
 }
 
-Stmt = { LetStmt | UseStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
+Stmt = { LetStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
 LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ (Eq ~ Expr)? ~ Semi }
-UseStmt = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
 Expr = _{ ExprWithBlock | ExprWithoutBlock }
 ExprWithBlock = _{ BlockExpr | LoopExpr | IfExpr }
 ExprWithoutBlock = _{
@@ -92,7 +93,7 @@ FloatLiteral = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
 StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
-PathExpr = { (Id | KwCrate | KwSuper) ~ ("::" ~ (Id | KwSuper))* }
+PathExpr = { (Id | KwCrate | KwSuper | KwLSelf) ~ ("::" ~ (Id | KwSuper))* }
 Id = @{ 
     KeyWord ~ (ASCII_ALPHANUMERIC | "_")+ 
     | !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* 

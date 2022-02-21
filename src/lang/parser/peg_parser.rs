@@ -1,5 +1,6 @@
 use super::super::ast::*;
-use super::super::util::ItemPathBuf;
+use core::util::ItemPathBuf;
+use core::CCTOR_NAME;
 
 use std::fs;
 use std::path::Path;
@@ -17,18 +18,43 @@ pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
 
     let file = LRParser::parse(Rule::File, &code)?.next().unwrap();
 
-    let mut mods: Vec<String> = Vec::new();
-    let mut classes: Vec<Box<AST>> = Vec::new();
+    let mut items: Vec<Box<AST>> = Vec::new();
+    let mut uses: Vec<Box<AST>> = Vec::new();
+    let mut extern_module_declares: Vec<String> = Vec::new();
+    let mut module_declares: Vec<String> = Vec::new();
     for sub in file.into_inner() {
         match sub.as_rule() {
             Rule::EOI => break,
-            Rule::Class => classes.push(build_custom_type(sub)),
-            Rule::Modules => mods.push(build_id(sub.into_inner().next().unwrap())),
+            Rule::ExternModuleDeclare => {
+                extern_module_declares.push(build_id(sub.into_inner().next().unwrap()))
+            }
+            Rule::ModuleDeclare => module_declares.push(build_id(sub.into_inner().next().unwrap())),
+            Rule::UseStmt => uses.push(build_use_stmt(sub)),
+            Rule::Class => items.push(build_custom_class(sub)),
+            Rule::Func => items.push(build_func(sub)),
             _ => unreachable!(),
         };
     }
 
-    Ok(Box::new(AST::File(mods, classes)))
+    Ok(Box::new(AST::File(
+        extern_module_declares,
+        module_declares,
+        uses,
+        items,
+    )))
+}
+
+fn build_use_stmt(tree: Pair<Rule>) -> Box<AST> {
+    let mut iter = tree.into_inner();
+    let path = build_pathexpr(iter.next().unwrap());
+    let as_clause = iter.next().unwrap();
+    let as_id = match as_clause.as_rule() {
+        Rule::Id => Some(build_id(as_clause)),
+        Rule::Semi => None,
+        _ => unreachable!(),
+    };
+
+    Box::new(AST::Use(path, as_id))
 }
 
 fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
@@ -48,7 +74,7 @@ fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
     ret
 }
 
-fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
+fn build_custom_class(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let custom_attribs = build_attributes(&mut iter);
     let sem = iter.next().unwrap().as_rule();
@@ -63,43 +89,45 @@ fn build_custom_type(tree: Pair<Rule>) -> Box<AST> {
         }
     }
 
+    let mut has_cctor = false;
     let mut fields = Vec::new();
     let mut methods = Vec::new();
-    let mut cctor: Option<Box<AST>> = None;
     for class_item in iter {
         match class_item.as_rule() {
             Rule::CCtor => {
-                if cctor.is_some() {
-                    panic!("Duplicated static init found in class {}", name);
-                } else {
-                    cctor = Some(build_block(class_item.into_inner().next().unwrap()));
+                if has_cctor {
+                    panic!("Duplicate cctor in class {}", name);
                 }
+                has_cctor = true;
+                let mut flags = FuncFlags::from(u16::from(FieldFlag::Public));
+                flags.set(FuncFlag::Static);
+                methods.push(Box::new(AST::Func(ASTFunc {
+                    name: CCTOR_NAME.to_owned(),
+                    flags,
+                    custom_attribs: Vec::new(),
+                    ret: Box::new(ASTType::None),
+                    ps: Vec::new(),
+                    body: build_block(class_item.into_inner().next().unwrap()),
+                })));
             }
             Rule::StaticField => fields.push(build_field(class_item, true)),
             Rule::NonStaticField => fields.push(build_field(class_item, false)),
-            Rule::Method => methods.push(build_method(class_item)),
+            Rule::Func => methods.push(build_func(class_item)),
             _ => unreachable!(),
         }
     }
 
-    let ret = ASTStruct {
+    let ret = ASTClass {
         name,
         flags: ClassFlags::from(u16::from(ClassFlag::Public) | u16::from(ClassFlag::Super)),
         custom_attribs,
         impls: extends_or_impls,
         methods,
         fields,
-        cctor: if let Some(v) = cctor {
-            v
-        } else {
-            Box::new(AST::None)
-        },
     };
     Box::new(match sem {
-        Rule::KwClass => {
-            unimplemented!()
-        }
-        Rule::KwStruct => AST::Struct(ret),
+        Rule::KwClass => AST::Class(ret),
+        Rule::KwStruct => unimplemented!(),
         Rule::KwInterface => {
             unimplemented!()
         }
@@ -122,18 +150,18 @@ fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
     }))
 }
 
-fn build_method(tree: Pair<Rule>) -> Box<AST> {
+fn build_func(tree: Pair<Rule>) -> Box<AST> {
     let mut iter = tree.into_inner();
     let custom_attribs = build_attributes(&mut iter);
 
     // built-in attributes
-    let mut flags = MethodFlags::from(u16::from(MethodFlag::Public));
+    let mut flags = FuncFlags::from(u16::from(FuncFlag::Public));
 
     let name = build_id(iter.next().unwrap());
 
     let (ps, has_self) = build_params(iter.next().unwrap());
     if !has_self {
-        flags.set(MethodFlag::Static);
+        flags.set(FuncFlag::Static);
     }
 
     let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
@@ -149,7 +177,7 @@ fn build_method(tree: Pair<Rule>) -> Box<AST> {
         _ => unreachable!(),
     };
 
-    Box::new(AST::Method(ASTMethod {
+    Box::new(AST::Func(ASTFunc {
         name,
         flags,
         custom_attribs,
@@ -194,12 +222,13 @@ fn build_params(tree: Pair<Rule>) -> (Vec<Box<AST>>, bool) {
 }
 
 fn build_pathexpr(tree: Pair<Rule>) -> ItemPathBuf {
-    let mut ret = ItemPathBuf::new();
+    let mut ret = ItemPathBuf::default();
     for seg in tree.into_inner() {
         match seg.as_rule() {
             Rule::Id => ret.push(&build_id(seg)),
             Rule::KwCrate => ret.push("crate"),
             Rule::KwSuper => ret.push("super"),
+            Rule::KwLSelf => ret.push("self"),
             _ => unreachable!(),
         };
     }
@@ -214,7 +243,7 @@ fn build_non_arr_type(tree: Pair<Rule>) -> Box<ASTType> {
         Rule::KwF64 => ASTType::F64,
         Rule::KwString => ASTType::String,
         Rule::KwUSelf => ASTType::UsrType({
-            let mut path = ItemPathBuf::new();
+            let mut path = ItemPathBuf::default();
             path.push("Self");
             path
         }),
@@ -314,18 +343,6 @@ fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
                 }
                 _ => unreachable!(),
             })
-        }
-        Rule::UseStmt => {
-            let mut iter = clause.into_inner();
-            let path = build_pathexpr(iter.next().unwrap());
-            let as_clause = iter.next().unwrap();
-            let as_id = match as_clause.as_rule() {
-                Rule::Id => Some(build_id(as_clause)),
-                Rule::Semi => None,
-                _ => unreachable!(),
-            };
-
-            Box::new(AST::Use(path, as_id))
         }
         _ => {
             let sub = build_expr(clause);
@@ -480,7 +497,7 @@ fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
                         .map(|field_init| {
                             let mut sub_iter = field_init.into_inner();
                             let field = build_id(sub_iter.next().unwrap());
-                            Box::new(ASTStructFieldInit {
+                            Box::new(ASTFieldInit {
                                 field,
                                 value: if let Some(init_val) = sub_iter.next() {
                                     build_expr(init_val)

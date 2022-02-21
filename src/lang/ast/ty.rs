@@ -1,4 +1,4 @@
-use super::super::util::{IItemPath, ItemPathBuf};
+use core::util::{IItemPath, ItemPathBuf};
 
 use std::fmt;
 

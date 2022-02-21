@@ -1,6 +1,6 @@
 # xilang
 
-A toy script language.
+A toy programming language and its interpreter.
 
 [Development Diary开发日志](https://xipotatonium.github.io/2021/04/04/XilangDev0/)
 
