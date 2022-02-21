@@ -12,7 +12,6 @@ use super::sym::{Module, TypeLinkContext};
 use super::{XiCfg, SYS_NAME, SYS_PATH};
 use core::util::ItemPathBuf;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::ptr::{null_mut, NonNull};
 
 pub struct FileLoader {

@@ -7,7 +7,7 @@ use std::ptr::NonNull;
 use super::super::ast::AST;
 use super::super::parser;
 use super::super::sym::Module;
-use super::super::{XiCfg, SYS_NAME, SYS_PATH};
+use super::super::XiCfg;
 use super::{ClassBuilder, FileLoader, FuncBuilder, TypeLinkContext};
 use core::util::{IItemPath, ItemPathBuf};
 
@@ -62,7 +62,7 @@ impl ModuleBuilder {
             write!(f, "{}", ast).unwrap();
         }
 
-        if let AST::File(extern_module_declares, module_declares, uses, items) = *ast {
+        if let AST::File(_, module_declares, uses, items) = *ast {
             // load all sub modules
             for sub_mod_name in module_declares.into_iter() {
                 if this_mod.sub_mods.contains_key(&sub_mod_name) {
