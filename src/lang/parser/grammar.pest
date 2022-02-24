@@ -25,7 +25,7 @@ Pattern = { Id | TuplePattern }
 TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
 
 Type = { NonArrType ~ (LBracket ~ RBracket)* }
-BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwString }
+BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwISize | KwUSize | KwString }
 TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
 NonArrType = _{
     BasicType

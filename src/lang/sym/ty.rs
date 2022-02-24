@@ -29,12 +29,14 @@ pub enum ValExpectation {
 
 #[derive(Clone, Eq)]
 pub enum RValType {
+    None,
     Bool,
     U8,
     Char,
     I32,
     F64,
-    None,
+    ISize,
+    USize,
     ClassRef(NonNull<Class>),
     /// elety
     Array(Box<RValType>),
@@ -61,14 +63,16 @@ impl PartialEq for RValType {
 impl fmt::Display for RValType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Bool => write!(f, "Z"),
-            Self::U8 => write!(f, "B"),
-            Self::Char => write!(f, "C"),
-            Self::I32 => write!(f, "I"),
-            Self::F64 => write!(f, "D"),
-            Self::None => write!(f, "V"),
-            Self::ClassRef(sym) => write!(f, "O{};", unsafe { sym.as_ref() }),
-            Self::Array(ty) => write!(f, "[{}", ty),
+            Self::Bool => write!(f, "bool"),
+            Self::U8 => write!(f, "u8"),
+            Self::Char => write!(f, "char"),
+            Self::I32 => write!(f, "i32"),
+            Self::F64 => write!(f, "f64"),
+            Self::None => write!(f, "none"),
+            Self::ISize => write!(f, "isize"),
+            Self::USize => write!(f, "usize"),
+            Self::ClassRef(sym) => write!(f, "{}", unsafe { sym.as_ref() }),
+            Self::Array(ty) => write!(f, "{}[]", ty),
             RValType::UnInit => unreachable!(),
         }
     }

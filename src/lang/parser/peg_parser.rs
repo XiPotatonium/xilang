@@ -241,6 +241,8 @@ fn build_non_arr_type(tree: Pair<Rule>) -> Box<ASTType> {
         Rule::KwChar => ASTType::Char,
         Rule::KwI32 => ASTType::I32,
         Rule::KwF64 => ASTType::F64,
+        Rule::KwISize => ASTType::ISize,
+        Rule::KwUSize => ASTType::USize,
         Rule::KwString => ASTType::String,
         Rule::KwUSelf => ASTType::UsrType({
             let mut path = ItemPathBuf::default();

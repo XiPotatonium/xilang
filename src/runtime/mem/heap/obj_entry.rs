@@ -4,7 +4,6 @@ use std::marker::PhantomData;
 
 use crate::lang::sym::Class;
 
-
 #[repr(C)]
 pub struct ObjHeader {
     pub flag: usize,

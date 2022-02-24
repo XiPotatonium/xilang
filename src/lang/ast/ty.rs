@@ -8,6 +8,8 @@ pub enum ASTType {
     Char,
     I32,
     F64,
+    ISize,
+    USize,
     String,
     Tuple(Vec<Box<ASTType>>),
     /// type
@@ -24,6 +26,8 @@ impl fmt::Display for ASTType {
             ASTType::Char => write!(f, "(type)char"),
             ASTType::I32 => write!(f, "(type)i32"),
             ASTType::F64 => write!(f, "(type)f64"),
+            ASTType::ISize => write!(f, "(type)isize"),
+            ASTType::USize => write!(f, "(type)usize"),
             ASTType::String => write!(f, "(type)string"),
             ASTType::Tuple(_) => unimplemented!(),
             ASTType::Arr(dtype) => write!(f, "(type){}[]", dtype),

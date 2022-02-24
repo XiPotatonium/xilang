@@ -65,6 +65,8 @@ impl TypeLinkContext {
             ASTType::Bool => RValType::Bool,
             ASTType::None => RValType::None,
             ASTType::Char => RValType::Char,
+            ASTType::ISize => RValType::ISize,
+            ASTType::USize => RValType::USize,
             ASTType::String => RValType::ClassRef(
                 if let Symbol::Class(string_class) =
                     self.resolve(&ItemPathBuf::from_ir_path(STRING_CLASS_NAME))

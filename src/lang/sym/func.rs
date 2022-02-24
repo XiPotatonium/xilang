@@ -2,7 +2,7 @@ use core::flags::FuncFlags;
 use core::util::{IItemPath, ItemPathBuf};
 
 use super::super::ast::AST;
-use super::{RValType, Symbol};
+use super::{RValType, Symbol, TypeLinkContext};
 
 use std::fmt;
 

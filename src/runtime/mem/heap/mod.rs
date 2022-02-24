@@ -3,8 +3,9 @@ mod obj_entry;
 use std::mem::size_of;
 
 use crate::lang::sym::Class;
-use obj_entry::{ArrHeader, ObjHeader, StrCharsIter, StrHeader, StrCharsIterMut};
+use obj_entry::{ArrHeader, ObjHeader, StrCharsIter, StrCharsIterMut, StrHeader};
 
+use super::object_size;
 
 pub struct Heap {
     next_obj_offset: usize,
@@ -55,8 +56,7 @@ impl Heap {
     ///
     /// [ObjHeader] [content...]
     pub unsafe fn new_obj(&mut self, class: &Class) -> *mut u8 {
-        let offset_after_alloc =
-            class.basic_instance_size + size_of::<ObjHeader>() + self.next_obj_offset;
+        let offset_after_alloc = object_size(class) + size_of::<ObjHeader>() + self.next_obj_offset;
         if offset_after_alloc >= self.data.len() {
             // GC
             unimplemented!("GC");
