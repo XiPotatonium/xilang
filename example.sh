@@ -1,0 +1,1 @@
+./out/build/linux-clang-debug/src/xilang examples/main.xi --ast
