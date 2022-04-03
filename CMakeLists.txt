@@ -151,3 +151,7 @@ set(CPACK_PACKAGE_FILE_NAME
 )
 
 include(CPack)
+
+# Copy example files and sys file to build dir
+file(COPY ${CMAKE_SOURCE_DIR}/examples DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY ${CMAKE_SOURCE_DIR}/sys DESTINATION ${CMAKE_BINARY_DIR})

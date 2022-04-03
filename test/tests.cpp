@@ -1,14 +1,25 @@
 #include <catch2/catch.hpp>
+#include <cstdint>
+#include <fmt/core.h>
+#include <fmt/ostream.h>
+#include <iostream>
+#include <string_view>
+#include <tao/pegtl/contrib/analyze.hpp>
+#include <tao/pegtl/contrib/parse_tree.hpp>
+#include <tao/pegtl/parse_error.hpp>
 
-unsigned int Factorial(unsigned int number)// NOLINT(misc-no-recursion)
+#include "lang/grammar.hpp"
+#include "lang/parser.hpp"
+
+bool test_parse(const std::string_view file)// NOLINT(misc-no-recursion)
 {
-  return number <= 1 ? number : Factorial(number - 1) * number;
+    tao::pegtl::file_input input(file);
+    const auto root = tao::pegtl::parse_tree::parse<lang::grammar::Grammar>(input);
+    return root != nullptr;
 }
 
-TEST_CASE("Factorials are computed", "[factorial]")
-{
-  REQUIRE(Factorial(1) == 1);
-  REQUIRE(Factorial(2) == 2);
-  REQUIRE(Factorial(3) == 6);
-  REQUIRE(Factorial(10) == 3628800);
+TEST_CASE("Factorials are computed", "[factorial]") {
+    REQUIRE(tao::pegtl::analyze<lang::grammar::Grammar>() == 0);
+    REQUIRE(test_parse("../examples/main.xi"));
+    REQUIRE(test_parse("../sys/mod.xi"));
 }

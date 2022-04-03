@@ -1,4 +1,4 @@
-class String {
+struct String {
     #[internal]
     fn len(self);
 }

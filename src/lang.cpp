@@ -5,15 +5,17 @@
 #include <fmt/core.h>
 #include <functional>
 #include <iostream>
+#include <tao/pegtl/contrib/parse_tree_to_dot.hpp>
 
 // This file will be generated automatically when you run the CMake configuration step.
 // It creates a namespace called `myproject`.
 // You can modify the source template at `configured_files/config.hpp.in`.
 #include <internal_use_only/config.hpp>
 
-#include <lang/cfg.hpp>
+#include "lang/cfg.hpp"
+#include "lang/parser.hpp"
 
-int main(int argc, const char **argv) noexcept {
+int main(int argc, const char **argv) {
     lang::Config cfg {};
     try {
         CLI::App app {fmt::format("xilang compiler and its interpreter. Ver {}", myproject::cmake::project_version),
@@ -32,8 +34,10 @@ int main(int argc, const char **argv) noexcept {
         return -1;
     }
 
-    fmt::print(
-        "Entry = {}, compile = {}, dump-ast = {}, no-sys = {}\n", cfg.entry, cfg.compile, cfg.dump_ast, cfg.no_sys);
+    auto root = lang::parse(std::string_view(cfg.entry));
+    if (root != nullptr) {
+        if (cfg.dump_ast) { tao::pegtl::parse_tree::print_dot(std::cout, *root); }
+    }
 
     return 0;
 }
