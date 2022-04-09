@@ -8,18 +8,14 @@ Checks: "*,
         -llvm*,
         -modernize-use-trailing-return-type,
         -zircon-*,
+        -readability-identifier-length,
         -readability-else-after-return,
         -readability-static-accessed-through-instance,
         -readability-avoid-const-params-in-decls,
         -cppcoreguidelines-non-private-member-variables-in-classes,
+        -misc-no-recursion,
         -misc-non-private-member-variables-in-classes,
 "
 WarningsAsErrors: ''
 HeaderFilterRegex: ''
 FormatStyle:     none
-
-
-
-
-
-

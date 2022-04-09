@@ -14,6 +14,7 @@
 
 #include "lang/cfg.hpp"
 #include "lang/parser.hpp"
+#include "lang/grammar.hpp"
 
 int main(int argc, const char **argv) {
     lang::Config cfg {};
@@ -24,7 +25,6 @@ int main(int argc, const char **argv) {
         app.add_option("entry", cfg.entry, "Entry file");
         app.add_flag("-c,--compile", cfg.compile, "Do not run. Only generate byte code in cache.");
         app.add_flag("--ast", cfg.dump_ast, "Whether to dump .ast.json in cache");
-        app.add_flag("--no-sys", cfg.no_sys, "Not to load syslib");
 
         try {
             app.parse(argc, argv);
@@ -34,7 +34,8 @@ int main(int argc, const char **argv) {
         return -1;
     }
 
-    auto root = lang::parse(std::string_view(cfg.entry));
+    auto parser = lang::FileParser(cfg.entry);
+    const auto *root = parser.Parse();
     if (root != nullptr) {
         if (cfg.dump_ast) { tao::pegtl::parse_tree::print_dot(std::cout, *root); }
     }
