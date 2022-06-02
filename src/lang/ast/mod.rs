@@ -1,91 +1,208 @@
-mod class;
-mod disp;
-mod field;
-mod func;
 mod ty;
+mod op;
 
-pub use class::{ASTClass, ASTFieldInit};
 pub use core::flags::{ClassFlag, ClassFlags, FieldFlag, FieldFlags, FuncFlag, FuncFlags};
 use core::util::ItemPathBuf;
-pub use field::ASTField;
-pub use func::ASTFunc;
-pub use ty::ASTType;
+pub use ty::Type;
+pub use op::{BinOp, UnOp, AssignOp};
 
-pub enum AST {
-    /// extern-module-declare, module-declare, use, classe/interface/func
-    File(Vec<String>, Vec<String>, Vec<Box<AST>>, Vec<Box<AST>>),
+#[derive(Default)]
+pub struct File {
+    pub uses: Vec<Use>,
+    pub interfaces: Vec<Interface>,
+    pub structs: Vec<Struct>,
+    pub enums: Vec<Enum>,
+    pub fns: Vec<Fn>,
+    pub globals: Vec<Global>,
+}
 
-    /// path, as
-    Use(ItemPathBuf, Option<String>),
+pub struct Use {
+    pub path: ItemPathBuf,
+    pub id: Option<String>,
+}
 
-    /// attrib name, args
-    CustomAttrib(String, Vec<Box<AST>>),
+pub struct Interface {
+    pub custom_attribs: Vec<CustomAttrib>,
+    pub id: String,
+    pub generic_decl: Option<Vec<String>>,
+    pub impls: Vec<ItemPathBuf>,
 
-    Class(ASTClass),
+    pub fns: Vec<Fn>,
+}
 
-    Func(ASTFunc),
-    Field(ASTField),
+pub struct Struct {
+    pub custom_attribs: Vec<CustomAttrib>,
+    pub id: String,
+    pub generic_decl: Option<Vec<String>>,
+    pub impls: Vec<ItemPathBuf>,
 
-    Param(String, Box<ASTType>),
-    /// pattern, attrib, ty, init: Box<AST>
-    Let(Box<AST>, Box<ASTType>, Box<AST>),
+    pub fields: Vec<Field>,
+    pub fns: Vec<Fn>,
+}
 
-    ExprStmt(Box<AST>),
+pub struct Enum {
+    pub custom_attribs: Vec<CustomAttrib>,
+    pub id: String,
+    pub generic_decl: Option<Vec<String>>,
 
-    /// children: Vec<Stmt>
-    Block(Vec<Box<AST>>),
-    /// cond: Box<Expr>, then: Box<Block>, els: Box<Stmt>
-    If(Box<AST>, Box<AST>, Box<AST>),
-    Loop(Box<AST>),
+    pub fns: Vec<Fn>,
+    pub fields: Vec<EnumField>,
+}
 
-    /// ret_val: Box<Expr>
-    Return(Box<AST>),
-    Continue,
-    /// break_val: Box<Expr>
-    Break(Box<AST>),
+pub struct Fn {
+    pub id: String,
+    pub generic_decl: Option<Vec<String>>,
 
-    OpPos(Box<AST>),
-    OpNeg(Box<AST>),
-    OpAdd(Box<AST>, Box<AST>),
-    OpSub(Box<AST>, Box<AST>),
-    OpMul(Box<AST>, Box<AST>),
-    OpDiv(Box<AST>, Box<AST>),
-    OpMod(Box<AST>, Box<AST>),
-    OpLogNot(Box<AST>),
-    OpLogAnd(Box<AST>, Box<AST>),
-    OpLogOr(Box<AST>, Box<AST>),
-    OpEq(Box<AST>, Box<AST>),
-    OpNe(Box<AST>, Box<AST>),
-    OpGe(Box<AST>, Box<AST>),
-    OpGt(Box<AST>, Box<AST>),
-    OpLe(Box<AST>, Box<AST>),
-    OpLt(Box<AST>, Box<AST>),
-    OpAssign(Box<AST>, Box<AST>),
-    OpStaticAccess(Box<AST>, String),
-    OpObjAccess(Box<AST>, String),
-    OpArrayAccess(Box<AST>, Box<AST>),
-    /// ty, val
-    OpCast(Box<ASTType>, Box<AST>),
-    /// f: Box<Expr>, ps: Vec<Expr>
-    OpCall(Box<AST>, Vec<Box<AST>>),
-    /// ty, ps: Vec<Expr>
-    OpNewStruct(Box<ASTType>, Vec<Box<ASTFieldInit>>),
-    /// elem_ty, dim: Expr
-    OpNewArr(Box<ASTType>, Box<AST>),
+    pub attribs: FuncFlags,
+    pub custom_attribs: Vec<CustomAttrib>,
+    pub ret: Box<Type>,
+    pub ps: Vec<Param>,
+    pub body: Option<Box<Block>>,
+}
 
+pub struct Global {
+    pub id: String,
+    pub ty: Box<Type>,
+    pub value: Box<Expr>,
+}
+
+pub struct EnumField {
+    pub id: String,
+    pub ty: Option<Box<Type>>,
+}
+
+pub struct Field {
+    pub id: String,
+    pub ty: Box<Type>,
+}
+
+pub struct CustomAttrib {
+    pub id: String,
+    pub args: Option<Vec<Box<Expr>>>,
+}
+
+pub struct Param {
+    pub id: String,
+    pub ty: Box<Type>,
+}
+
+pub enum PatKind {
     Id(String),
-    TuplePattern(Vec<Box<AST>>),
+    Tuple(Vec<PatKind>),
+}
 
-    Type(Box<ASTType>),
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+}
+
+pub struct Stmt {
+    pub kind: StmtKind,
+}
+
+pub enum StmtKind {
+    /// e.g. let a = 10;
+    Local(Box<Local>),
+
+    Expr(Box<Expr>),
+
+    /// expr with tailing ;
+    Semi(Box<Expr>),
+
+    Empty,
+}
+
+pub struct Expr {
+    pub kind: ExprKind,
+}
+
+pub enum ExprKind {
+    /// `[1, 2, 3, a]`
+    Array(Vec<Box<Expr>>),
+
+    /// `<f> <args>`
+    ///
+    /// `<f>(<args>)`
+    Call(Box<Expr>, Vec<Box<Expr>>),
+
+    /// `(1, 2, 3, a)`
+    Tup(Vec<Box<Expr>>),
+
+    Binary(BinOp, Box<Expr>, Box<Expr>),
+    Unary(UnOp, Box<Expr>),
 
     /// Literal
+    Lit(Lit),
+
+    /// `<expr>, <ty>`
+    ///
+    /// `<expr> as <ty>`
+    Cast(Box<Expr>, Box<Type>),
+
+    /// `<cond>, <body>, <els>`
+    ///
+    /// `if <cond> <body> (else <els>)`
+    If(Box<Expr>, Box<Block>, Option<Box<Expr>>),
+    /// `<cond>, <body>`
+    ///
+    /// while <cond> <body>
+    While(Box<Expr>, Box<Block>),
+    /// `<body>`
+    ///
+    /// `loop <body>`
+    Loop(Box<Block>),
+
+    Block(Box<Block>),
+
+    /// `<op> <lhs> <rhs>`
+    ///
+    /// `<lhs> <op> <rhs>`
+    Assign(AssignOp, Box<Expr>, Box<Expr>),
+
+    /// e.g. `obj.foo`
+    Field(Box<Expr>, String),
+
+    /// e.g. `arr[2]`
+    Index(Box<Expr>, Box<Expr>),
+
+    Underscore,
+
+    Path(ItemPathBuf),
+
+    Break(Option<Box<Expr>>),
+    Continue(),
+    Ret(Option<Box<Expr>>),
+
+    Struct(Box<StructExpr>),
+
+    /// e.g. `(a + b)`
+    Paren(Box<Expr>),
+
+    Err,
+}
+
+pub struct StructExpr {
+    pub path: ItemPathBuf,
+    pub fields: Vec<ExprField>,
+    // rest currently not implemented
+}
+
+pub struct ExprField {
+    pub field: String,
+    /// expr
+    pub value: Box<Expr>,
+}
+
+pub struct Local {
+    pub pattern: PatKind,
+    pub ty: Option<Type>,
+    pub value: Option<Box<Expr>>,
+}
+
+pub enum Lit {
     Null,
     Bool(bool),
-    Int(i32),
+    Int(u128),
     Float(f64),
-    String(String),
-    Char(u32),
-
-    /// Option<AST>::None
-    None,
+    Str(String),
+    Char(char),
 }

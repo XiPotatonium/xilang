@@ -4,14 +4,12 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::ptr::NonNull;
 
-use super::super::ast::AST;
 use super::super::parser;
 use super::super::sym::Module;
 use super::super::XiCfg;
 use super::{ClassBuilder, FileLoader, FuncBuilder, TypeLinkContext};
 use core::util::{IItemPath, ItemPathBuf};
 
-static CACHE_DIRNAME: &str = ".xicache";
 
 pub struct ModuleBuilder {
     pub fpath: PathBuf,
@@ -62,54 +60,7 @@ impl ModuleBuilder {
             write!(f, "{}", ast).unwrap();
         }
 
-        if let AST::File(_, module_declares, uses, items) = *ast {
-            // load all sub modules
-            for sub_mod_name in module_declares.into_iter() {
-                if this_mod.sub_mods.contains_key(&sub_mod_name) {
-                    panic!(
-                        "Sub-module {} is defined multiple times in {}",
-                        sub_mod_name,
-                        module_builder.fpath.display()
-                    );
-                }
-
-                let mut sub_mod_path = mod_path.clone();
-                sub_mod_path.push(&sub_mod_name);
-
-                // add sub-module to use map
-                module_builder
-                    .use_map
-                    .insert(sub_mod_name.to_owned(), sub_mod_path.clone());
-
-                // locate sub module
-                let mut input_dir = cfg.entry_path.parent().unwrap().to_owned();
-                for seg_id in mod_path.iter().skip(1) {
-                    input_dir.push(seg_id);
-                }
-                let fpath1 = input_dir.with_extension("xi"); // entry/.../mod_name.xi
-                let fpath2 = input_dir.join("mod.xi"); // entry/.../mod_name/mod.xi
-                if fpath1.is_file() && fpath2.is_file() {
-                    panic!(
-                        "Ambiguous module {}. {} or {}?",
-                        mod_path,
-                        fpath1.display(),
-                        fpath2.display()
-                    );
-                }
-                let sub_mod_fpath = if fpath1.is_file() {
-                    fpath1
-                } else if fpath2.is_file() {
-                    fpath2
-                } else {
-                    panic!("Cannot find module {}", mod_path,);
-                };
-
-                this_mod.sub_mods.insert(
-                    sub_mod_name.to_owned(),
-                    Self::load(sub_mod_path, sub_mod_fpath, loader, cfg),
-                );
-            }
-
+        if let AST::File(uses, items) = *ast {
             // process uses
             for use_stmt in uses.iter() {
                 if let AST::Use(path, alias) = use_stmt.as_ref() {
@@ -137,10 +88,12 @@ impl ModuleBuilder {
                 }
             }
 
+            // TODO: import used items
+
             // declare all items
             for item in items.into_iter() {
                 match *item {
-                    AST::Class(class_ast) => {
+                    AST::Struct(class_ast) => {
                         let class_name = class_ast.name.clone();
                         module_builder.check_item_ambiguity(&class_name).unwrap();
                         let mut class_path = this_mod.path.clone();

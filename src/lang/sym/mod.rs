@@ -15,7 +15,7 @@ pub use class::Class;
 pub use field::Field;
 pub use func::{Func, Param};
 
-use super::ast::ASTType;
+use super::ast::Type;
 use super::build::FileLoader;
 use super::STRING_CLASS_NAME;
 
@@ -58,16 +58,16 @@ pub struct TypeLinkContext {
 }
 
 impl TypeLinkContext {
-    pub fn resolve_rval_type(&self, ast: &ASTType) -> RValType {
+    pub fn resolve_rval_type(&self, ast: &Type) -> RValType {
         match ast {
-            ASTType::I32 => RValType::I32,
-            ASTType::F64 => RValType::F64,
-            ASTType::Bool => RValType::Bool,
-            ASTType::None => RValType::None,
-            ASTType::Char => RValType::Char,
-            ASTType::ISize => RValType::ISize,
-            ASTType::USize => RValType::USize,
-            ASTType::String => RValType::ClassRef(
+            Type::I32 => RValType::I32,
+            Type::F64 => RValType::F64,
+            Type::Bool => RValType::Bool,
+            Type::None => RValType::None,
+            Type::Char => RValType::Char,
+            Type::ISize => RValType::ISize,
+            Type::USize => RValType::USize,
+            Type::Str => RValType::ClassRef(
                 if let Symbol::Class(string_class) =
                     self.resolve(&ItemPathBuf::from_ir_path(STRING_CLASS_NAME))
                 {
@@ -76,15 +76,15 @@ impl TypeLinkContext {
                     unreachable!()
                 },
             ),
-            ASTType::Tuple(_) => unimplemented!(),
-            ASTType::UsrType(class_path) => RValType::ClassRef(
+            Type::Tuple(_) => unimplemented!(),
+            Type::UsrType(class_path) => RValType::ClassRef(
                 if let Symbol::Class(string_class) = self.resolve(class_path) {
                     string_class
                 } else {
                     unreachable!()
                 },
             ),
-            ASTType::Arr(dtype) => RValType::Array(Box::new(self.resolve_rval_type(dtype))),
+            Type::Arr(dtype) => RValType::Array(Box::new(self.resolve_rval_type(dtype))),
         }
     }
 

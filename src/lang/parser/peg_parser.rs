@@ -1,4 +1,4 @@
-use super::super::ast::*;
+use super::super::ast;
 use core::util::ItemPathBuf;
 use core::CCTOR_NAME;
 
@@ -13,59 +13,67 @@ use pest::Parser;
 #[grammar = "lang/parser/grammar.pest"]
 struct LRParser;
 
-pub fn parse(path: &Path) -> Result<Box<AST>, Error<Rule>> {
+pub fn parse(path: &Path) -> Result<ast::File, Error<Rule>> {
     let code = fs::read_to_string(path).unwrap();
 
     let file = LRParser::parse(Rule::File, &code)?.next().unwrap();
 
-    let mut items: Vec<Box<AST>> = Vec::new();
-    let mut uses: Vec<Box<AST>> = Vec::new();
-    let mut extern_module_declares: Vec<String> = Vec::new();
-    let mut module_declares: Vec<String> = Vec::new();
+    let mut ret = ast::File::default();
     for sub in file.into_inner() {
         match sub.as_rule() {
             Rule::EOI => break,
-            Rule::ExternModuleDeclare => {
-                extern_module_declares.push(build_id(sub.into_inner().next().unwrap()))
-            }
-            Rule::ModuleDeclare => module_declares.push(build_id(sub.into_inner().next().unwrap())),
-            Rule::UseStmt => uses.push(build_use_stmt(sub)),
-            Rule::Class => items.push(build_custom_class(sub)),
-            Rule::Func => items.push(build_func(sub)),
+            Rule::UseStmt => ret.uses.push(parse_use_stmt(sub)),
+            Rule::Struct => ret.structs.push(parse_struct(sub)),
+            Rule::Interface => ret.interfaces.push(parse_interface(sub)),
+            Rule::Enum => ret.enums.push(parse_enum(sub)),
+            Rule::Fn => ret.fns.push(parse_fn(sub)),
+            Rule::Global => ret.globals.push(parse_global(sub)),
             _ => unreachable!(),
         };
     }
 
-    Ok(Box::new(AST::File(
-        extern_module_declares,
-        module_declares,
-        uses,
-        items,
-    )))
+    Ok(ret)
 }
 
-fn build_use_stmt(tree: Pair<Rule>) -> Box<AST> {
+fn parse_use_stmt(tree: Pair<Rule>) -> ast::Use {
     let mut iter = tree.into_inner();
-    let path = build_pathexpr(iter.next().unwrap());
+    let path = parse_pathexpr(iter.next().unwrap());
     let as_clause = iter.next().unwrap();
     let as_id = match as_clause.as_rule() {
-        Rule::Id => Some(build_id(as_clause)),
+        Rule::Id => Some(parse_id(as_clause)),
         Rule::Semi => None,
         _ => unreachable!(),
     };
 
-    Box::new(AST::Use(path, as_id))
+    ast::Use { path, id: as_id }
 }
 
-fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
+fn parse_global(tree: Pair<Rule>) -> ast::Global {
+    let mut iter = tree.into_inner();
+
+    let id = parse_id(iter.next().unwrap());
+    let ty = parse_type(iter.next().unwrap());
+    let value = parse_log_or_expr(iter.next().unwrap());
+
+    ast::Global { id, ty, value }
+}
+
+fn parse_attribs(iter: &mut Pairs<Rule>) -> Vec<ast::CustomAttrib> {
     let mut ret = Vec::new();
-    while let Rule::AttributeLst = iter.peek().unwrap().as_rule() {
+    while let Rule::CustomAttribLst = iter.peek().unwrap().as_rule() {
         for attr in iter.next().unwrap().into_inner() {
-            if let Rule::Attribute = attr.as_rule() {
+            if let Rule::CustomAttrib = attr.as_rule() {
                 let mut attr_iter = attr.into_inner();
-                let attr_id = build_id(attr_iter.next().unwrap());
-                let attr_args = attr_iter.map(build_literal).collect();
-                ret.push(Box::new(AST::CustomAttrib(attr_id, attr_args)));
+                let attr_id = parse_id(attr_iter.next().unwrap());
+                let attr_args = if let Some(args) = attr_iter.next() {
+                    Some(attr_iter.map(parse_expr).collect())
+                } else {
+                    None
+                };
+                ret.push(ast::CustomAttrib {
+                    id: attr_id,
+                    args: attr_args,
+                });
             } else {
                 unreachable!();
             }
@@ -74,121 +82,186 @@ fn build_attributes(iter: &mut Pairs<Rule>) -> Vec<Box<AST>> {
     ret
 }
 
-fn build_custom_class(tree: Pair<Rule>) -> Box<AST> {
-    let mut iter = tree.into_inner();
-    let custom_attribs = build_attributes(&mut iter);
-    let sem = iter.next().unwrap().as_rule();
-    let name = build_id(iter.next().unwrap());
-    let mut extends_or_impls: Vec<ItemPathBuf> = Vec::new();
+fn parse_generic_decl(tree: Pair<Rule>) -> Vec<String> {
+    return tree.into_inner().map(parse_id).collect();
+}
 
-    if let Some(try_impls) = iter.peek() {
-        if let Rule::Impls = try_impls.as_rule() {
-            for class in iter.next().unwrap().into_inner() {
-                extends_or_impls.push(build_pathexpr(class));
-            }
+fn parse_enum(tree: Pair<Rule>) -> ast::Enum {
+    let mut iter = tree.into_inner();
+    let custom_attribs = parse_attribs(&mut iter);
+
+    let id = parse_id(iter.next().unwrap());
+
+    let mut generic_decl: Option<Vec<String>> = Option::None;
+    if let Some(try_generic_decl) = iter.peek() {
+        if let Rule::GenericDecl = try_generic_decl.as_rule() {
+            generic_decl = Some(parse_generic_decl(iter.next().unwrap()));
         }
     }
 
-    let mut has_cctor = false;
     let mut fields = Vec::new();
-    let mut methods = Vec::new();
-    for class_item in iter {
-        match class_item.as_rule() {
-            Rule::CCtor => {
-                if has_cctor {
-                    panic!("Duplicate cctor in class {}", name);
-                }
-                has_cctor = true;
-                let mut flags = FuncFlags::from(u16::from(FieldFlag::Public));
-                flags.set(FuncFlag::Static);
-                methods.push(Box::new(AST::Func(ASTFunc {
-                    name: CCTOR_NAME.to_owned(),
-                    flags,
-                    custom_attribs: Vec::new(),
-                    ret: Box::new(ASTType::None),
-                    ps: Vec::new(),
-                    body: build_block(class_item.into_inner().next().unwrap()),
-                })));
-            }
-            Rule::StaticField => fields.push(build_field(class_item, true)),
-            Rule::NonStaticField => fields.push(build_field(class_item, false)),
-            Rule::Func => methods.push(build_func(class_item)),
+    let mut fns = Vec::new();
+    for item in iter {
+        match item.as_rule() {
+            Rule::EnumField => fields.push(parse_enum_field(item)),
+            Rule::Fn => fns.push(parse_fn(item)),
             _ => unreachable!(),
         }
     }
 
-    let ret = ASTClass {
-        name,
-        flags: ClassFlags::from(u16::from(ClassFlag::Public) | u16::from(ClassFlag::Super)),
+    ast::Enum {
+        id,
         custom_attribs,
-        impls: extends_or_impls,
-        methods,
+        generic_decl,
+        fns,
         fields,
-    };
-    Box::new(match sem {
-        Rule::KwClass => AST::Class(ret),
-        Rule::KwStruct => unimplemented!(),
-        Rule::KwInterface => {
-            unimplemented!()
-        }
-        _ => unreachable!(),
-    })
+    }
 }
 
-fn build_field(tree: Pair<Rule>, is_static: bool) -> Box<AST> {
+fn parse_enum_field(tree: Pair<Rule>) -> ast::EnumField {
     let mut iter = tree.into_inner();
-    let name = build_id(iter.next().unwrap());
-    let mut flags = FieldFlags::from(u16::from(FieldFlag::Public));
-    if is_static {
-        flags.set(FieldFlag::Static);
+    let id = parse_id(iter.next().unwrap());
+    let ty = if let Some(ty) = iter.next() {
+        Some(parse_type(iter.next().unwrap()))
+    } else {
+        None
+    };
+
+    ast::EnumField { id, ty }
+}
+
+fn parse_interface(tree: Pair<Rule>) -> ast::Interface {
+    let mut iter = tree.into_inner();
+    let custom_attribs = parse_attribs(&mut iter);
+
+    let id = parse_id(iter.next().unwrap());
+
+    let mut generic_decl: Option<Vec<String>> = Option::None;
+    if let Some(try_generic_decl) = iter.peek() {
+        if let Rule::GenericDecl = try_generic_decl.as_rule() {
+            generic_decl = Some(parse_generic_decl(iter.next().unwrap()));
+        }
     }
 
-    Box::new(AST::Field(ASTField {
-        name,
-        flags,
-        ty: build_type(iter.next().unwrap()),
-    }))
+    let mut impls: Vec<ItemPathBuf> = Vec::new();
+    if let Some(try_impls) = iter.peek() {
+        if let Rule::Impls = try_impls.as_rule() {
+            for class in iter.next().unwrap().into_inner() {
+                impls.push(parse_pathexpr(class));
+            }
+        }
+    }
+
+    let fns = iter.map(parse_fn).collect();
+
+    ast::Interface {
+        id,
+        custom_attribs,
+        generic_decl,
+        impls,
+        fns,
+    }
 }
 
-fn build_func(tree: Pair<Rule>) -> Box<AST> {
+fn parse_struct(tree: Pair<Rule>) -> ast::Struct {
     let mut iter = tree.into_inner();
-    let custom_attribs = build_attributes(&mut iter);
+    let custom_attribs = parse_attribs(&mut iter);
+
+    let id = parse_id(iter.next().unwrap());
+
+    let mut generic_decl: Option<Vec<String>> = Option::None;
+    if let Some(try_generic_decl) = iter.peek() {
+        if let Rule::GenericDecl = try_generic_decl.as_rule() {
+            generic_decl = Some(parse_generic_decl(iter.next().unwrap()));
+        }
+    }
+
+    let mut impls: Vec<ItemPathBuf> = Vec::new();
+    if let Some(try_impls) = iter.peek() {
+        if let Rule::Impls = try_impls.as_rule() {
+            for class in iter.next().unwrap().into_inner() {
+                impls.push(parse_pathexpr(class));
+            }
+        }
+    }
+
+    let mut fields = Vec::new();
+    let mut fns = Vec::new();
+    for item in iter {
+        match item.as_rule() {
+            Rule::EnumField => fields.push(parse_field(item)),
+            Rule::Fn => fns.push(parse_fn(item)),
+            _ => unreachable!(),
+        }
+    }
+
+    ast::Struct {
+        id,
+        custom_attribs,
+        generic_decl,
+        impls,
+        fns,
+        fields,
+    }
+}
+
+fn parse_field(tree: Pair<Rule>) -> ast::Field {
+    let mut iter = tree.into_inner();
+    let id = parse_id(iter.next().unwrap());
+
+    ast::Field {
+        id,
+        ty: parse_type(iter.next().unwrap()),
+    }
+}
+
+fn parse_fn(tree: Pair<Rule>) -> ast::Fn {
+    let mut iter = tree.into_inner();
+    let custom_attribs = parse_attribs(&mut iter);
 
     // built-in attributes
-    let mut flags = FuncFlags::from(u16::from(FuncFlag::Public));
+    let mut attribs = FuncFlags::from(u16::from(FuncFlag::Public));
 
-    let name = build_id(iter.next().unwrap());
+    let id = parse_id(iter.next().unwrap());
 
-    let (ps, has_self) = build_params(iter.next().unwrap());
+    let mut generic_decl: Option<Vec<String>> = Option::None;
+    if let Some(try_generic_decl) = iter.peek() {
+        if let Rule::GenericDecl = try_generic_decl.as_rule() {
+            generic_decl = Some(parse_generic_decl(iter.next().unwrap()));
+        }
+    }
+
+    let (ps, has_self) = parse_params(iter.next().unwrap());
     if !has_self {
-        flags.set(FuncFlag::Static);
+        attribs.set(FuncFlag::Static);
     }
 
     let ty = if let Rule::Type = iter.peek().unwrap().as_rule() {
-        build_type(iter.next().unwrap())
+        parse_type(iter.next().unwrap())
     } else {
-        Box::new(ASTType::None)
+        ast::Type::None
     };
 
     let body = iter.next().unwrap();
     let body = match body.as_rule() {
-        Rule::BlockExpr => build_block(body),
-        Rule::Semi => Box::new(AST::None),
+        Rule::BlockExpr => Some(parse_block(body)),
+        Rule::Semi => None,
         _ => unreachable!(),
     };
 
-    Box::new(AST::Func(ASTFunc {
-        name,
-        flags,
+    ast::Fn {
+        id,
+        attribs,
         custom_attribs,
+        generic_decl,
         ret: ty,
         ps,
         body,
-    }))
+    }
 }
 
 // Build parameters
-fn build_params(tree: Pair<Rule>) -> (Vec<Box<AST>>, bool) {
+fn parse_params(tree: Pair<Rule>) -> (Vec<ast::Param>, bool) {
     let mut ps = Vec::new();
     let mut has_self = false;
     let mut p_iter = tree.into_inner();
@@ -200,10 +273,10 @@ fn build_params(tree: Pair<Rule>) -> (Vec<Box<AST>>, bool) {
             }
             Rule::Id => {
                 // static method
-                ps.push(Box::new(AST::Param(
-                    build_id(p0),
-                    build_type(p_iter.next().unwrap()),
-                )));
+                ps.push(ast::Param {
+                    id: parse_id(p0),
+                    ty: parse_type(p_iter.next().unwrap()),
+                });
             }
             _ => unreachable!(),
         }
@@ -213,19 +286,19 @@ fn build_params(tree: Pair<Rule>) -> (Vec<Box<AST>>, bool) {
     }
 
     while let Some(p_id) = p_iter.next() {
-        ps.push(Box::new(AST::Param(
-            build_id(p_id),
-            build_type(p_iter.next().unwrap()),
-        )));
+        ps.push(ast::Param {
+            id: parse_id(p_id),
+            ty: parse_type(p_iter.next().unwrap()),
+        });
     }
     (ps, has_self)
 }
 
-fn build_pathexpr(tree: Pair<Rule>) -> ItemPathBuf {
+fn parse_pathexpr(tree: Pair<Rule>) -> ItemPathBuf {
     let mut ret = ItemPathBuf::default();
     for seg in tree.into_inner() {
         match seg.as_rule() {
-            Rule::Id => ret.push(&build_id(seg)),
+            Rule::Id => ret.push(&parse_id(seg)),
             Rule::KwCrate => ret.push("crate"),
             Rule::KwSuper => ret.push("super"),
             Rule::KwLSelf => ret.push("self"),
@@ -235,290 +308,355 @@ fn build_pathexpr(tree: Pair<Rule>) -> ItemPathBuf {
     ret
 }
 
-fn build_non_arr_type(tree: Pair<Rule>) -> Box<ASTType> {
+fn parse_non_arr_type(tree: Pair<Rule>) -> Box<ast::Type> {
     Box::new(match tree.as_rule() {
-        Rule::KwBool => ASTType::Bool,
-        Rule::KwChar => ASTType::Char,
-        Rule::KwI32 => ASTType::I32,
-        Rule::KwF64 => ASTType::F64,
-        Rule::KwISize => ASTType::ISize,
-        Rule::KwUSize => ASTType::USize,
-        Rule::KwString => ASTType::String,
-        Rule::KwUSelf => ASTType::UsrType({
+        Rule::KwBool => ast::Type::Bool,
+        Rule::KwChar => ast::Type::Char,
+        Rule::KwI32 => ast::Type::I32,
+        Rule::KwF64 => ast::Type::F64,
+        Rule::KwISize => ast::Type::ISize,
+        Rule::KwUSize => ast::Type::USize,
+        Rule::KwStr => ast::Type::Str,
+        Rule::KwUSelf => ast::Type::UsrType({
             let mut path = ItemPathBuf::default();
             path.push("Self");
             path
         }),
-        Rule::PathExpr => ASTType::UsrType(build_pathexpr(tree)),
-        Rule::TupleType => ASTType::Tuple(tree.into_inner().map(build_type).collect()),
-        _ => unreachable!(format!("Found {:?}", tree.as_rule())),
+        Rule::Path => ast::Type::UsrType(parse_pathexpr(tree)),
+        Rule::TupleType => ast::Type::Tuple(tree.into_inner().map(parse_type).collect()),
+        _ => unreachable!(),
     })
 }
 
 /// tree: Type
-fn build_type(tree: Pair<Rule>) -> Box<ASTType> {
+fn parse_type(tree: Pair<Rule>) -> Box<ast::Type> {
     let mut iter = tree.into_inner();
-    let mut ret = build_non_arr_type(iter.next().unwrap());
+    let mut ret = parse_non_arr_type(iter.next().unwrap());
 
     while let Some(_) = iter.next() {
         iter.next().unwrap(); // RBracket
-        ret = Box::new(ASTType::Arr(ret));
+        ret = Box::new(ast::Type::Arr(ret));
     }
     ret
 }
 
-fn build_expr(tree: Pair<Rule>) -> Box<AST> {
-    match tree.as_rule() {
-        Rule::BlockExpr => build_block(tree),
-        Rule::LoopExpr => Box::new(AST::Loop(build_block(tree.into_inner().next().unwrap()))),
-        Rule::IfExpr => build_if(tree),
-        Rule::ContinueExpr => Box::new(AST::Continue),
-        Rule::BreakExpr => Box::new(AST::Break(if let Some(ret_v) = tree.into_inner().next() {
-            build_expr(ret_v)
-        } else {
-            Box::new(AST::None)
-        })),
-        Rule::ReturnExpr => Box::new(AST::Return(if let Some(ret_v) = tree.into_inner().next() {
-            build_expr(ret_v)
-        } else {
-            Box::new(AST::None)
-        })),
-        Rule::AssignExpr => build_assign(tree),
-        Rule::OpExpr => {
-            let tree = tree.into_inner().next().unwrap();
-            assert_eq!(tree.as_rule(), Rule::LogOrExpr);
-            build_log_or_expr(tree)
-        }
-        _ => unreachable!(format!("Found {:?}", tree.as_rule())),
+fn parse_if(tree: Pair<Rule>) -> ast::If {
+    let mut iter = tree.into_inner();
+    let cond = parse_expr(iter.next().unwrap());
+    let then = parse_block(iter.next().unwrap());
+    let els = if let Some(els) = iter.next() {
+        Some(Box::new(match els.as_rule() {
+            Rule::IfExpr => ast::Expr::If(parse_if(els)),
+            Rule::BlockExpr => ast::Expr::Block(parse_block(els)),
+            _ => unreachable!(),
+        }))
+    } else {
+        None
+    };
+    ast::If { cond, then, els }
+}
+
+fn parse_while(tree: Pair<Rule>) -> ast::While {
+    let mut iter = tree.into_inner();
+    let cond = parse_expr(iter.next().unwrap());
+    let then = parse_block(iter.next().unwrap());
+    ast::While { cond, then }
+}
+
+fn parse_loop(tree: Pair<Rule>) -> ast::Loop {
+    ast::Loop {
+        body: parse_block(tree.into_inner().next().unwrap()),
     }
 }
 
-fn build_if(tree: Pair<Rule>) -> Box<AST> {
-    let mut iter = tree.into_inner();
-    let cond = build_expr(iter.next().unwrap());
-    let then = build_block(iter.next().unwrap());
-    let els = if let Some(els) = iter.next() {
-        match els.as_rule() {
-            Rule::IfExpr => build_if(els),
-            Rule::BlockExpr => build_block(els),
-            _ => unreachable!(),
+
+fn parse_pattern(tree: Pair<Rule>) -> ast::Pattern {
+    let tree = tree.into_inner().next().unwrap();
+    match tree.as_rule() {
+        Rule::Id => ast::Pattern::Id(parse_id(tree)),
+        Rule::TuplePattern => {
+            ast::Pattern::Tuple(tree.into_inner().map(|t| Box::new(parse_pattern(t))).collect())
         }
-    } else {
-        Box::new(AST::None)
-    };
-    Box::new(AST::If(cond, then, els))
+        _ => unreachable!(),
+    }
 }
 
-fn build_stmt(tree: Pair<Rule>) -> Box<AST> {
+
+fn parse_stmt(tree: Pair<Rule>) -> ast::Stmt {
     let mut iter = tree.into_inner();
     let clause = iter.next().unwrap();
     match clause.as_rule() {
         Rule::LetStmt => {
             let mut iter = clause.into_inner();
-            let pattern = build_pattern(iter.next().unwrap());
+            let pattern = parse_pattern(iter.next().unwrap());
             let clause = iter.next().unwrap();
-            Box::new(match clause.as_rule() {
+            ast::Stmt::Let(match clause.as_rule() {
                 Rule::Type => {
                     // has type
-                    let ty = build_type(clause);
+                    let ty = Some(parse_type(clause));
                     let clause = iter.next().unwrap();
                     match clause.as_rule() {
-                        Rule::Semi => {
-                            // no init
-                            AST::Let(pattern, ty, Box::new(AST::None))
-                        }
-                        Rule::Eq => AST::Let(pattern, ty, build_expr(iter.next().unwrap())),
+                        // no init
+                        Rule::Semi => ast::LetStmt {
+                            pattern,
+                            ty,
+                            value: None,
+                        },
+                        Rule::Eq => ast::LetStmt {
+                            pattern,
+                            ty,
+                            value: Some(parse_expr(iter.next().unwrap())),
+                        },
                         _ => unreachable!(),
                     }
                 }
-                Rule::Eq => {
-                    // no type but has init
-                    AST::Let(
-                        pattern,
-                        Box::new(ASTType::None),
-                        build_expr(iter.next().unwrap()),
-                    )
-                }
-                Rule::Semi => {
-                    // no type and no init
-                    AST::Let(pattern, Box::new(ASTType::None), Box::new(AST::None))
-                }
+                // no type but has init
+                Rule::Eq => ast::LetStmt {
+                    pattern,
+                    ty: None,
+                    value: Some(parse_expr(iter.next().unwrap())),
+                },
+                // no type and no init
+                Rule::Semi => ast::LetStmt {
+                    pattern,
+                    ty: None,
+                    value: None,
+                },
                 _ => unreachable!(),
             })
         }
-        _ => {
-            let sub = build_expr(clause);
-            if iter.next().is_some() {
-                // Semi
-                Box::new(AST::ExprStmt(sub))
+        Rule::ContinueStmt => ast::Stmt::Continue,
+        Rule::BreakStmt => ast::Stmt::Break(if let Some(ret_v) = tree.into_inner().next() {
+                Some(parse_expr(ret_v))
             } else {
+                None
+            }),
+        Rule::ReturnStmt => ast::Stmt::Return(
+            if let Some(ret_v) = tree.into_inner().next() {
+                Some(parse_expr(ret_v))
+            } else {
+                None
+            },
+        ),
+        Rule::AssignStmt => {
+            let mut iter = tree.into_inner();
+            let lhs = parse_log_or_expr(iter.next().unwrap());
+            iter.next(); // "="
+            ast::Stmt::Assign(lhs, parse_log_or_expr(iter.next().unwrap()))
+        },
+        _ => {
+            let sub = parse_expr(clause);
+            if iter.next().is_none() {
+                // no Semi
+                // check if sub is a stmt
                 sub
             }
+            ast::Stmt::ExprStmt(sub)
         }
     }
 }
 
-fn build_block(tree: Pair<Rule>) -> Box<AST> {
-    Box::new(AST::Block(
-        tree.into_inner()
+
+fn parse_block(tree: Pair<Rule>) -> ast::Block {
+    ast::Block {
+        items: tree
+            .into_inner()
             .map(|sub| match sub.as_rule() {
-                Rule::Stmt => build_stmt(sub),
-                _ => build_expr(sub),
+                Rule::Stmt => ast::BlockItem::Stmt(parse_stmt(sub)),
+                _ => ast::BlockItem::Expr(parse_expr(sub)),
             })
             .collect(),
-    ))
+    }
 }
 
-fn build_assign(tree: Pair<Rule>) -> Box<AST> {
-    let mut iter = tree.into_inner();
-    let lhs = build_log_or_expr(iter.next().unwrap());
-    iter.next(); // "="
-    Box::new(AST::OpAssign(lhs, build_log_or_expr(iter.next().unwrap())))
+
+fn parse_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
+    match tree.as_rule() {
+        Rule::BlockExpr => Box::new(ast::Expr::Block(parse_block(tree))),
+        Rule::LoopExpr => Box::new(ast::Expr::Loop(parse_loop(tree))),
+        Rule::WhileExpr => Box::new(ast::Expr::While(parse_while(tree))),
+        Rule::IfExpr => Box::new(ast::Expr::If(parse_if(tree))),
+        Rule::LogOrExpr => parse_log_or_expr(tree),
+        _ => unreachable!(),
+    }
 }
 
-fn build_log_or_expr(tree: Pair<Rule>) -> Box<AST> {
+
+fn parse_log_or_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_log_and_expr(iter.next().unwrap());
+    let mut ret = parse_log_and_expr(iter.next().unwrap());
 
     for rhs in iter {
         // log or is left associative
-        ret = Box::new(AST::OpLogOr(ret, build_log_and_expr(rhs)));
+        ret = Box::new(ast::Expr::OpLogOr(ret, parse_log_and_expr(rhs)));
     }
     ret
 }
 
-fn build_log_and_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_log_and_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_eq_expr(iter.next().unwrap());
+    let mut ret = parse_eq_expr(iter.next().unwrap());
 
     for rhs in iter {
-        ret = Box::new(AST::OpLogAnd(ret, build_eq_expr(rhs)));
+        ret = Box::new(ast::Expr::OpLogAnd(ret, parse_eq_expr(rhs)));
     }
     ret
 }
 
-fn build_eq_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_eq_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_comp_expr(iter.next().unwrap());
+    let mut ret = parse_comp_expr(iter.next().unwrap());
 
     while let Some(op) = iter.next() {
         ret = Box::new(match op.as_rule() {
-            Rule::EqEq => AST::OpEq(ret, build_comp_expr(iter.next().unwrap())),
-            Rule::Ne => AST::OpNe(ret, build_comp_expr(iter.next().unwrap())),
+            Rule::EqEq => ast::Expr::OpEq(ret, parse_comp_expr(iter.next().unwrap())),
+            Rule::Ne => ast::Expr::OpNe(ret, parse_comp_expr(iter.next().unwrap())),
             _ => unreachable!(),
         });
     }
     ret
 }
 
-fn build_comp_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_comp_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_add_expr(iter.next().unwrap());
+    let mut ret = parse_add_expr(iter.next().unwrap());
 
     while let Some(op) = iter.next() {
         ret = Box::new(match op.as_rule() {
-            Rule::Le => AST::OpLe(ret, build_add_expr(iter.next().unwrap())),
-            Rule::Lt => AST::OpLt(ret, build_add_expr(iter.next().unwrap())),
-            Rule::Ge => AST::OpGe(ret, build_add_expr(iter.next().unwrap())),
-            Rule::Gt => AST::OpGt(ret, build_add_expr(iter.next().unwrap())),
+            Rule::Le => ast::Expr::OpLe(ret, parse_add_expr(iter.next().unwrap())),
+            Rule::Lt => ast::Expr::OpLt(ret, parse_add_expr(iter.next().unwrap())),
+            Rule::Ge => ast::Expr::OpGe(ret, parse_add_expr(iter.next().unwrap())),
+            Rule::Gt => ast::Expr::OpGt(ret, parse_add_expr(iter.next().unwrap())),
             _ => unreachable!(),
         });
     }
     ret
 }
 
-fn build_add_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_add_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_mul_expr(iter.next().unwrap());
+    let mut ret = parse_mul_expr(iter.next().unwrap());
 
     while let Some(op) = iter.next() {
         ret = Box::new(match op.as_rule() {
-            Rule::Plus => AST::OpAdd(ret, build_mul_expr(iter.next().unwrap())),
-            Rule::Minus => AST::OpSub(ret, build_mul_expr(iter.next().unwrap())),
+            Rule::Plus => ast::Expr::OpAdd(ret, parse_mul_expr(iter.next().unwrap())),
+            Rule::Minus => ast::Expr::OpSub(ret, parse_mul_expr(iter.next().unwrap())),
             _ => unreachable!(),
         });
     }
     ret
 }
 
-fn build_mul_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_mul_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_cast_expr(iter.next().unwrap());
+    let mut ret = parse_cast_expr(iter.next().unwrap());
 
     while let Some(op) = iter.next() {
         ret = Box::new(match op.as_rule() {
-            Rule::Star => AST::OpMul(ret, build_cast_expr(iter.next().unwrap())),
-            Rule::Slash => AST::OpDiv(ret, build_cast_expr(iter.next().unwrap())),
-            Rule::Percent => AST::OpMod(ret, build_cast_expr(iter.next().unwrap())),
+            Rule::Star => ast::Expr::OpMul(ret, parse_cast_expr(iter.next().unwrap())),
+            Rule::Slash => ast::Expr::OpDiv(ret, parse_cast_expr(iter.next().unwrap())),
+            Rule::Percent => ast::Expr::OpMod(ret, parse_cast_expr(iter.next().unwrap())),
             _ => unreachable!(),
         });
     }
     ret
 }
 
-fn build_cast_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_cast_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
-    let mut ret = build_unary_expr(iter.next().unwrap());
+    let mut ret = parse_unary_expr(iter.next().unwrap());
 
     for rhs in iter {
-        ret = Box::new(AST::OpCast(build_type(rhs), ret));
+        ret = Box::new(ast::Expr::OpCast(parse_type(rhs), ret));
     }
     ret
 }
 
-fn build_unary_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_unary_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     // unary is right associative, iterate reversely
     let mut iter = tree.into_inner().rev();
-    let mut ret = build_new_expr(iter.next().unwrap());
+    let mut ret = parse_call_expr(iter.next().unwrap());
 
     for op in iter {
         ret = Box::new(match op.as_rule() {
-            Rule::Plus => AST::OpPos(ret),
-            Rule::Not => AST::OpLogNot(ret),
-            Rule::Minus => AST::OpNeg(ret),
+            Rule::Plus => ast::Expr::OpPos(ret),
+            Rule::Not => ast::Expr::OpLogNot(ret),
+            Rule::Minus => ast::Expr::OpNeg(ret),
             _ => unreachable!(),
         });
     }
     ret
 }
 
-fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_call_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
+    let mut iter = tree.into_inner();
+    let mut ret = parse_primary_expr(iter.next().unwrap());
+
+    for rhs in iter {
+        ret = Box::new(match rhs.as_rule() {
+            Rule::Args => ast::Expr::OpCall(ret, rhs.into_inner().map(parse_expr).collect()),
+            Rule::ObjAccExpr => ast::Expr::OpObjAcc(ret, parse_id(rhs.into_inner().next().unwrap())),
+            Rule::StaticAccExpr => {
+                ast::Expr::OpStaticAcc(ret, parse_id(rhs.into_inner().next().unwrap()))
+            }
+            Rule::ArrAccExpr => ast::Expr::OpArrayAcc(ret, parse_expr(rhs.into_inner().next().unwrap())),
+            _ => unreachable!(),
+        });
+    }
+    ret
+}
+
+fn parse_primary_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
+    let tree = tree.into_inner().next().unwrap();
+    match tree.as_rule() {
+        Rule::ParenExpr => parse_expr(tree.into_inner().next().unwrap()),
+        Rule::LiteralExpr => Box::new(ast::Expr::Literal(parse_literal(tree))),
+        Rule::KwLSelf => Box::new(ast::Expr::Id(String::from("self"))),
+        Rule::Id => Box::new(ast::Expr::Id(parse_id(tree))),
+        Rule::Type => Box::new(ast::Expr::Type(parse_type(tree))),
+        Rule::NewExpr => parse_new_expr(tree),
+        // Actually only expr with block
+        _ => parse_expr(tree),
+    }
+}
+
+fn parse_new_expr(tree: Pair<Rule>) -> Box<ast::Expr> {
     let mut iter = tree.into_inner();
 
     let ret = iter.next().unwrap();
     match ret.as_rule() {
-        Rule::CallExpr => build_call_expr(ret),
+        Rule::CallExpr => parse_call_expr(ret),
         Rule::Type => {
-            let ty = build_type(ret);
+            let ty = parse_type(ret);
             let initializer = iter.next().unwrap();
             Box::new(match initializer.as_rule() {
-                Rule::StructFieldsInitExpr => AST::OpNewStruct(
+                Rule::StructInitExpr => ast::Expr::OpNewStruct(
                     ty,
                     initializer
                         .into_inner()
                         .map(|field_init| {
                             let mut sub_iter = field_init.into_inner();
-                            let field = build_id(sub_iter.next().unwrap());
-                            Box::new(ASTFieldInit {
+                            let field = parse_id(sub_iter.next().unwrap());
+                            ast::FieldInit {
                                 field,
                                 value: if let Some(init_val) = sub_iter.next() {
-                                    build_expr(init_val)
+                                    Some(parse_expr(init_val))
                                 } else {
-                                    Box::new(AST::None)
+                                    None
                                 },
-                            })
+                            }
                         })
                         .collect(),
                 ),
-                Rule::ArrAccessExpr => {
+                Rule::ArrAccExpr => {
                     let mut elem_ty = ty;
                     while let Some(_) = iter.next() {
                         iter.next().unwrap(); // RBracket
-                        elem_ty = Box::new(ASTType::Arr(elem_ty));
+                        elem_ty = ast::Type::Arr(Box::new(elem_ty));
                     }
-                    AST::OpNewArr(
+                    ast::Expr::OpNewArr(
                         elem_ty,
-                        build_expr(initializer.into_inner().next().unwrap()),
+                        parse_expr(initializer.into_inner().next().unwrap()),
                     )
                 }
                 _ => unreachable!(),
@@ -528,49 +666,12 @@ fn build_new_expr(tree: Pair<Rule>) -> Box<AST> {
     }
 }
 
-fn build_call_expr(tree: Pair<Rule>) -> Box<AST> {
-    let mut iter = tree.into_inner();
-    let mut ret = build_primary_expr(iter.next().unwrap());
-
-    for rhs in iter {
-        ret = Box::new(match rhs.as_rule() {
-            Rule::Args => AST::OpCall(ret, rhs.into_inner().map(build_expr).collect()),
-            Rule::ObjAccessExpr => {
-                AST::OpObjAccess(ret, build_id(rhs.into_inner().next().unwrap()))
-            }
-            Rule::PathAccessExpr => {
-                AST::OpStaticAccess(ret, build_id(rhs.into_inner().next().unwrap()))
-            }
-            Rule::ArrAccessExpr => {
-                AST::OpArrayAccess(ret, build_expr(rhs.into_inner().next().unwrap()))
-            }
-            _ => unreachable!(),
-        });
-    }
-    ret
-}
-
-fn build_primary_expr(tree: Pair<Rule>) -> Box<AST> {
+fn parse_literal(tree: Pair<Rule>) -> ast::Literal {
     let tree = tree.into_inner().next().unwrap();
     match tree.as_rule() {
-        Rule::GroupedExpr => build_expr(tree.into_inner().next().unwrap()),
-        Rule::LiteralExpr => build_literal(tree),
-        Rule::KwLSelf => Box::new(AST::Id(String::from("self"))),
-        Rule::Id => Box::new(AST::Id(build_id(tree))),
-        Rule::Type => Box::new(AST::Type(build_type(tree))),
-        // Actually only expr with block
-        _ => build_expr(tree),
-    }
-}
-
-fn build_literal(tree: Pair<Rule>) -> Box<AST> {
-    let tree = tree.into_inner().next().unwrap();
-    Box::new(match tree.as_rule() {
-        Rule::KwTrue => AST::Bool(true),
-        Rule::KwFalse => AST::Bool(false),
-        Rule::KwNull => AST::Null,
-        Rule::EmptyLiteral => AST::None,
-        Rule::IntLiteral => AST::Int(
+        Rule::KwTrue => ast::Literal::Bool(true),
+        Rule::KwFalse => ast::Literal::Bool(false),
+        Rule::DecIntLiteral => ast::Literal::I32Int(
             tree.as_span()
                 .as_str()
                 .trim()
@@ -579,8 +680,10 @@ fn build_literal(tree: Pair<Rule>) -> Box<AST> {
                     panic!("Unable to parse \"{}\" as i32", tree.as_span().as_str())
                 }),
         ),
-        Rule::FloatLiteral => AST::Float(tree.as_span().as_str().trim().parse::<f64>().unwrap()),
-        Rule::StringLiteral => {
+        Rule::FloatLiteral => {
+            ast::Literal::Float(tree.as_span().as_str().trim().parse::<f64>().unwrap())
+        }
+        Rule::StrLiteral => {
             let mut chars = tree.as_span().as_str().trim().chars();
             chars.next(); // skip first '"'
             let mut s = String::new();
@@ -603,15 +706,15 @@ fn build_literal(tree: Pair<Rule>) -> Box<AST> {
                     None => unreachable!(),
                 }
             }
-            AST::String(s)
+            ast::Literal::Str(s)
         }
         Rule::CharLiteral => {
             let mut chars = tree.as_span().as_str().trim().chars();
             chars.next(); // skip first '\''
-            let ch = AST::Char(match chars.next().unwrap() {
+            let ch = ast::Literal::Char(match chars.next().unwrap() {
                 '\'' => panic!("Empty char literal"),
-                '\\' => chars.next().unwrap().into(),
-                c => c.into(),
+                '\\' => chars.next().unwrap(),
+                c => c,
             });
             match chars.next().expect("Invalid char literal") {
                 '\'' => (),
@@ -620,19 +723,10 @@ fn build_literal(tree: Pair<Rule>) -> Box<AST> {
             ch
         }
         _ => unreachable!(),
-    })
+    }
 }
 
-fn build_pattern(tree: Pair<Rule>) -> Box<AST> {
-    let tree = tree.into_inner().next().unwrap();
-    Box::new(match tree.as_rule() {
-        Rule::Id => AST::Id(build_id(tree)),
-        Rule::TuplePattern => AST::TuplePattern(tree.into_inner().map(build_pattern).collect()),
-        _ => unreachable!(),
-    })
-}
-
-fn build_id(tree: Pair<Rule>) -> String {
-    assert_eq!(tree.as_rule(), Rule::Id);
+fn parse_id(tree: Pair<Rule>) -> String {
+    debug_assert_eq!(tree.as_rule(), Rule::Id);
     String::from(tree.as_span().as_str().trim())
 }

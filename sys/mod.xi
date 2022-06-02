@@ -1,12 +1,17 @@
-class String {
+struct String {
     #[internal]
     fn len(self);
 }
 
+enum opt<T> {
+    Some(T),
+    None(),
+}
+
 #[internal]
-fn prints(str: String);
+fn prints(s: str);
 #[internal]
-fn println(str: String);
+fn println(s: str);
 #[internal]
 fn printc(ch: char);
 #[internal]

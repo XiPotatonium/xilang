@@ -31,7 +31,6 @@ fn main() {
                     .help("Do not run. Only generate byte code in cache."),
             )
             .arg(Arg::new("ast").long("ast").help("Dump .ast.json in cache"))
-            .arg(Arg::new("no_sys").long("no_sys").help("Do not load syslib"))
             .get_matches();
 
         let entry_path = matches.value_of("entry").unwrap();
@@ -41,7 +40,6 @@ fn main() {
             entry_path,
             dump_ast: matches.is_present("ast"),
             compile: matches.is_present("compile"),
-            no_sys: matches.is_present("no_sys"),
         }
     };
 

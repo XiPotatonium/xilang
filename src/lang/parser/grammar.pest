@@ -1,71 +1,72 @@
-File = { SOI ~ (ExternModuleDeclare | ModuleDeclare | UseStmt)* ~ (Class | Func)* ~ EOI }
+File = { SOI ~ UseStmt* ~ (Struct | Interface | Fn | Global | Enum)* ~ EOI }
 
-ExternModuleDeclare = { "extern" ~ Id ~ Semi }
-ModuleDeclare = { "mod" ~ Id ~ Semi }
-UseStmt = { "use" ~ PathExpr ~ ("as" ~ Id)? ~ Semi }
+UseStmt = { "use" ~ Path ~ ("as" ~ Id)? ~ Semi }
 
-AttributeLst = { "#" ~ "[" ~ Attribute ~ ("," ~ Attribute)* ~ "]" }
-Attribute = { Id ~ ("(" ~ (LiteralExpr ~ ",")* ~ LiteralExpr? ~ ")")? }
+CustomAttribLst = { "#" ~ "[" ~ (CustomAttrib ~ ",")* ~ CustomAttrib? ~ "]" }
+CustomAttrib = { Id ~ Args? }
 
-Class = { 
-    AttributeLst* ~ (KwClass | KwStruct | KwInterface) ~ Id ~ Impls? ~
-    "{" ~ (CCtor | Func | StaticField | NonStaticField)* ~ "}" 
+Global = { "const" ~ Id ~ ":" ~ Type ~ "=" ~ LogOrExpr ~ Semi }
+GenericDecl = {"<" ~ (Id ~ ",")* ~ Id? ~ ">"}
+Enum = {
+    CustomAttribLst* ~ "enum" ~ Id ~ GenericDecl? ~
+    "{" ~ (Fn | EnumField)* ~ "}"
+}
+Struct = {
+    CustomAttribLst* ~ "struct" ~ Id ~ GenericDecl? ~ Impls? ~
+    "{" ~ (Fn | Field)* ~ "}"
+}
+Interface = {
+    CustomAttribLst* ~ "interface" ~ Id ~ GenericDecl? ~ Impls? ~
+    "{" ~ Fn* ~ "}"
 }
 
-Impls = { ":" ~ PathExpr ~ ("," ~ PathExpr)* }
+Impls = { ":" ~ Path ~ ("," ~ Path)* ~ ","? }
 
-CCtor = { "static" ~ BlockExpr }
-StaticField = { "static" ~ Id ~ ":" ~ Type ~ Semi }
-NonStaticField = { "let" ~ Id ~ ":" ~ Type ~ Semi }
+Field = { Id ~ ":" ~ Type ~ "," }
+EnumField = {Id ~ "(" ~ Type? ~ ")" ~ ","}
 
-Func = { AttributeLst* ~ "fn" ~ Id ~ Params ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
-Params = { "(" ~ ((KwLSelf | Id ~ ":" ~ Type) ~ ("," ~ Id ~ ":" ~ Type)* ~ ","?)? ~ ")" }
+Fn = { CustomAttribLst* ~ "fn" ~ Id ~ GenericDecl? ~ (MethodParams | FnParams) ~ ("->" ~ Type)? ~ (BlockExpr | Semi) }
+MethodParams = { "(" ~ KwLSelf ~ ("," ~ Id ~ ":" ~ Type)* ~ ","? ~ ")" }
+FnParams = { "(" ~ (Id ~ ":" ~ Type ~ ",")* ~ (Id ~ ":" ~ Type)? ~ ")" }
 
-Pattern = { Id | TuplePattern }
-TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
 
-Type = { NonArrType ~ (LBracket ~ RBracket)* }
-BasicType = _{ KwBool | KwChar | KwI32 | KwF64 | KwISize | KwUSize | KwString }
-TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
-NonArrType = _{
-    BasicType
-    | KwUSelf
-    | PathExpr
-    | TupleType
-}
-
-Stmt = { LetStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
+Stmt = { LetStmt | ContinueStmt | BreakStmt | ReturnStmt | AssignStmt | ExprWithoutBlock ~ Semi | ExprWithBlock ~ Semi? }
 LetStmt = { "let" ~ Pattern ~ (":" ~ Type)? ~ (Eq ~ Expr)? ~ Semi }
+ContinueStmt = { "continue" ~ Semi }
+BreakStmt = { "break" ~ Expr? ~ Semi }
+ReturnStmt = { "return" ~ Expr? ~ Semi }
+AssignStmt = { LogOrExpr ~ Eq ~ LogOrExpr ~ Semi }
+
 Expr = _{ ExprWithBlock | ExprWithoutBlock }
-ExprWithBlock = _{ BlockExpr | LoopExpr | IfExpr }
-ExprWithoutBlock = _{
-    ContinueExpr
-    | BreakExpr
-    | ReturnExpr
-    | AssignExpr
-    | OpExpr
-}
+ExprWithBlock = _{ BlockExpr | WhileExpr | LoopExpr | IfExpr }
+ExprWithoutBlock = _{ LogOrExpr }
 
 LoopExpr = { "loop" ~ BlockExpr }
+WhileExpr = { "while" ~ Expr ~ BlockExpr }
 IfExpr = { "if" ~ Expr ~ BlockExpr ~ ("else" ~ (BlockExpr | IfExpr))? }
 BlockExpr = { "{" ~ Stmt* ~ ExprWithoutBlock? ~ "}" }
 
-ContinueExpr = { "continue" }
-BreakExpr = { "break" ~ Expr? }
-ReturnExpr = { "return" ~ Expr? }
 
-GroupedExpr = { "(" ~ Expr ~ ")" }
-// Actually Type here will not include PathExpr. Maybe only BasicType but I'm not sure for now
-PrimaryExpr = { LiteralExpr | KwLSelf | GroupedExpr | ExprWithBlock | Id | Type }
 Args = { "(" ~ (Expr ~ ",")* ~ Expr? ~ ")" }
-ObjAccessExpr = { "." ~ Id }
-PathAccessExpr = { "::" ~ Id }
-ArrAccessExpr = { "[" ~ Expr ~ "]" }
+ObjAccExpr = { "." ~ IdG }
+StaticAccExpr = { "::" ~ IdG }
+ArrAccExpr = { "[" ~ Expr ~ "]" }
 StructFieldInitExpr =  { Id ~ (":" ~ Expr)? }
-StructFieldsInitExpr = {"{" ~ (StructFieldInitExpr ~ ",")* ~ StructFieldInitExpr? ~ "}"}
-CallExpr = { PrimaryExpr ~ (Args | ObjAccessExpr | PathAccessExpr | ArrAccessExpr)* }
-NewExpr = { "new" ~ Type ~ (StructFieldsInitExpr | ArrAccessExpr ~ (LBracket ~ RBracket)*) | CallExpr }
-UnaryExpr = { (Not | Plus | Minus)* ~ NewExpr }
+StructInitExpr = {"{" ~ (StructFieldInitExpr ~ ",")* ~ StructFieldInitExpr? ~ "}"}
+NewExpr = { "new" ~ Type ~ (StructInitExpr | ArrAccExpr) }
+ParenExpr = { "(" ~ Expr ~ ")" }
+LiteralExpr = {
+    KwTrue
+    | KwFalse
+    | DecIntLiteral
+    | FloatLiteral
+    | StrLiteral
+    | CharLiteral
+}
+
+PrimaryExpr = { LiteralExpr | KwLSelf | ParenExpr | ExprWithBlock | Type | NewExpr }
+CallExpr = { PrimaryExpr ~ (Args | ObjAccExpr | StaticAccExpr | ArrAccExpr)* }
+UnaryExpr = { (Not | Plus | Minus)* ~ CallExpr }
 CastExpr = { UnaryExpr ~ ("as" ~ Type)* }
 MulExpr = { CastExpr ~ ((Star | Slash | Percent) ~ CastExpr)* }
 AddExpr = { MulExpr ~ ((Plus | Minus) ~ MulExpr)* }
@@ -73,68 +74,62 @@ CompExpr = { AddExpr ~ ((Le | Lt | Ge | Gt) ~ AddExpr)* }
 EqExpr = { CompExpr ~ ((EqEq | Ne) ~ CompExpr)* }
 LogAndExpr = { EqExpr ~ ("&&" ~ EqExpr)* }
 LogOrExpr = { LogAndExpr ~ ("||" ~ LogAndExpr)* }
-OpExpr = { LogOrExpr }
-AssignExpr = { LogOrExpr ~ Eq ~ LogOrExpr }
 
-LiteralExpr = {
-    KwTrue
-    | KwFalse
-    | KwNull
-    | EmptyLiteral
-    | IntLiteral
-    | FloatLiteral
-    | StringLiteral
-    | CharLiteral
-}
 
-EmptyLiteral = { "(" ~ ")" }
-IntLiteral = { ASCII_DIGIT+ }
+DecIntLiteral = { ASCII_DIGIT+ }
 FloatLiteral = @{ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
-StringLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
+StrLiteral = @{ "\"" ~ ("\\" ~ ANY | !"\"" ~ ANY)* ~ "\"" }
 CharLiteral = @{ "'" ~ ("\\" ~ ANY | !"'" ~ ANY)* ~ "'" }
 
-PathExpr = { (Id | KwCrate | KwSuper | KwLSelf) ~ ("::" ~ (Id | KwSuper))* }
-Id = @{ 
-    KeyWord ~ (ASCII_ALPHANUMERIC | "_")+ 
-    | !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* 
-}
 
-KwClass = { "class" }
-KwStruct = { "struct" }
-KwInterface = { "interface" }
-KwBase = { "base" }
+Pattern = { Id | TuplePattern }
+TuplePattern = { "(" ~ (Pattern ~ ",")* ~ Pattern? ~ ")" }
+
+Type = { NonArrType ~ (LBracket ~ RBracket)? }
+BasicType = _{ KwBool | KwChar | KwF32 | KwF64 | KwISize | KwI32 | KwI64 | KwUSize | KwStr | KwU8 | KwU32 | KwU64 }
+TupleType = { "(" ~ (Type ~ ",")* ~ Type? ~ ")" }
+NonArrType = _{
+    BasicType
+    | KwUSelf
+    | Path
+    | TupleType
+}
+Path = { Dot* ~ IdG ~ ("::" ~ IdG)* }
+Id = @{
+    !KeyWord ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")*
+}
+IdG = {Id ~ ("<" ~ (Type ~ ",")* ~ Type? ~ ">")?}
+
+
 KwLSelf = { "self" }
 KwUSelf = { "Self" }
-KwVirtual = { "virtual" }
-KwOverride = { "override" }
-KwPub = { "pub" }
-KwPriv = { "priv" }
-KwSuper = { "super" }
-KwCrate = { "crate" }
 
 KwBool = { "bool" }
 KwChar = { "char" }
 KwU8 = { "u8" }
 KwU32 = { "u32" }
+KwU64 = { "u64" }
 KwI32 = { "i32" }
+KwI64 = { "i64" }
 KwUSize = { "usize" }
 KwISize = { "isize" }
+KwF32 = { "f32" }
 KwF64 = { "f64" }
 KwTrue = { "true" }
 KwFalse = { "false" }
-KwNull = { "null" }
-KwString = { "string" }
+KwStr = { "str" }
 
-KeyWord = @{ 
-    KwClass | KwStruct | KwInterface | "enum" | "union" | "fn" | "let" | "where" | "new"
-    | "static" | "const" | "mut" | KwPub | KwPriv | KwVirtual | KwOverride
-    | KwLSelf | KwUSelf | KwBase | KwSuper | KwCrate | "extern" | "mod" | "use"
+KeyWord = @{
+    "class" | "struct" | "interface" | "enum" | "union" | "fn" | "let" | "where" | "new"
+    | "static" | "const" | "mut" | "pub" | "priv" | "virtual" | "override"
+    | KwLSelf | KwUSelf | "base" | "super" | "crate" | "extern" | "mod" | "use"
     | "as" | "break" | "continue" | "else" | "for" | "if" | "in" | "loop" | "match" | "return" | "while"
-    | KwBool | KwChar | KwU8 | KwU32 | KwI32 | KwUSize | KwISize | KwF64
-    | KwFalse | KwTrue | KwNull | KwString
-    | "yield" | "typeof"
+    | KwBool | KwChar | KwU8 | KwU32 | KwU64 | KwI32 | KwI64 | KwUSize | KwISize | KwF32 | KwF64
+    | KwFalse | KwTrue | "null" | KwStr
+    | "yield" | "type" | "typeof"
 }
 
+Dot = { "." }
 Eq = { "=" }
 EqEq = { "==" }
 Ne = { "!=" }
@@ -154,4 +149,3 @@ RBracket = { "]" }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }
-

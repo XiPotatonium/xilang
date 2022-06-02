@@ -2,14 +2,14 @@ use core::flags::FuncFlag;
 use core::util::ItemPathBuf;
 use std::ptr::NonNull;
 
-use super::super::ast::{ASTFunc, ASTType, AST};
+use super::super::ast::{ASTFunc, Type, AST};
 use super::super::sym::{Func, Param, RValType, Symbol, TypeLinkContext};
 use super::super::XiCfg;
 use super::{ClassBuilder, ModuleBuilder};
 
 pub struct FuncBuilder {
     pub sym: NonNull<Func>,
-    pub ret_ast: Box<ASTType>,
+    pub ret_ast: Box<Type>,
     pub ps_ast: Vec<Box<AST>>,
 }
 

@@ -13,5 +13,4 @@ pub struct XiCfg {
     pub entry_path: PathBuf,
     pub dump_ast: bool,
     pub compile: bool,
-    pub no_sys: bool,
 }

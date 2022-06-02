@@ -40,21 +40,19 @@ impl FileLoader {
         let loader_nonnull = NonNull::new(loader.as_mut() as *mut FileLoader).unwrap();
 
         // load sys
-        if !cfg.no_sys {
-            let sys_path = std::env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join(SYS_PATH);
-            println!("{}", sys_path.display());
-            let syslib = ModuleBuilder::load(
-                ItemPathBuf::from_ir_path(SYS_NAME),
-                sys_path,
-                loader.as_mut(),
-                cfg,
-            );
-            loader.crates.push(syslib);
-        }
+        let sys_path = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(SYS_PATH);
+        println!("{}", sys_path.display());
+        let syslib = ModuleBuilder::load(
+            ItemPathBuf::from_ir_path(SYS_NAME),
+            sys_path,
+            loader.as_mut(),
+            cfg,
+        );
+        loader.crates.push(syslib);
 
         // link type
         for module in loader.builders.iter_mut() {

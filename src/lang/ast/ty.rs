@@ -3,36 +3,36 @@ use core::util::{IItemPath, ItemPathBuf};
 use std::fmt;
 
 #[derive(Clone)]
-pub enum ASTType {
+pub enum Type {
     Bool,
     Char,
     I32,
     F64,
     ISize,
     USize,
-    String,
-    Tuple(Vec<Box<ASTType>>),
+    Str,
+    Tuple(Vec<Box<Type>>),
     /// type
-    Arr(Box<ASTType>),
+    Arr(Box<Type>),
     UsrType(ItemPathBuf),
     /// void or undetermined
     None,
 }
 
-impl fmt::Display for ASTType {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ASTType::Bool => write!(f, "(type)bool"),
-            ASTType::Char => write!(f, "(type)char"),
-            ASTType::I32 => write!(f, "(type)i32"),
-            ASTType::F64 => write!(f, "(type)f64"),
-            ASTType::ISize => write!(f, "(type)isize"),
-            ASTType::USize => write!(f, "(type)usize"),
-            ASTType::String => write!(f, "(type)string"),
-            ASTType::Tuple(_) => unimplemented!(),
-            ASTType::Arr(dtype) => write!(f, "(type){}[]", dtype),
-            ASTType::UsrType(names) => write!(f, "(type){}", names.as_str()),
-            ASTType::None => write!(f, "(type)none"),
+            Type::Bool => write!(f, "(type)bool"),
+            Type::Char => write!(f, "(type)char"),
+            Type::I32 => write!(f, "(type)i32"),
+            Type::F64 => write!(f, "(type)f64"),
+            Type::ISize => write!(f, "(type)isize"),
+            Type::USize => write!(f, "(type)usize"),
+            Type::Str => write!(f, "(type)string"),
+            Type::Tuple(_) => unimplemented!(),
+            Type::Arr(dtype) => write!(f, "(type){}[]", dtype),
+            Type::UsrType(names) => write!(f, "(type){}", names.as_str()),
+            Type::None => write!(f, "(type)none"),
         }
     }
 }

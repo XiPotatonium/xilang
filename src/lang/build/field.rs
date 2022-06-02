@@ -1,18 +1,17 @@
 use core::util::ItemPathBuf;
 use std::ptr::NonNull;
 
-use super::super::ast::{ASTField, ASTType};
 use super::super::sym::{Field, RValType, TypeLinkContext};
 use super::ClassBuilder;
 
 pub struct FieldBuilder {
     pub sym: NonNull<Field>,
-    pub ty_ast: Box<ASTType>,
+    pub ty_ast: Box<Type>,
 }
 
 impl FieldBuilder {
-    pub fn load(path: ItemPathBuf, parent: &mut ClassBuilder, ast: ASTField) -> Box<Field> {
-        let ASTField {
+    pub fn load(path: ItemPathBuf, parent: &mut ClassBuilder, ast: Field) -> Box<Field> {
+        let Field {
             name: _,
             flags,
             ty: ty_ast,
